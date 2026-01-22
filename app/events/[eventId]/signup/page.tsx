@@ -1,64 +1,93 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { use } from 'react'
+import { supabase } from '@/lib/supabase'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
-import { Calendar, MapPin, Users, Clock, Check } from 'lucide-react'
+import { Calendar, MapPin, Users, Clock, Check, Loader2, AlertCircle } from 'lucide-react'
 
-// Mock event data
-const mockEvent = {
-  id: 'food-drive-march',
-  title: 'Community Food Distribution',
-  date: '2025-03-15',
-  time: '8:00 AM - 4:00 PM',
-  location: 'Community Center, 123 Main St',
-  description: 'Join us for our monthly food distribution event. Help us serve families in need by sorting, packing, and distributing groceries to our community.',
-  imageUrl: 'https://images.unsplash.com/photo-1593113646773-028c64a8f1b8?w=800',
-  shifts: [
-    {
-      id: 1,
-      name: 'Morning Setup',
-      startTime: '08:00',
-      endTime: '10:00',
-      capacity: 8,
-      filled: 5,
-      description: 'Help set up tables, organize supplies, and prepare the distribution area'
-    },
-    {
-      id: 2,
-      name: 'Food Distribution',
-      startTime: '10:00',
-      endTime: '14:00',
-      capacity: 12,
-      filled: 8,
-      description: 'Assist families with food selection and loading groceries'
-    },
-    {
-      id: 3,
-      name: 'Afternoon Cleanup',
-      startTime: '14:00',
-      endTime: '16:00',
-      capacity: 6,
-      filled: 3,
-      description: 'Break down tables, clean up, and organize remaining supplies'
-    }
-  ]
+type Event = {
+  id: string
+  event_id: string
+  title: string
+  description: string | null
+  date: string
+  time: string
+  location: string
+  image_url: string | null
+}
+
+type Shift = {
+  id: string
+  event_id: string
+  shift_id: number
+  name: string
+  description: string | null
+  start_time: string
+  end_time: string
+  capacity: number
+  filled: number
 }
 
 export default function EventSignup({ params }: { params: Promise<{ eventId: string }> }) {
   const resolvedParams = use(params)
-  const [selectedShift, setSelectedShift] = useState<number | null>(null)
+  const [event, setEvent] = useState<Event | null>(null)
+  const [shifts, setShifts] = useState<Shift[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedShift, setSelectedShift] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: ''
   })
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<{[key: string]: string}>({})
+
+  // Fetch event and shifts from Supabase
+  useEffect(() => {
+    async function fetchEventData() {
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Fetch event
+        const { data: eventData, error: eventError } = await supabase
+          .from('events')
+          .select('*')
+          .eq('event_id', resolvedParams.eventId)
+          .single()
+
+        if (eventError) throw eventError
+        if (!eventData) throw new Error('Event not found')
+
+        setEvent(eventData)
+
+        // Fetch shifts for this event
+        const { data: shiftsData, error: shiftsError } = await supabase
+          .from('shifts')
+          .select('*')
+          .eq('event_id', eventData.id)
+          .order('shift_id')
+
+        if (shiftsError) throw shiftsError
+
+        setShifts(shiftsData || [])
+      } catch (err) {
+        console.error('Error fetching event:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load event')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchEventData()
+  }, [resolvedParams.eventId])
 
   const validateForm = () => {
     const newErrors: {[key: string]: string} = {}
@@ -73,10 +102,9 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
       newErrors.email = 'Email is invalid'
     }
     
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone is required'
-    } else if (!/^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/.test(formData.phone)) {
-      newErrors.phone = 'Phone number is invalid'
+    // Phone is optional, but if provided, must be valid format
+    if (formData.phone.trim() && !/^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/.test(formData.phone)) {
+      newErrors.phone = 'Phone number format is invalid (e.g., 555-123-4567)'
     }
     
     if (selectedShift === null) {
@@ -87,13 +115,57 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (validateForm()) {
-      // TODO: In future tasks, this will save to Supabase
-      console.log('Form submitted:', { ...formData, shiftId: selectedShift })
+    if (!validateForm() || !selectedShift) return
+
+    setSubmitting(true)
+    setErrors({})
+
+    try {
+      // Insert volunteer registration
+      const { data, error: insertError } = await supabase
+        .from('volunteer_registrations')
+        .insert({
+          shift_id: selectedShift,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone.trim() || null  // Save null if empty
+        })
+        .select()
+        .single()
+
+      if (insertError) {
+        // Check if it's a duplicate email error
+        if (insertError.code === '23505') {
+          setErrors({ submit: 'You are already registered for this shift!' })
+        } else {
+          throw insertError
+        }
+        return
+      }
+
+      // Update shift filled count
+      const selectedShiftData = shifts.find(s => s.id === selectedShift)
+        console.log(selectedShift)
+      if (selectedShiftData) {
+        const { error: updateError } = await supabase
+          .from('shifts')
+          .update({ filled: selectedShiftData.filled + 1 })
+          .eq('id', selectedShift)
+          
+    
+      if (updateError) throw updateError
+      }
+
+      // Success!
       setSubmitted(true)
+    } catch (err) {
+      console.error('Error submitting registration:', err)
+      setErrors({ submit: 'Failed to submit registration. Please try again.' })
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -105,7 +177,50 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     }
   }
 
+  // Loading state
+  if (loading) {
+    return (
+      <>
+        <Header />
+        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+          <div className="max-w-4xl mx-auto flex items-center justify-center">
+            <div className="text-center">
+              <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+              <p className="text-gray-600">Loading event details...</p>
+            </div>
+          </div>
+        </main>
+      </>
+    )
+  }
+
+  // Error state
+  if (error || !event) {
+    return (
+      <>
+        <Header />
+        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+          <div className="max-w-4xl mx-auto">
+            <Card className="p-8 text-center">
+              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Event Not Found</h1>
+              <p className="text-gray-600 mb-6">
+                {error || 'The event you\'re looking for doesn\'t exist or has been removed.'}
+              </p>
+              <Button onClick={() => window.location.href = '/'}>
+                Return Home
+              </Button>
+            </Card>
+          </div>
+        </main>
+      </>
+    )
+  }
+
+  // Success/confirmation screen
   if (submitted) {
+    const selectedShiftData = shifts.find(s => s.id === selectedShift)
+    
     return (
       <>
         <Header />
@@ -123,10 +238,10 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               </p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-900 font-medium">
-                  {mockEvent.shifts.find(s => s.id === selectedShift)?.name}
+                  {selectedShiftData?.name}
                 </p>
                 <p className="text-sm text-blue-700">
-                  {mockEvent.date} • {mockEvent.shifts.find(s => s.id === selectedShift)?.startTime} - {mockEvent.shifts.find(s => s.id === selectedShift)?.endTime}
+                  {event.date} • {selectedShiftData?.start_time} - {selectedShiftData?.end_time}
                 </p>
               </div>
               <p className="text-sm text-gray-500">
@@ -139,6 +254,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     )
   }
 
+  // Main signup form
   return (
     <>
       <Header />
@@ -147,24 +263,28 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
           {/* Event Header */}
           <Card className="mb-8 overflow-hidden">
             <div className="h-48 bg-gradient-to-r from-blue-500 to-purple-600" 
-                 style={{ backgroundImage: `url(${mockEvent.imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                 style={{ 
+                   backgroundImage: event.image_url ? `url(${event.image_url})` : undefined, 
+                   backgroundSize: 'cover', 
+                   backgroundPosition: 'center' 
+                 }} />
             <div className="p-6">
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">{mockEvent.title}</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">{event.title}</h1>
               <div className="flex flex-wrap gap-4 text-gray-600 mb-4">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5" />
-                  <span>{mockEvent.date}</span>
+                  <span>{event.date}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5" />
-                  <span>{mockEvent.time}</span>
+                  <span>{event.time}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-5 h-5" />
-                  <span>{mockEvent.location}</span>
+                  <span>{event.location}</span>
                 </div>
               </div>
-              <p className="text-gray-700">{mockEvent.description}</p>
+              <p className="text-gray-700">{event.description}</p>
             </div>
           </Card>
 
@@ -173,7 +293,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Choose Your Shift</h2>
             {errors.shift && <p className="text-red-600 text-sm mb-2">{errors.shift}</p>}
             <div className="grid gap-4">
-              {mockEvent.shifts.map((shift) => {
+              {shifts.map((shift) => {
                 const spotsLeft = shift.capacity - shift.filled
                 const isSelected = selectedShift === shift.id
                 const isFull = spotsLeft === 0
@@ -200,7 +320,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                         <div className="flex items-center gap-4 text-sm text-gray-500">
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
-                            {shift.startTime} - {shift.endTime}
+                            {shift.start_time} - {shift.end_time}
                           </span>
                           <span className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
@@ -223,6 +343,11 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
           {/* Registration Form */}
           <Card className="p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Information</h2>
+            {errors.submit && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-600 text-sm">{errors.submit}</p>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="name">Full Name *</Label>
@@ -232,6 +357,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   placeholder="John Doe"
                   className={errors.name ? 'border-red-500' : ''}
+                  disabled={submitting}
                 />
                 {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
               </div>
@@ -245,12 +371,13 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   placeholder="john@example.com"
                   className={errors.email ? 'border-red-500' : ''}
+                  disabled={submitting}
                 />
                 {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
               </div>
 
               <div>
-                <Label htmlFor="phone">Phone Number *</Label>
+                <Label htmlFor="phone">Phone Number (optional)</Label>
                 <Input 
                   id="phone"
                   type="tel"
@@ -258,16 +385,28 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   placeholder="(555) 123-4567"
                   className={errors.phone ? 'border-red-500' : ''}
+                  disabled={submitting}
                 />
                 {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
+                <p className="text-xs text-gray-500 mt-1">
+                  Get SMS reminders for your shift (feature coming soon!)
+                </p>
               </div>
 
               <Button 
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:shadow-lg"
                 size="lg"
+                disabled={submitting}
               >
-                Confirm Signup
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Confirm Signup'
+                )}
               </Button>
             </form>
           </Card>
