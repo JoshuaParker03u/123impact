@@ -156,7 +156,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
           .eq('id', selectedShift)
           
     
-      if (updateError) throw updateError
+          if (updateError) throw updateError
       }
 
       // Success!
