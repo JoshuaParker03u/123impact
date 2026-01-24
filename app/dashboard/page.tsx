@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Heart, LogOut, Sparkles } from 'lucide-react'
+import { Heart, LogOut, Sparkles, CheckCircle2 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 
 function DashboardContent() {
@@ -13,6 +13,7 @@ function DashboardContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [isFirstLogin, setIsFirstLogin] = useState(false)
   const [authProvider, setAuthProvider] = useState<string>('Unknown')
+  const [showVerifiedBanner, setShowVerifiedBanner] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
@@ -20,6 +21,13 @@ function DashboardContent() {
   useEffect(() => {
     async function handleAuthCallback() {
       const code = searchParams.get('code')
+      const verified = searchParams.get('verified')
+      
+      // Show verification success banner
+      if (verified === 'true') {
+        setShowVerifiedBanner(true)
+        setTimeout(() => setShowVerifiedBanner(false), 5000) // Hide after 5 seconds
+      }
       
       if (code) {
         console.log('Dashboard: Found auth code, attempting exchange...')
@@ -126,6 +134,28 @@ function DashboardContent() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Email Verified Banner */}
+        {showVerifiedBanner && (
+          <Card className="mb-6 border-2 border-green-100 bg-gradient-to-r from-green-50/50 to-emerald-50/50 shadow-sm">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
+                  <CheckCircle2 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">
+                    Email Verified! ✓
+                  </h2>
+                  <p className="text-gray-700">
+                    Your email has been successfully verified. Welcome to 123impact!
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* First-time user welcome banner */}
         {isFirstLogin && (
           <Card className="mb-6 border-2 border-blue-100 bg-gradient-to-r from-blue-50/50 to-purple-50/50 shadow-sm">
             <CardContent className="pt-6">

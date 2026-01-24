@@ -6,12 +6,21 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { Heart, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
 
 type OAuthProvider = 'google' | 'azure' | null
+type AuthMode = 'signin' | 'signup'
 
 function LoginContent() {
   const [isLoading, setIsLoading] = useState<OAuthProvider>(null)
+  const [isEmailLoading, setIsEmailLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [mode, setMode] = useState<AuthMode>('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -19,10 +28,15 @@ function LoginContent() {
   useEffect(() => {
     const errorParam = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
+    const verified = searchParams.get('verified')
     
     if (errorParam) {
       console.error('OAuth Error:', errorParam, errorDescription)
       setError(errorDescription || errorParam)
+    }
+    
+    if (verified === 'true') {
+      setSuccess('Email verified successfully! You can now sign in.')
     }
   }, [searchParams])
 
@@ -96,6 +110,52 @@ function LoginContent() {
     }
   }
 
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsEmailLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      if (mode === 'signup') {
+        // Sign up
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/verify`,
+          },
+        })
+
+        if (error) throw error
+
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          setError('An account with this email already exists. Please sign in instead.')
+          setMode('signin')
+        } else {
+          setSuccess('Check your email for the verification link!')
+          setEmail('')
+          setPassword('')
+        }
+      } else {
+        // Sign in
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+
+        if (error) throw error
+
+        // Redirect will happen via onAuthStateChange
+      }
+    } catch (err: any) {
+      console.error('Email auth error:', err)
+      setError(err.message || 'Authentication failed')
+    } finally {
+      setIsEmailLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -106,7 +166,7 @@ function LoginContent() {
           <div>
             <CardTitle className="text-2xl font-bold">Welcome to 123impact</CardTitle>
             <CardDescription className="text-base mt-2">
-              Sign in or create your account to manage volunteer events
+              {mode === 'signin' ? 'Sign in to your account' : 'Create your account to get started'}
             </CardDescription>
           </div>
         </CardHeader>
@@ -118,10 +178,104 @@ function LoginContent() {
             </div>
           )}
           
+          {success && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
+              <p className="font-semibold">Success!</p>
+              <p>{success}</p>
+            </div>
+          )}
+
+          {/* Email/Password Form */}
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={isEmailLoading}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                disabled={isEmailLoading}
+              />
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isEmailLoading}
+              className="w-full h-11 text-base font-medium bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              {isEmailLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin">⏳</span>
+                  {mode === 'signin' ? 'Signing in...' : 'Creating account...'}
+                </span>
+              ) : (
+                mode === 'signin' ? 'Sign In' : 'Create Account'
+              )}
+            </Button>
+          </form>
+
+          {/* Toggle Sign In / Sign Up */}
+          <div className="text-center text-sm">
+            {mode === 'signin' ? (
+              <p className="text-gray-600">
+                Don't have an account?{' '}
+                <button
+                  onClick={() => {
+                    setMode('signup')
+                    setError(null)
+                    setSuccess(null)
+                  }}
+                  className="text-blue-600 hover:underline font-medium"
+                >
+                  Sign up
+                </button>
+              </p>
+            ) : (
+              <p className="text-gray-600">
+                Already have an account?{' '}
+                <button
+                  onClick={() => {
+                    setMode('signin')
+                    setError(null)
+                    setSuccess(null)
+                  }}
+                  className="text-blue-600 hover:underline font-medium"
+                >
+                  Sign in
+                </button>
+              </p>
+            )}
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <Separator />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-500">Or continue with</span>
+            </div>
+          </div>
+          
           {/* Google OAuth Button */}
           <Button
             onClick={() => handleOAuthLogin('google')}
-            disabled={isLoading !== null}
+            disabled={isLoading !== null || isEmailLoading}
             className="w-full h-12 text-base font-medium bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-300"
             variant="outline"
           >
@@ -133,7 +287,7 @@ function LoginContent() {
             ) : (
               <span className="flex items-center gap-3">
                 <Mail className="w-5 h-5" />
-                Continue with Google
+                Google
               </span>
             )}
           </Button>
@@ -141,7 +295,7 @@ function LoginContent() {
           {/* Microsoft OAuth Button */}
           <Button
             onClick={() => handleOAuthLogin('azure')}
-            disabled={isLoading !== null}
+            disabled={isLoading !== null || isEmailLoading}
             className="w-full h-12 text-base font-medium bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-300"
             variant="outline"
           >
@@ -158,7 +312,7 @@ function LoginContent() {
                   <path fill="#7fba00" d="M0 12h11v11H0z"/>
                   <path fill="#ffb900" d="M12 12h11v11H12z"/>
                 </svg>
-                Continue with Microsoft
+                Microsoft
               </span>
             )}
           </Button>
