@@ -1,13 +1,28 @@
+// middleware.ts (in project root)
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
-  let res = NextResponse.next({
+  const { pathname, searchParams } = req.nextUrl
+  
+  console.log(`[MIDDLEWARE] ${pathname}`)
+  
+  let response = NextResponse.next({
     request: {
       headers: req.headers,
     },
   })
+
+  // Skip auth callback, Next.js internals, and static files
+  if (pathname.startsWith('/auth/callback') || pathname.startsWith('/_next') || pathname.includes('.')) {
+    return response
+  }
+
+  // If dashboard has a code parameter, allow it through for client-side exchange
+  if (pathname.startsWith('/dashboard') && searchParams.has('code')) {
+    console.log('[MIDDLEWARE] Dashboard with code param - allowing through for client-side exchange')
+    return response
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,63 +33,34 @@ export async function middleware(req: NextRequest) {
           return req.cookies.get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
-          req.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          res = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          })
-          res.cookies.set({
-            name,
-            value,
-            ...options,
-          })
+          req.cookies.set({ name, value, ...options })
+          response.cookies.set({ name, value, ...options })
         },
         remove(name: string, options: CookieOptions) {
-          req.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          res = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          })
-          res.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+          req.cookies.set({ name, value: '', ...options })
+          response.cookies.set({ name, value: '', ...options })
         },
       },
     }
   )
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  console.log(`[MIDDLEWARE] User: ${user ? user.email : 'NONE'}`)
 
-  // If accessing dashboard without session, redirect to login
-  if (req.nextUrl.pathname.startsWith('/dashboard') && !session) {
-    const redirectUrl = new URL('/login', req.url)
-    return NextResponse.redirect(redirectUrl)
+  // Protect dashboard routes (without code parameter)
+  if (pathname.startsWith('/dashboard')) {
+    if (!user) {
+      console.log('[MIDDLEWARE] Redirecting to login')
+      return NextResponse.redirect(new URL('/login', req.url))
+    }
   }
 
-  // If accessing login with session, redirect to dashboard
-  if (req.nextUrl.pathname === '/login' && session) {
-    const redirectUrl = new URL('/dashboard', req.url)
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  return res
+  return response
 }
 
-// Move matcher inside the config object
 export const config = {
-  matcher: ['/dashboard/:path*', '/login'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }

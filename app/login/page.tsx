@@ -1,7 +1,8 @@
 'use client'
-
-import { useState } from 'react'
-import { getSupabaseClient } from '@/lib/supabase'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { Heart, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,22 +10,93 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const supabase = getSupabaseClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const supabase = createClient()
+
+  // Check for OAuth errors in URL params
+  useEffect(() => {
+    const errorParam = searchParams.get('error')
+    const errorDescription = searchParams.get('error_description')
+    
+    if (errorParam) {
+      console.error('OAuth Error:', errorParam, errorDescription)
+      setError(errorDescription || errorParam)
+    }
+  }, [searchParams])
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkAndRedirect = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session) {
+          console.log('User already logged in, redirecting...')
+          router.push('/dashboard')
+          router.refresh()
+        }
+      } catch (err) {
+        console.error('Error checking session:', err)
+      }
+    }
+    
+    checkAndRedirect()
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+      console.log('Auth event:', event)
+      
+      if (event === 'SIGNED_IN' && session) {
+        console.log('User signed in, redirecting to dashboard')
+        
+        // Small delay to ensure cookies are set
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        router.push('/dashboard')
+        router.refresh()
+      }
+      
+      if (event === 'SIGNED_OUT') {
+        console.log('User signed out')
+        router.push('/login')
+      }
+
+      if (event === 'TOKEN_REFRESHED') {
+        console.log('Token refreshed')
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [supabase, router])
 
   const handleGoogleLogin = async () => {
     try {
       setIsLoading(true)
       setError(null)
-
-      const { error } = await supabase.auth.signInWithOAuth({
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       })
+      
+      if (error) {
+        console.error('OAuth initiation error:', error)
+        throw error
+      }
 
-      if (error) throw error
+      // The redirect happens automatically, no need to set loading to false
+      
     } catch (err: any) {
+      console.error('Login error:', err)
       setError(err.message || 'Failed to sign in with Google')
       setIsLoading(false)
     }
@@ -44,14 +116,13 @@ export default function LoginPage() {
             </CardDescription>
           </div>
         </CardHeader>
-
         <CardContent className="space-y-4">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
-              {error}
+              <p className="font-semibold">Error:</p>
+              <p>{error}</p>
             </div>
           )}
-
           <Button
             onClick={handleGoogleLogin}
             disabled={isLoading}
@@ -70,7 +141,6 @@ export default function LoginPage() {
               </span>
             )}
           </Button>
-
           <p className="text-xs text-center text-gray-500 mt-4">
             By signing in, you agree to our{' '}
             <a href="/terms" className="text-blue-600 hover:underline">
