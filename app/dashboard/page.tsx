@@ -12,6 +12,7 @@ function DashboardContent() {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isFirstLogin, setIsFirstLogin] = useState(false)
+  const [authProvider, setAuthProvider] = useState<string>('Unknown')
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
@@ -56,7 +57,23 @@ function DashboardContent() {
         }
 
         console.log('Dashboard: Authentication successful for:', user.email)
+        console.log('Dashboard: User app_metadata:', user.app_metadata)
+        console.log('Dashboard: User identities:', user.identities)
+        
         setUser(user)
+        
+        // Detect auth provider from identities
+        if (user.identities && user.identities.length > 0) {
+          const provider = user.identities[0].provider
+          // Map provider names to display names
+          const providerMap: Record<string, string> = {
+            'google': 'Google',
+            'azure': 'Microsoft',
+            'github': 'GitHub',
+            'email': 'Email'
+          }
+          setAuthProvider(providerMap[provider] || provider)
+        }
         
         const accountAge = Date.now() - new Date(user.created_at).getTime()
         const fiveMinutes = 5 * 60 * 1000
@@ -128,7 +145,7 @@ function DashboardContent() {
                       <span className="text-green-500 font-bold">✓</span> Email: {user?.email}
                     </p>
                     <p className="flex items-center gap-2">
-                      <span className="text-green-500 font-bold">✓</span> Auth Method: Google
+                      <span className="text-green-500 font-bold">✓</span> Auth Method: {authProvider}
                     </p>
                   </div>
                 </div>
@@ -154,6 +171,7 @@ function DashboardContent() {
               {user?.user_metadata?.full_name && (
                 <p className="text-sm text-gray-700">Name: {user.user_metadata.full_name}</p>
               )}
+              <p className="text-sm text-gray-700">Auth Provider: {authProvider}</p>
               <p className="text-xs text-gray-400">
                 Created: {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
               </p>

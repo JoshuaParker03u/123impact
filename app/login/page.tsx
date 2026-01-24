@@ -7,8 +7,10 @@ import { Heart, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
+type OAuthProvider = 'google' | 'azure' | null
+
 function LoginContent() {
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState<OAuthProvider>(null)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -66,13 +68,13 @@ function LoginContent() {
     }
   }, [supabase, router])
 
-  const handleGoogleLogin = async () => {
+  const handleOAuthLogin = async (provider: 'google' | 'azure') => {
     try {
-      setIsLoading(true)
+      setIsLoading(provider)
       setError(null)
       
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
@@ -89,8 +91,8 @@ function LoginContent() {
       
     } catch (err: any) {
       console.error('Login error:', err)
-      setError(err.message || 'Failed to sign in with Google')
-      setIsLoading(false)
+      setError(err.message || `Failed to sign in with ${provider === 'azure' ? 'Microsoft' : 'Google'}`)
+      setIsLoading(null)
     }
   }
 
@@ -115,13 +117,15 @@ function LoginContent() {
               <p>{error}</p>
             </div>
           )}
+          
+          {/* Google OAuth Button */}
           <Button
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
+            onClick={() => handleOAuthLogin('google')}
+            disabled={isLoading !== null}
             className="w-full h-12 text-base font-medium bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-300"
             variant="outline"
           >
-            {isLoading ? (
+            {isLoading === 'google' ? (
               <span className="flex items-center gap-2">
                 <span className="animate-spin">⏳</span>
                 Signing in...
@@ -133,6 +137,32 @@ function LoginContent() {
               </span>
             )}
           </Button>
+
+          {/* Microsoft OAuth Button */}
+          <Button
+            onClick={() => handleOAuthLogin('azure')}
+            disabled={isLoading !== null}
+            className="w-full h-12 text-base font-medium bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-300"
+            variant="outline"
+          >
+            {isLoading === 'azure' ? (
+              <span className="flex items-center gap-2">
+                <span className="animate-spin">⏳</span>
+                Signing in...
+              </span>
+            ) : (
+              <span className="flex items-center gap-3">
+                <svg className="w-5 h-5" viewBox="0 0 23 23">
+                  <path fill="#f25022" d="M0 0h11v11H0z"/>
+                  <path fill="#00a4ef" d="M12 0h11v11H12z"/>
+                  <path fill="#7fba00" d="M0 12h11v11H0z"/>
+                  <path fill="#ffb900" d="M12 12h11v11H12z"/>
+                </svg>
+                Continue with Microsoft
+              </span>
+            )}
+          </Button>
+
           <p className="text-xs text-center text-gray-500 mt-4">
             By signing in, you agree to our{' '}
             <a href="/terms" className="text-blue-600 hover:underline">
