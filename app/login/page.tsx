@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
@@ -7,14 +7,13 @@ import { Heart, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-export default function LoginPage() {
+function LoginContent() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
 
-  // Check for OAuth errors in URL params
   useEffect(() => {
     const errorParam = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
@@ -25,7 +24,6 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Check if user is already logged in
   useEffect(() => {
     const checkAndRedirect = async () => {
       try {
@@ -43,16 +41,12 @@ export default function LoginPage() {
     
     checkAndRedirect()
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
       console.log('Auth event:', event)
       
       if (event === 'SIGNED_IN' && session) {
         console.log('User signed in, redirecting to dashboard')
-        
-        // Small delay to ensure cookies are set
         await new Promise(resolve => setTimeout(resolve, 100))
-        
         router.push('/dashboard')
         router.refresh()
       }
@@ -92,8 +86,6 @@ export default function LoginPage() {
         console.error('OAuth initiation error:', error)
         throw error
       }
-
-      // The redirect happens automatically, no need to set loading to false
       
     } catch (err: any) {
       console.error('Login error:', err)
@@ -154,5 +146,20 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-lg font-medium text-gray-600">Loading...</span>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }
