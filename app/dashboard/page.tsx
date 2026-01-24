@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Heart, LogOut, Sparkles } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 
-export default function DashboardPage() {
+function DashboardContent() {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isFirstLogin, setIsFirstLogin] = useState(false)
@@ -20,26 +20,21 @@ export default function DashboardPage() {
     async function handleAuthCallback() {
       const code = searchParams.get('code')
       
-      // If there's a code in the URL, try to exchange it
       if (code) {
         console.log('Dashboard: Found auth code, attempting exchange...')
         try {
           const { error } = await supabase.auth.exchangeCodeForSession(code)
           if (error) {
             console.warn('Dashboard: Code exchange error:', error.message)
-            // Don't redirect - check if we already have a session anyway
           } else {
             console.log('Dashboard: Code exchange successful!')
           }
-          // Remove code from URL regardless of exchange result
           router.replace('/dashboard')
         } catch (err) {
           console.error('Dashboard: Unexpected error during code exchange:', err)
-          // Still continue - maybe we have a session already
         }
       }
       
-      // Check for the user session (might already exist from middleware)
       await fetchUser()
     }
     
@@ -174,5 +169,20 @@ export default function DashboardPage() {
         </Card>
       </main>
     </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-lg font-medium text-gray-600">Loading...</span>
+        </div>
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   )
 }
