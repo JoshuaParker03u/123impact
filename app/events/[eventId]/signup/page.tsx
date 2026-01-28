@@ -115,59 +115,62 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!validateForm() || !selectedShift) return
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
+  
+  if (!validateForm() || !selectedShift) return
 
-    setSubmitting(true)
-    setErrors({})
+  setSubmitting(true)
+  setErrors({})
 
-    try {
-      // Insert volunteer registration
-      const { data, error: insertError } = await supabase
-        .from('volunteer_registrations')
-        .insert({
-          shift_id: selectedShift,
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone.trim() || null  // Save null if empty
+  try {
+    // Try to insert - let the database constraint handle duplicates
+    const { data, error: insertError } = await supabase
+      .from('volunteer_registrations')
+      .insert({
+        shift_id: selectedShift,
+        name: formData.name,
+        email: formData.email.toLowerCase(), // Normalize email
+        phone: formData.phone.trim() || null
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      // Check for unique constraint violation
+      if (insertError.code === '23505' || insertError.message?.toLowerCase().includes('duplicate') || insertError.message?.toLowerCase().includes('unique')) {
+        // Already registered - show friendly message
+        const selectedShiftData = shifts.find(s => s.id === selectedShift)
+        setErrors({ 
+          submit: `You're already registered for ${selectedShiftData?.name} on ${event.date} at "${event.title}"! See you there!` 
         })
-        .select()
-        .single()
-
-      if (insertError) {
-        // Check if it's a duplicate email error
-        if (insertError.code === '23505') {
-          setErrors({ submit: 'You are already registered for this shift!' })
-        } else {
-          throw insertError
-        }
-        return
+      } else {
+        throw insertError
       }
-
-      // Update shift filled count
-      const selectedShiftData = shifts.find(s => s.id === selectedShift)
-        console.log(selectedShift)
-      if (selectedShiftData) {
-        const { error: updateError } = await supabase
-          .from('shifts')
-          .update({ filled: selectedShiftData.filled + 1 })
-          .eq('id', selectedShift)
-          
-    
-          if (updateError) throw updateError
-      }
-
-      // Success!
-      setSubmitted(true)
-    } catch (err) {
-      console.error('Error submitting registration:', err)
-      setErrors({ submit: 'Failed to submit registration. Please try again.' })
-    } finally {
       setSubmitting(false)
+      return
     }
+
+    // Update shift filled count
+    const selectedShiftData = shifts.find(s => s.id === selectedShift)
+    if (selectedShiftData) {
+      const { error: updateError } = await supabase
+        .from('shifts')
+        .update({ filled: selectedShiftData.filled + 1 })
+        .eq('id', selectedShift)
+
+      if (updateError) throw updateError
+    }
+
+    // Success!
+    setSubmitted(true)
+  } catch (err) {
+    console.error('Error submitting registration:', err)
+    setErrors({ submit: 'Failed to submit registration. Please try again.' })
+  } finally {
+    setSubmitting(false)
   }
+}
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
