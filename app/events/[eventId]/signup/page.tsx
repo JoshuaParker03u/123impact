@@ -148,7 +148,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
       if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique')) {
         const shiftName = shifts.find(s => s.id === selectedShift)?.name
         setErrors({
-          submit: `You're already registered for ${shiftName} at "${event.title}"! See you there!`,
+          submit: `You're already registered for ${shiftName} at "${event?.title}"! See you there!`,
         })
       } else {
         setErrors({ submit: message })
