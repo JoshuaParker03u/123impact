@@ -33,7 +33,7 @@ export default function AdminEventsPage() {
 
   const fetchEvents = async () => {
     if (!currentOrganization) return;
-    
+
     setLoading(true);
     const { data, error } = await supabase
       .from('events')
@@ -46,8 +46,7 @@ export default function AdminEventsPage() {
           description,
           start_time,
           end_time,
-          capacity,
-          filled
+          capacity
         )
       `)
       .eq('organization_id', currentOrganization.id)
@@ -55,9 +54,33 @@ export default function AdminEventsPage() {
 
     if (error) {
       console.error('Error fetching events:', error);
-    } else {
-      setEvents(data || []);
+      setLoading(false);
+      return;
     }
+
+    // Count volunteer registrations per shift
+    const allShiftIds = (data || []).flatMap(e => e.shifts?.map(s => s.id) ?? []);
+    let countMap = {};
+    if (allShiftIds.length > 0) {
+      const { data: regRows } = await supabase
+        .from('volunteer_registrations')
+        .select('shift_id')
+        .in('shift_id', allShiftIds);
+      countMap = (regRows || []).reduce((acc, r) => {
+        acc[r.shift_id] = (acc[r.shift_id] ?? 0) + 1;
+        return acc;
+      }, {});
+    }
+
+    const enriched = (data || []).map(event => ({
+      ...event,
+      shifts: (event.shifts || []).map(shift => ({
+        ...shift,
+        filled: countMap[shift.id] ?? 0,
+      })),
+    }));
+
+    setEvents(enriched);
     setLoading(false);
   };
 
@@ -342,7 +365,24 @@ export default function AdminEventsPage() {
 }
 
 // Event Modal Component
+function generateSlug(title, suffix) {
+  const base = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/[\s]+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 40);
+  return base ? `${base}-${suffix}` : '';
+}
+
+function randomSuffix() {
+  return Math.random().toString(36).slice(2, 6);
+}
+
 function EventModal({ event, organizationId, onClose, onSave, supabase }) {
+  const [slugSuffix] = useState(() => randomSuffix());
+  const [slugEdited, setSlugEdited] = useState(false);
   const [formData, setFormData] = useState({
     event_id: event?.event_id || '',
     title: event?.title || '',
@@ -355,6 +395,19 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  const handleTitleChange = (value) => {
+    const updates = { title: value };
+    if (!event && !slugEdited) {
+      updates.event_id = generateSlug(value, slugSuffix);
+    }
+    setFormData(prev => ({ ...prev, ...updates }));
+  };
+
+  const handleSlugChange = (value) => {
+    setSlugEdited(true);
+    setFormData(prev => ({ ...prev, event_id: value }));
+  };
 
   const validate = () => {
     const newErrors = {};
@@ -385,7 +438,14 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
         const { error } = await supabase
           .from('events')
           .insert({
-            ...formData,
+            event_id: formData.event_id,
+            title: formData.title,
+            date: formData.date,
+            time: formData.time,
+            location: formData.location,
+            description: formData.description,
+            image_url: formData.image_url,
+            status: formData.status,
             organization_id: organizationId
           });
         if (error) throw error;
@@ -409,11 +469,12 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
               <input
                 type="text"
                 value={formData.event_id}
-                onChange={(e) => setFormData({ ...formData, event_id: e.target.value })}
+                onChange={(e) => handleSlugChange(e.target.value)}
                 className="w-full border rounded-md px-3 py-2"
                 placeholder="spring-cleanup-2025"
                 disabled={!!event} // Can't change ID after creation
               />
+              {!event && <p className="text-gray-400 text-xs mt-1">Auto-generated from title — you can edit it</p>}
               {errors.event_id && <p className="text-red-600 text-sm mt-1">{errors.event_id}</p>}
             </div>
 
@@ -422,7 +483,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
               <input
                 type="text"
                 value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                onChange={(e) => handleTitleChange(e.target.value)}
                 className="w-full border rounded-md px-3 py-2"
               />
               {errors.title && <p className="text-red-600 text-sm mt-1">{errors.title}</p>}

@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Heart, LogOut, Sparkles, CheckCircle2 } from 'lucide-react'
+import { Heart, LogOut, Sparkles, CheckCircle2, LayoutDashboard } from 'lucide-react'
+import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 
 function DashboardContent() {
@@ -207,11 +208,13 @@ function DashboardContent() {
               </p>
             </div>
 
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
-              <p className="text-sm text-blue-800 flex items-center gap-2">
-                <span className="text-lg">🚧</span>
-                <span><strong>Coming soon:</strong> Event management, volunteer rosters, and analytics will be added in the next tasks!</span>
-              </p>
+            <div className="mt-6">
+              <Link href="/admin/events">
+                <Button className="gap-2 bg-blue-600 hover:bg-blue-700">
+                  <LayoutDashboard className="w-4 h-4" />
+                  Go to Admin Panel
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

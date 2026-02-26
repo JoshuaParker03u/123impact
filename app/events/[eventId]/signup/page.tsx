@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { use } from 'react'
-import { supabase } from '@/lib/supabase'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { Calendar, MapPin, Users, Clock, Check, Loader2, AlertCircle } from 'lucide-react'
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type Event = {
   id: string
@@ -31,156 +34,137 @@ type Shift = {
   end_time: string
   capacity: number
   filled: number
+  available: number  // computed by API
+  is_full: boolean   // computed by API
 }
 
-export default function EventSignup({ params }: { params: Promise<{ eventId: string }> }) {
-  const resolvedParams = use(params)
-  const [event, setEvent] = useState<Event | null>(null)
-  const [shifts, setShifts] = useState<Shift[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [selectedShift, setSelectedShift] = useState<string | null>(null)
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: ''
-  })
-  const [submitted, setSubmitted] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [errors, setErrors] = useState<{[key: string]: string}>({})
+// ---------------------------------------------------------------------------
+// API helper
+// ---------------------------------------------------------------------------
 
-  // Fetch event and shifts from Supabase
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`/api/${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? `Request failed (${res.status})`)
+  return json.data as T
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export default function EventSignup({ params }: { params: Promise<{ eventId: string }> }) {
+  const { eventId } = use(params)
+
+  const [event, setEvent]                 = useState<Event | null>(null)
+  const [shifts, setShifts]               = useState<Shift[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [pageError, setPageError]         = useState<string | null>(null)
+  const [selectedShift, setSelectedShift] = useState<string | null>(null)
+  const [formData, setFormData]           = useState({ name: '', email: '', phone: '' })
+  const [submitted, setSubmitted]         = useState(false)
+  const [submitting, setSubmitting]       = useState(false)
+  const [errors, setErrors]               = useState<Record<string, string>>({})
+
+  // ── Fetch event + shifts ─────────────────────────────────────────────────
+
   useEffect(() => {
-    async function fetchEventData() {
+    async function load() {
       try {
         setLoading(true)
-        setError(null)
+        setPageError(null)
 
-        // Fetch event
-        const { data: eventData, error: eventError } = await supabase
-          .from('events')
-          .select('*')
-          .eq('event_id', resolvedParams.eventId)
-          .single()
-
-        if (eventError) throw eventError
-        if (!eventData) throw new Error('Event not found')
-
+        // GET /api/events/slug/:eventId  — public, no auth or org header needed
+        const eventData = await apiFetch<Event>(`events/slug/${eventId}`)
         setEvent(eventData)
 
-        // Fetch shifts for this event
-        const { data: shiftsData, error: shiftsError } = await supabase
-          .from('shifts')
-          .select('*')
-          .eq('event_id', eventData.id)
-          .order('shift_id')
-
-        if (shiftsError) throw shiftsError
-
-        setShifts(shiftsData || [])
+        // GET /api/events/:id/shifts  — public
+        const shiftsData = await apiFetch<Shift[]>(`events/${eventData.id}/shifts`)
+        setShifts(shiftsData)
       } catch (err) {
-        console.error('Error fetching event:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load event')
+        setPageError(err instanceof Error ? err.message : 'Failed to load event')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchEventData()
-  }, [resolvedParams.eventId])
+    load()
+  }, [eventId])
 
-  const validateForm = () => {
-    const newErrors: {[key: string]: string} = {}
-    
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required'
-    }
-    
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required'
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email is invalid'
-    }
-    
-    // Phone is optional, but if provided, must be valid format
-    if (formData.phone.trim() && !/^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/.test(formData.phone)) {
-      newErrors.phone = 'Phone number format is invalid (e.g., 555-123-4567)'
-    }
-    
-    if (selectedShift === null) {
-      newErrors.shift = 'Please select a shift'
-    }
-    
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+  // ── Validation ───────────────────────────────────────────────────────────
+
+  const validate = (): boolean => {
+    const next: Record<string, string> = {}
+
+    if (!formData.name.trim())
+      next.name = 'Name is required'
+
+    if (!formData.email.trim())
+      next.email = 'Email is required'
+    else if (!/\S+@\S+\.\S+/.test(formData.email))
+      next.email = 'Email is invalid'
+
+    if (formData.phone.trim() && !/^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/.test(formData.phone))
+      next.phone = 'Phone number format is invalid (e.g., 555-123-4567)'
+
+    if (!selectedShift)
+      next.shift = 'Please select a shift'
+
+    setErrors(next)
+    return Object.keys(next).length === 0
   }
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  
-  if (!validateForm() || !selectedShift) return
+  // ── Submit ───────────────────────────────────────────────────────────────
 
-  setSubmitting(true)
-  setErrors({})
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validate() || !selectedShift || !event) return
 
-  try {
-    // Try to insert - let the database constraint handle duplicates
-    const { data, error: insertError } = await supabase
-      .from('volunteer_registrations')
-      .insert({
-        shift_id: selectedShift,
-        name: formData.name,
-        email: formData.email.toLowerCase(), // Normalize email
-        phone: formData.phone.trim() || null
+    setSubmitting(true)
+    setErrors({})
+
+    try {
+      // POST /api/volunteer-registrations  — public
+      // The API handles: inserting the row, incrementing shift.filled,
+      // and scheduling automated emails.
+      await apiFetch('volunteer-registrations', {
+        method: 'POST',
+        body: JSON.stringify({
+          shift_id: selectedShift,
+          name:     formData.name,
+          email:    formData.email.toLowerCase(),
+          phone:    formData.phone.trim() || null,
+        }),
       })
-      .select()
-      .single()
 
-    if (insertError) {
-      // Check for unique constraint violation
-      if (insertError.code === '23505' || insertError.message?.toLowerCase().includes('duplicate') || insertError.message?.toLowerCase().includes('unique')) {
-        // Already registered - show friendly message
-        const selectedShiftData = shifts.find(s => s.id === selectedShift)
-        setErrors({ 
-          submit: `You're already registered for ${selectedShiftData?.name} on ${event.date} at "${event.title}"! See you there!` 
+      setSubmitted(true)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to submit registration.'
+
+      // Surface duplicate-registration as a friendly inline message
+      if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique')) {
+        const shiftName = shifts.find(s => s.id === selectedShift)?.name
+        setErrors({
+          submit: `You're already registered for ${shiftName} at "${event.title}"! See you there!`,
         })
       } else {
-        throw insertError
+        setErrors({ submit: message })
       }
+    } finally {
       setSubmitting(false)
-      return
     }
-
-    // Update shift filled count
-    const selectedShiftData = shifts.find(s => s.id === selectedShift)
-    if (selectedShiftData) {
-      const { error: updateError } = await supabase
-        .from('shifts')
-        .update({ filled: selectedShiftData.filled + 1 })
-        .eq('id', selectedShift)
-
-      if (updateError) throw updateError
-    }
-
-    // Success!
-    setSubmitted(true)
-  } catch (err) {
-    console.error('Error submitting registration:', err)
-    setErrors({ submit: 'Failed to submit registration. Please try again.' })
-  } finally {
-    setSubmitting(false)
   }
-}
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }))
-    }
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }))
   }
 
-  // Loading state
+  // ── Loading ──────────────────────────────────────────────────────────────
+
   if (loading) {
     return (
       <>
@@ -197,8 +181,9 @@ const handleSubmit = async (e: React.FormEvent) => {
     )
   }
 
-  // Error state
-  if (error || !event) {
+  // ── Error ────────────────────────────────────────────────────────────────
+
+  if (pageError || !event) {
     return (
       <>
         <Header />
@@ -208,11 +193,9 @@ const handleSubmit = async (e: React.FormEvent) => {
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
               <h1 className="text-2xl font-bold text-gray-900 mb-2">Event Not Found</h1>
               <p className="text-gray-600 mb-6">
-                {error || 'The event you\'re looking for doesn\'t exist or has been removed.'}
+                {pageError ?? "The event you're looking for doesn't exist or has been removed."}
               </p>
-              <Button onClick={() => window.location.href = '/'}>
-                Return Home
-              </Button>
+              <Button onClick={() => window.location.href = '/'}>Return Home</Button>
             </Card>
           </div>
         </main>
@@ -220,10 +203,10 @@ const handleSubmit = async (e: React.FormEvent) => {
     )
   }
 
-  // Success/confirmation screen
+  // ── Success ──────────────────────────────────────────────────────────────
+
   if (submitted) {
     const selectedShiftData = shifts.find(s => s.id === selectedShift)
-    
     return (
       <>
         <Header />
@@ -233,23 +216,18 @@ const handleSubmit = async (e: React.FormEvent) => {
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Check className="w-12 h-12 text-green-600" />
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">
-                You're All Set!
-              </h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">You're All Set!</h1>
               <p className="text-gray-600 mb-6">
-                Thank you for signing up, {formData.name}! We've sent a confirmation email to {formData.email} with all the details.
+                Thank you for signing up, {formData.name}! We've sent a confirmation
+                email to {formData.email} with all the details.
               </p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-blue-900 font-medium">
-                  {selectedShiftData?.name}
-                </p>
+                <p className="text-sm text-blue-900 font-medium">{selectedShiftData?.name}</p>
                 <p className="text-sm text-blue-700">
                   {event.date} • {selectedShiftData?.start_time} - {selectedShiftData?.end_time}
                 </p>
               </div>
-              <p className="text-sm text-gray-500">
-                A calendar invite has been added to your email.
-              </p>
+              <p className="text-sm text-gray-500">A calendar invite has been added to your email.</p>
             </Card>
           </div>
         </main>
@@ -257,57 +235,55 @@ const handleSubmit = async (e: React.FormEvent) => {
     )
   }
 
-  // Main signup form
+  // ── Main form ────────────────────────────────────────────────────────────
+
   return (
     <>
       <Header />
       <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
         <div className="max-w-4xl mx-auto">
-          {/* Event Header */}
+
+          {/* Event header */}
           <Card className="mb-8 overflow-hidden">
-            <div className="h-48 bg-gradient-to-r from-blue-500 to-purple-600" 
-                 style={{ 
-                   backgroundImage: event.image_url ? `url(${event.image_url})` : undefined, 
-                   backgroundSize: 'cover', 
-                   backgroundPosition: 'center' 
-                 }} />
+            <div
+              className="h-48 bg-gradient-to-r from-blue-500 to-purple-600"
+              style={{
+                backgroundImage:    event.image_url ? `url(${event.image_url})` : undefined,
+                backgroundSize:     'cover',
+                backgroundPosition: 'center',
+              }}
+            />
             <div className="p-6">
               <h1 className="text-3xl font-bold text-gray-900 mb-4">{event.title}</h1>
               <div className="flex flex-wrap gap-4 text-gray-600 mb-4">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  <span>{event.date}</span>
+                  <Calendar className="w-5 h-5" /><span>{event.date}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Clock className="w-5 h-5" />
-                  <span>{event.time}</span>
+                  <Clock className="w-5 h-5" /><span>{event.time}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5" />
-                  <span>{event.location}</span>
+                  <MapPin className="w-5 h-5" /><span>{event.location}</span>
                 </div>
               </div>
               <p className="text-gray-700">{event.description}</p>
             </div>
           </Card>
 
-          {/* Shift Selection */}
+          {/* Shift selection */}
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Choose Your Shift</h2>
             {errors.shift && <p className="text-red-600 text-sm mb-2">{errors.shift}</p>}
             <div className="grid gap-4">
               {shifts.map((shift) => {
-                const spotsLeft = shift.capacity - shift.filled
                 const isSelected = selectedShift === shift.id
-                const isFull = spotsLeft === 0
-
                 return (
-                  <Card 
+                  <Card
                     key={shift.id}
                     className={`p-6 cursor-pointer transition-all ${
                       isSelected ? 'ring-2 ring-blue-600 bg-blue-50' : 'hover:shadow-lg'
-                    } ${isFull ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    onClick={() => !isFull && setSelectedShift(shift.id)}
+                    } ${shift.is_full ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={() => !shift.is_full && setSelectedShift(shift.id)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -327,11 +303,11 @@ const handleSubmit = async (e: React.FormEvent) => {
                           </span>
                           <span className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
-                            {spotsLeft} {spotsLeft === 1 ? 'spot' : 'spots'} left
+                            {shift.available} {shift.available === 1 ? 'spot' : 'spots'} left
                           </span>
                         </div>
                       </div>
-                      {isFull && (
+                      {shift.is_full && (
                         <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm font-medium rounded-full">
                           Full
                         </span>
@@ -343,7 +319,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
           </div>
 
-          {/* Registration Form */}
+          {/* Registration form */}
           <Card className="p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Information</h2>
             {errors.submit && (
@@ -354,7 +330,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="name">Full Name *</Label>
-                <Input 
+                <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
@@ -367,7 +343,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
               <div>
                 <Label htmlFor="email">Email Address *</Label>
-                <Input 
+                <Input
                   id="email"
                   type="email"
                   value={formData.email}
@@ -381,7 +357,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
               <div>
                 <Label htmlFor="phone">Phone Number (optional)</Label>
-                <Input 
+                <Input
                   id="phone"
                   type="tel"
                   value={formData.phone}
@@ -396,20 +372,16 @@ const handleSubmit = async (e: React.FormEvent) => {
                 </p>
               </div>
 
-              <Button 
+              <Button
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:shadow-lg"
                 size="lg"
                 disabled={submitting}
               >
-                {submitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  'Confirm Signup'
-                )}
+                {submitting
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting...</>
+                  : 'Confirm Signup'
+                }
               </Button>
             </form>
           </Card>

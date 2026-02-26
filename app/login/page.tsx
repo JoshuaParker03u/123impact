@@ -43,9 +43,9 @@ function LoginContent() {
   useEffect(() => {
     const checkAndRedirect = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session) {
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (user) {
           console.log('User already logged in, redirecting...')
           router.push('/dashboard')
           router.refresh()
