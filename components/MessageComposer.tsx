@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import { useOrganization } from '@/contexts/OrganizationContext';
 
 interface MessageComposerProps {
   isOpen: boolean;
@@ -28,6 +29,8 @@ export default function MessageComposer({
   const [scheduledFor, setScheduledFor] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+
+  const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,10 +63,11 @@ export default function MessageComposer({
   }, [recipientType, selectedEvent, selectedShift]);
 
   async function loadEvents() {
-    const { data } = await supabase
-      .from('events')
-      .select('id, title')
-      .order('title');
+    let query = supabase.from('events').select('id, title').order('title');
+    if (currentOrganization?.id) {
+      query = query.eq('organization_id', currentOrganization.id);
+    }
+    const { data } = await query;
     setEvents(data || []);
   }
 
@@ -252,7 +256,7 @@ export default function MessageComposer({
                       <option value="">Choose a shift...</option>
                       {shifts.map(shift => (
                         <option key={shift.id} value={shift.id}>
-                          {shift.name || 'Shift'} - {new Date(shift.start_time).toLocaleString()}
+                          {shift.name || 'Shift'} - {shift.start_time}
                         </option>
                       ))}
                     </select>

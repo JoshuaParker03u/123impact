@@ -38,11 +38,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const limit     = parseInt(searchParams.get('limit') || '50');
   const scheduled = searchParams.get('scheduled') === 'true';
+  const orgId     = searchParams.get('org_id');
 
   let query = service
     .from('messages')
     .select('*, events(title), shifts(name, start_time)')
     .limit(limit);
+
+  if (orgId) {
+    query = query.eq('organization_id', orgId);
+  }
 
   if (scheduled) {
     query = query.eq('delivery_status', 'scheduled').order('scheduled_for', { ascending: true });

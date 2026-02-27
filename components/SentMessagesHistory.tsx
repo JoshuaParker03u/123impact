@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useOrganization } from '@/contexts/OrganizationContext';
 
 interface Message {
   id: string;
@@ -18,8 +19,13 @@ export default function SentMessagesHistory() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
+
   useEffect(() => {
-    fetch('/api/messages')
+    const url = currentOrganization?.id
+      ? `/api/messages?org_id=${currentOrganization.id}`
+      : '/api/messages';
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {

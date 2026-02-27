@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Trash2, Users, Calendar } from 'lucide-react';
+import { useOrganization } from '@/contexts/OrganizationContext';
 
 interface ScheduledMessage {
   id: string;
@@ -22,9 +23,14 @@ export default function ScheduledMessagesList() {
   const [expanded, setExpanded]     = useState<string | null>(null);
   const [deleting, setDeleting]     = useState<string | null>(null);
 
+  const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
+
   const load = useCallback((showSpinner = false) => {
     if (showSpinner) setLoading(true);
-    fetch('/api/messages?scheduled=true')
+    const url = currentOrganization?.id
+      ? `/api/messages?scheduled=true&org_id=${currentOrganization.id}`
+      : '/api/messages?scheduled=true';
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
