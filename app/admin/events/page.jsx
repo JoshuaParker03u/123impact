@@ -98,15 +98,13 @@ export default function AdminEventsPage() {
   };
 
   const handleDeleteEvent = async (eventId) => {
-    if (!confirm('This will delete the event and all its shifts. Continue?')) return;
+    if (!confirm('This will delete the event, all its shifts, and all volunteer registrations. Continue?')) return;
 
-    const { error } = await supabase
-      .from('events')
-      .delete()
-      .eq('id', eventId);
+    const res = await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
+    const data = await res.json();
 
-    if (error) {
-      alert('Error deleting event: ' + error.message);
+    if (!res.ok) {
+      alert('Error deleting event: ' + (data.error ?? 'Unknown error'));
     } else {
       fetchEvents();
     }

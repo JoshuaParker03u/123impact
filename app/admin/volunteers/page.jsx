@@ -6,7 +6,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Users, Calendar, Clock, Mail, Phone, Loader2, Search } from 'lucide-react';
+import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X } from 'lucide-react';
 
 export default function AdminVolunteersPage() {
   const { currentOrganization, loading: orgLoading } = useOrganization();
@@ -123,6 +123,31 @@ export default function AdminVolunteersPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const removeVolunteer = async (volunteer) => {
+    if (!confirm(`Remove ${volunteer.name} from ${volunteer.shifts?.name}?`)) return;
+
+    const { error } = await supabase
+      .from('volunteer_registrations')
+      .delete()
+      .eq('id', volunteer.id);
+
+    if (error) {
+      alert('Failed to remove volunteer: ' + error.message);
+      return;
+    }
+
+    // Decrement shift filled count
+    await supabase.rpc('decrement_shift_filled', { p_shift_id: volunteer.shift_id });
+
+    // Cancel any pending scheduled messages to this volunteer
+    await fetch(
+      `/api/messages/cancel-volunteer?email=${encodeURIComponent(volunteer.email)}&org_id=${currentOrganization.id}`,
+      { method: 'DELETE' }
+    );
+
+    setVolunteers((prev) => prev.filter((v) => v.id !== volunteer.id));
   };
 
   const filterVolunteers = () => {
@@ -275,6 +300,7 @@ export default function AdminVolunteersPage() {
                     <th className="text-left p-4 font-semibold">Event</th>
                     <th className="text-left p-4 font-semibold">Shift</th>
                     <th className="text-left p-4 font-semibold">Registered</th>
+                    <th className="p-4" />
                   </tr>
                 </thead>
                 <tbody>
@@ -321,6 +347,15 @@ export default function AdminVolunteersPage() {
                         <p className="text-sm text-gray-600 dark:text-gray-400">
                           {new Date(volunteer.registered_at).toLocaleDateString()}
                         </p>
+                      </td>
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => removeVolunteer(volunteer)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                          title="Remove from shift"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}

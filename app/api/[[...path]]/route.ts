@@ -46,7 +46,8 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { parseEmailTemplate } from '@/lib/email-templates';
+import { parseEmailTemplate, wrapEmailHtml } from '@/lib/email-templates';
+import { sendEmail } from '@/lib/email';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -127,6 +128,63 @@ async function authenticate(request: NextRequest): Promise<AuthResult> {
   if (!orgId) return { error: fail('Missing X-Organization-Id header', 400) };
 
   return { supabase, user, orgId };
+}
+
+// ---------------------------------------------------------------------------
+// sendRegistrationConfirmation
+// Sends an immediate confirmation email to the volunteer after they sign up.
+// ---------------------------------------------------------------------------
+
+async function sendRegistrationConfirmation(
+  supabase: SupabaseClient,
+  volunteerName: string,
+  volunteerEmail: string,
+  shiftId: string
+) {
+  const { data: shift } = await supabase
+    .from('shifts')
+    .select('*, events(*)')
+    .eq('id', shiftId)
+    .single();
+
+  if (!shift) return;
+
+  const event = shift.events as any;
+
+  const html = wrapEmailHtml(`
+    <h2>Registration Confirmed</h2>
+    <p>Hi ${volunteerName},</p>
+    <p>Thank you for signing up to volunteer at <strong>${event.title}</strong>. We look forward to seeing you!</p>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      <tr>
+        <td style="padding:8px 0;color:#6b7280;width:120px;">Event</td>
+        <td style="padding:8px 0;font-weight:600;">${event.title}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;color:#6b7280;">Date</td>
+        <td style="padding:8px 0;">${event.date}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;color:#6b7280;">Location</td>
+        <td style="padding:8px 0;">${event.location}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;color:#6b7280;">Shift</td>
+        <td style="padding:8px 0;">${shift.name}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;color:#6b7280;">Time</td>
+        <td style="padding:8px 0;">${shift.start_time} &ndash; ${shift.end_time}</td>
+      </tr>
+    </table>
+    <p>See you there!</p>
+  `);
+
+  await sendEmail({
+    to: volunteerEmail,
+    subject: `Confirmed: ${event.title} \u2013 ${shift.name}`,
+    html,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +513,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
       if (regError) throw regError;
 
-      // Fire-and-forget: queue automated emails (errors are non-fatal)
+      // Fire-and-forget: send confirmation + queue automated emails (errors are non-fatal)
+      sendRegistrationConfirmation(supabase, name, email, shift_id)
+        .catch((e) => console.error('sendRegistrationConfirmation error:', e));
       scheduleAutomatedEmails(supabase, registration.id, name, email, shift_id)
         .catch((e) => console.error('scheduleAutomatedEmails error:', e));
 

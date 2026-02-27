@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
 
 const OrganizationContext = createContext(undefined);
 
@@ -54,6 +55,23 @@ export function OrganizationProvider({ children }) {
 
   useEffect(() => {
     loadOrganizations();
+
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    );
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        loadOrganizations();
+      }
+      if (event === 'SIGNED_OUT') {
+        setOrganizations([]);
+        setCurrentOrganization(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [loadOrganizations]);
 
   const switchOrganization = useCallback(
