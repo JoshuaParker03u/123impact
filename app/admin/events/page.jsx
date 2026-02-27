@@ -6,11 +6,11 @@ import { createBrowserClient } from '@supabase/ssr';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminEventsPage() {
-  const { currentOrganization, loading: orgLoading } = useOrganization();
+  const { currentOrganization, loading: orgLoading, isAdmin } = useOrganization();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedEvent, setExpandedEvent] = useState(null);
@@ -19,6 +19,8 @@ export default function AdminEventsPage() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingShift, setEditingShift] = useState(null);
   const [selectedEventForShift, setSelectedEventForShift] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -164,17 +166,58 @@ export default function AdminEventsPage() {
     );
   }
 
+  const visibleEvents = events.filter((e) => {
+    const matchesSearch = !searchTerm || e.title.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || e.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const statusBadgeClass = {
+    active:    'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    cancelled: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
+    completed: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
+  };
+
   return (
     <>
       <AdminNavigation />
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Events</h1>
-          <Button onClick={handleCreateEvent} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
-            <Plus className="w-4 h-4 mr-2" />
-            Create Event
-          </Button>
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Events</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{currentOrganization.name}</p>
+          </div>
+          {isAdmin && (
+            <Button onClick={handleCreateEvent} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
+              <Plus className="w-4 h-4 mr-2" />
+              Create Event
+            </Button>
+          )}
+        </div>
+
+        {/* Search + Filter bar */}
+        <div className="flex gap-3 mb-6">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search events…"
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 text-sm"
+          >
+            <option value="all">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
         </div>
 
         {/* Loading */}
@@ -184,23 +227,36 @@ export default function AdminEventsPage() {
           </div>
         )}
 
-        {/* Empty State */}
+        {/* Empty State — no events at all */}
         {!loading && events.length === 0 && (
           <Card className="p-12 text-center">
             <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">No events yet</h2>
-            <p className="text-gray-600 mb-6">Create your first event to get started</p>
-            <Button onClick={handleCreateEvent} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Event
-            </Button>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">No events yet</h2>
+            {isAdmin ? (
+              <>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">Create your first event to get started</p>
+                <Button onClick={handleCreateEvent} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Event
+                </Button>
+              </>
+            ) : (
+              <p className="text-gray-600 dark:text-gray-400">No events have been created for this organization yet.</p>
+            )}
+          </Card>
+        )}
+
+        {/* Empty State — no results after filter */}
+        {!loading && events.length > 0 && visibleEvents.length === 0 && (
+          <Card className="p-8 text-center">
+            <p className="text-gray-600 dark:text-gray-400">No events match your search or filter.</p>
           </Card>
         )}
 
         {/* Events List */}
-        {!loading && events.length > 0 && (
+        {!loading && visibleEvents.length > 0 && (
           <div className="space-y-4">
-            {events.map((event) => {
+            {visibleEvents.map((event) => {
               const isExpanded = expandedEvent === event.id;
               const totalVolunteers = event.shifts?.reduce((sum, shift) => sum + (shift.filled || 0), 0) || 0;
               const totalCapacity = event.shifts?.reduce((sum, shift) => sum + shift.capacity, 0) || 0;
@@ -211,9 +267,14 @@ export default function AdminEventsPage() {
                   <div className="p-6">
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
-                        <Link href={`/events/${event.event_id}/signup`} className="group">
-                          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{event.title}</h2>
-                        </Link>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Link href={`/events/${event.event_id}/signup`} className="group">
+                            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{event.title}</h2>
+                          </Link>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusBadgeClass[event.status] ?? statusBadgeClass.completed}`}>
+                            {event.status}
+                          </span>
+                        </div>
                         <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />
@@ -236,23 +297,25 @@ export default function AdminEventsPage() {
                           <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
                         )}
                       </div>
-                      <div className="flex gap-2 ml-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditEvent(event)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteEvent(event.id)}
-                          className="text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
+                      {isAdmin && (
+                        <div className="flex gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditEvent(event)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteEvent(event.id)}
+                            className="text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Shifts Toggle */}
@@ -264,14 +327,16 @@ export default function AdminEventsPage() {
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         {event.shifts?.length || 0} Shifts
                       </button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleAddShift(event)}
-                        className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90"
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add Shift
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddShift(event)}
+                          className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90"
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add Shift
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -306,23 +371,25 @@ export default function AdminEventsPage() {
                                     </span>
                                   </div>
                                 </div>
-                                <div className="flex gap-2 ml-4">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleEditShift(shift, event)}
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleDeleteShift(shift.id, shift.filled)}
-                                    className="text-red-600 hover:bg-red-50"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
+                                {isAdmin && (
+                                  <div className="flex gap-2 ml-4">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleEditShift(shift, event)}
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDeleteShift(shift.id, shift.filled)}
+                                      className="text-red-600 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -579,8 +646,12 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
 
 // Shift Modal Component
 function ShiftModal({ shift, event, onClose, onSave, supabase }) {
+  const nextShiftId = shift
+    ? shift.shift_id
+    : (Math.max(0, ...((event.shifts ?? []).map((s) => s.shift_id ?? 0))) + 1);
+
   const [formData, setFormData] = useState({
-    shift_id: shift?.shift_id || '',
+    shift_id: nextShiftId,
     name: shift?.name || '',
     description: shift?.description || '',
     start_time: shift?.start_time || '',
@@ -592,7 +663,6 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
 
   const validate = () => {
     const newErrors = {};
-    if (!formData.shift_id) newErrors.shift_id = 'Shift number is required';
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.start_time) newErrors.start_time = 'Start time is required';
     if (!formData.end_time) newErrors.end_time = 'End time is required';
@@ -645,18 +715,6 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
         <div className="p-6">
           <h2 className="text-2xl font-bold mb-6">{shift ? 'Edit Shift' : 'Create Shift'}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Shift Number</label>
-              <input
-                type="number"
-                value={formData.shift_id}
-                onChange={(e) => setFormData({ ...formData, shift_id: parseInt(e.target.value) })}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-                min="1"
-              />
-              {errors.shift_id && <p className="text-red-600 text-sm mt-1">{errors.shift_id}</p>}
-            </div>
-
             <div>
               <label className="block text-sm font-medium mb-1">Shift Name</label>
               <input

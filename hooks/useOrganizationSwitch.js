@@ -5,17 +5,17 @@ import { useOrganization } from '@/contexts/OrganizationContext';
  * Returns current organization and method to switch
  */
 export function useOrganizationSwitch() {
-  const { 
-    currentOrganization, 
+  const {
+    currentOrganization,
     switchOrganization,
     organizations,
-    hasMultipleOrganizations 
+    hasMultipleOrganizations,
   } = useOrganization();
 
   return {
     currentOrganization,
-    currentOrgId: currentOrganization?.organization_id,
-    currentOrgName: currentOrganization?.organization_name,
+    currentOrgId:   currentOrganization?.id,
+    currentOrgName: currentOrganization?.name,
     switchOrganization,
     canSwitch: hasMultipleOrganizations,
     availableOrganizations: organizations,

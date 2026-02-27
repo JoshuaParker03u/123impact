@@ -1,229 +1,86 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const OrganizationContext = createContext(undefined);
 
+const STORAGE_KEY = '123impact_current_org_id';
+
 export function OrganizationProvider({ children }) {
+  const [organizations, setOrganizations] = useState([]);
   const [currentOrganization, setCurrentOrganization] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    loadOrganization();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') {
-        loadOrganization();
-      } else if (event === 'SIGNED_OUT') {
-        setCurrentOrganization(null);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const loadOrganization = async () => {
+  const loadOrganizations = useCallback(async () => {
     try {
       setLoading(true);
-      
-      // Get the current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+      setError(null);
 
-      // Fetch the user's organization through organization_admins junction table
-      const { data: adminData, error: adminError } = await supabase
-        .from('organization_admins')
-        .select(`
-          role,
-          permissions,
-          organization_id,
-          organizations (
-            id,
-            name,
-            description,
-            website,
-            contact_email,
-            contact_phone,
-            address,
-            city,
-            state,
-            zip_code,
-            logo_url,
-            status
-          )
-        `)
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const response = await fetch('/api/organizations/user');
 
-      if (adminError) {
-        console.error('Error loading organization admin data:', {
-          message: adminError.message,
-          details: adminError.details,
-          hint: adminError.hint,
-          code: adminError.code,
-          full: adminError
-        });
-      }
-
-      if (adminData && adminData.organizations) {
-        setCurrentOrganization({
-          ...adminData.organizations,
-          userRole: adminData.role,
-          userPermissions: adminData.permissions,
-          isAdmin: true
-        });
-        return;
-      }
-
-      // If the nested query failed, try a simpler approach
-      if (!adminData || !adminData.organizations) {
-        console.log('Trying fallback query for organization data...');
-        
-        // First get the organization_id from organization_admins
-        const { data: adminRecord, error: recordError } = await supabase
-          .from('organization_admins')
-          .select('organization_id, role, permissions')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (recordError) {
-          console.error('Error fetching admin record:', recordError);
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Not logged in — clear state silently
+          setOrganizations([]);
+          setCurrentOrganization(null);
+          return;
         }
-
-        if (adminRecord) {
-          // Then fetch the organization separately
-          const { data: orgData, error: orgError } = await supabase
-            .from('organizations')
-            .select('*')
-            .eq('id', adminRecord.organization_id)
-            .single();
-
-          if (orgError) {
-            console.error('Error fetching organization:', orgError);
-          }
-
-          if (orgData) {
-            setCurrentOrganization({
-              ...orgData,
-              userRole: adminRecord.role,
-              userPermissions: adminRecord.permissions,
-              isAdmin: true
-            });
-            return;
-          }
-        }
+        throw new Error('Failed to load organizations');
       }
 
-      // If not an admin, check if they're a volunteer
-      const { data: volunteerData, error: volunteerError } = await supabase
-        .from('organization_volunteers')
-        .select(`
-          status,
-          organization_id,
-          organizations (
-            id,
-            name,
-            description,
-            website,
-            contact_email,
-            contact_phone,
-            address,
-            city,
-            state,
-            zip_code,
-            logo_url,
-            status
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle();
+      const { data } = await response.json();
+      const orgs = data ?? [];
+      setOrganizations(orgs);
 
-      if (volunteerError) {
-        console.error('Error loading organization volunteer data:', {
-          message: volunteerError.message,
-          details: volunteerError.details,
-          hint: volunteerError.hint,
-          code: volunteerError.code
-        });
+      // Restore last selected org from localStorage
+      const savedOrgId =
+        typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      const savedOrg = savedOrgId ? orgs.find((o) => o.id === savedOrgId) : null;
+      const orgToSelect = savedOrg ?? orgs[0] ?? null;
+
+      setCurrentOrganization(orgToSelect);
+
+      if (orgToSelect && typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, orgToSelect.id);
       }
-
-      if (volunteerData && volunteerData.organizations) {
-        setCurrentOrganization({
-          ...volunteerData.organizations,
-          userRole: 'volunteer',
-          userPermissions: {},
-          isAdmin: false,
-          isVolunteer: true
-        });
-        return;
-      }
-
-      // Fallback for volunteer data
-      if (!volunteerData || !volunteerData.organizations) {
-        const { data: volunteerRecord, error: volRecordError } = await supabase
-          .from('organization_volunteers')
-          .select('organization_id, status')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .maybeSingle();
-
-        if (volRecordError) {
-          console.error('Error fetching volunteer record:', volRecordError);
-        }
-
-        if (volunteerRecord) {
-          const { data: orgData, error: orgError } = await supabase
-            .from('organizations')
-            .select('*')
-            .eq('id', volunteerRecord.organization_id)
-            .single();
-
-          if (orgError) {
-            console.error('Error fetching organization for volunteer:', orgError);
-          }
-
-          if (orgData) {
-            setCurrentOrganization({
-              ...orgData,
-              userRole: 'volunteer',
-              userPermissions: {},
-              isAdmin: false,
-              isVolunteer: true
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error in loadOrganization:', error);
+    } catch (err) {
+      console.error('Error loading organizations:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadOrganizations();
+  }, [loadOrganizations]);
+
+  const switchOrganization = useCallback(
+    (orgId) => {
+      const org = organizations.find((o) => o.id === orgId);
+      if (!org) return;
+      setCurrentOrganization(org);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, orgId);
+      }
+    },
+    [organizations]
+  );
 
   const value = {
     currentOrganization,
-    setCurrentOrganization,
+    organizations,
     loading,
-    refreshOrganization: loadOrganization,
-    // Helper computed values
-    isAdmin: currentOrganization?.isAdmin || false,
-    isVolunteer: currentOrganization?.isVolunteer || false,
-    userRole: currentOrganization?.userRole || null,
-    userPermissions: currentOrganization?.userPermissions || {},
+    error,
+    switchOrganization,
+    refreshOrganization: loadOrganizations,
+    refreshOrganizations: loadOrganizations,
+    hasMultipleOrganizations: organizations.length > 1,
+    // Computed helpers
+    isAdmin: ['owner', 'admin'].includes(currentOrganization?.role),
+    userRole: currentOrganization?.role ?? null,
+    userPermissions: currentOrganization?.permissions ?? {},
   };
 
   return (
@@ -235,10 +92,8 @@ export function OrganizationProvider({ children }) {
 
 export function useOrganization() {
   const context = useContext(OrganizationContext);
-  
   if (context === undefined) {
     throw new Error('useOrganization must be used within an OrganizationProvider');
   }
-  
   return context;
 }
