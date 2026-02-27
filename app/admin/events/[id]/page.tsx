@@ -161,7 +161,7 @@ export default function AdminEventDetailPage() {
     return (
       <>
         <AdminNavigation />
-        <div className="max-w-5xl mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8">
           <Card className="p-8 text-center">
             <p className="text-gray-600">Event not found.</p>
             <Button className="mt-4" onClick={() => router.push('/admin/events')}>
@@ -180,7 +180,7 @@ export default function AdminEventDetailPage() {
   return (
     <>
       <AdminNavigation />
-      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
 
         {/* Back link */}
         <Link

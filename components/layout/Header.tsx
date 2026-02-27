@@ -1,9 +1,33 @@
-import { Heart } from 'lucide-react'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { Heart, LogOut } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
+import { createClient } from '@/lib/supabase/client'
 
 export default function Header() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
   return (
     <header className="border-b bg-white dark:bg-gray-900 dark:border-gray-800">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -20,9 +44,16 @@ export default function Header() {
         </Link>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Link href="/login">
-            <Button variant="outline">Coordinator Login</Button>
-          </Link>
+          {isLoggedIn ? (
+            <Button variant="outline" onClick={handleSignOut} className="gap-2 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </Button>
+          ) : (
+            <Link href="/login">
+              <Button variant="outline">Coordinator Login</Button>
+            </Link>
+          )}
         </div>
       </div>
     </header>

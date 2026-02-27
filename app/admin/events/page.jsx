@@ -7,6 +7,7 @@ import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function AdminEventsPage() {
   const { currentOrganization, loading: orgLoading } = useOrganization();
@@ -154,7 +155,7 @@ export default function AdminEventsPage() {
     return (
       <>
         <AdminNavigation />
-        <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8">
           <Card className="p-8 text-center">
             <p className="text-gray-600">No organization selected</p>
           </Card>
@@ -166,7 +167,7 @@ export default function AdminEventsPage() {
   return (
     <>
       <AdminNavigation />
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Events</h1>
@@ -210,7 +211,9 @@ export default function AdminEventsPage() {
                   <div className="p-6">
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{event.title}</h2>
+                        <Link href={`/events/${event.event_id}/signup`} className="group">
+                          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{event.title}</h2>
+                        </Link>
                         <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import AdminNavigation from '@/components/admin/AdminNavigation';
 import MessageComposer from '@/components/MessageComposer';
 import SentMessagesHistory from '@/components/SentMessagesHistory';
 import ScheduledMessagesList from '@/components/ScheduledMessagesList';
@@ -18,7 +19,9 @@ export default function MessagesPage() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <>
+      <AdminNavigation />
+      <div className="container mx-auto p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Messages</h1>
         <p className="text-gray-600 dark:text-gray-400">Send messages to volunteers and view delivery history</p>
@@ -61,5 +64,6 @@ export default function MessagesPage() {
       {activeTab === 'scheduled' && <ScheduledMessagesList />}
       {activeTab === 'history'   && <SentMessagesHistory />}
     </div>
+    </>
   );
 }

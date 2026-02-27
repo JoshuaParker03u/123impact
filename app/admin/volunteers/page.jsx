@@ -160,7 +160,7 @@ export default function AdminVolunteersPage() {
     return (
       <>
         <AdminNavigation />
-        <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8">
           <Card className="p-8 text-center">
             <p className="text-gray-600">No organization selected</p>
           </Card>
@@ -172,7 +172,7 @@ export default function AdminVolunteersPage() {
   return (
     <>
       <AdminNavigation />
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Volunteers</h1>
