@@ -97,7 +97,7 @@ export default function AdminNavigation() {
 
   return (
     <>
-    <nav className="bg-white dark:bg-gray-900 border-b dark:border-gray-800">
+    <nav className="sticky top-0 z-50 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex justify-between h-16">
 
@@ -131,38 +131,48 @@ export default function AdminNavigation() {
             </Link>
           </div>
 
-          {/* Right — Theme toggle + Org switcher + Sign out */}
+          {/* Right — Org switcher + Theme toggle + Sign out */}
           <div className="flex items-center gap-3">
-            <ThemeToggle />
-
-            {/* Org Switcher */}
-            {currentOrganization && (
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setDropdownOpen((o) => !o)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <OrgAvatar org={currentOrganization} size="sm" />
-                  <div className="flex flex-col items-start leading-tight">
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 max-w-[140px] truncate">
-                      {currentOrganization.name}
-                    </span>
-                    <RoleBadge role={currentOrganization.role} />
-                  </div>
-                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {dropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
-                    <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                        Your Organizations
-                      </p>
+            {/* Org Switcher — always visible */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setDropdownOpen((o) => !o)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                {currentOrganization ? (
+                  <>
+                    <OrgAvatar org={currentOrganization} size="sm" />
+                    <div className="flex flex-col items-start leading-tight">
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 max-w-[140px] truncate">
+                        {currentOrganization.name}
+                      </span>
+                      <RoleBadge role={currentOrganization.role} />
                     </div>
+                  </>
+                ) : (
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    No organization
+                  </span>
+                )}
+                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-                    <ul className="py-1 max-h-64 overflow-y-auto">
-                      {availableOrganizations.map((org) => {
-                        const isCurrent = org.id === currentOrganization.id;
+              {dropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                      Your Organizations
+                    </p>
+                  </div>
+
+                  <ul className="py-1 max-h-64 overflow-y-auto">
+                    {availableOrganizations.length === 0 ? (
+                      <li className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
+                        No organizations yet
+                      </li>
+                    ) : (
+                      availableOrganizations.map((org) => {
+                        const isCurrent = currentOrganization && org.id === currentOrganization.id;
                         return (
                           <li key={org.id}>
                             <button
@@ -184,22 +194,24 @@ export default function AdminNavigation() {
                             </button>
                           </li>
                         );
-                      })}
-                    </ul>
+                      })
+                    )}
+                  </ul>
 
-                    <div className="border-t border-gray-100 dark:border-gray-800 p-2">
-                      <button
-                        onClick={() => { setDropdownOpen(false); setShowCreateModal(true); }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors font-medium"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Create New Organization
-                      </button>
-                    </div>
+                  <div className="border-t border-gray-100 dark:border-gray-800 p-2">
+                    <button
+                      onClick={() => { setDropdownOpen(false); setShowCreateModal(true); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors font-medium"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create New Organization
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
+
+            <ThemeToggle />
 
             <Button
               variant="outline"

@@ -29,7 +29,7 @@ export default function Header() {
   }
 
   return (
-    <header className="border-b bg-white dark:bg-gray-900 dark:border-gray-800">
+    <header className="sticky top-0 z-50 border-b bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">

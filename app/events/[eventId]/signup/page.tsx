@@ -227,7 +227,14 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   {event.date} • {selectedShiftData?.start_time} - {selectedShiftData?.end_time}
                 </p>
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">A calendar invite has been added to your email.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">A calendar invite has been added to your email.</p>
+              <Button
+                variant="outline"
+                onClick={() => window.location.href = '/'}
+                className="w-full sm:w-auto"
+              >
+                Return to Home
+              </Button>
             </Card>
           </div>
         </main>
