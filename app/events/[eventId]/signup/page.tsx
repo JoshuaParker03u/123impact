@@ -169,11 +169,11 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     return (
       <>
         <Header />
-        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
           <div className="max-w-4xl mx-auto flex items-center justify-center">
             <div className="text-center">
               <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-              <p className="text-gray-600">Loading event details...</p>
+              <p className="text-gray-600 dark:text-gray-400">Loading event details...</p>
             </div>
           </div>
         </main>
@@ -187,12 +187,12 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     return (
       <>
         <Header />
-        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
           <div className="max-w-4xl mx-auto">
             <Card className="p-8 text-center">
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Event Not Found</h1>
-              <p className="text-gray-600 mb-6">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Event Not Found</h1>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
                 {pageError ?? "The event you're looking for doesn't exist or has been removed."}
               </p>
               <Button onClick={() => window.location.href = '/'}>Return Home</Button>
@@ -210,24 +210,24 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     return (
       <>
         <Header />
-        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
           <div className="max-w-2xl mx-auto">
             <Card className="p-8 text-center">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Check className="w-12 h-12 text-green-600" />
+              <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Check className="w-12 h-12 text-green-600 dark:text-green-400" />
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">You're All Set!</h1>
-              <p className="text-gray-600 mb-6">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">You're All Set!</h1>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
                 Thank you for signing up, {formData.name}! We've sent a confirmation
                 email to {formData.email} with all the details.
               </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-blue-900 font-medium">{selectedShiftData?.name}</p>
-                <p className="text-sm text-blue-700">
+              <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-900 dark:text-blue-200 font-medium">{selectedShiftData?.name}</p>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
                   {event.date} • {selectedShiftData?.start_time} - {selectedShiftData?.end_time}
                 </p>
               </div>
-              <p className="text-sm text-gray-500">A calendar invite has been added to your email.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">A calendar invite has been added to your email.</p>
             </Card>
           </div>
         </main>
@@ -240,7 +240,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
         <div className="max-w-4xl mx-auto">
 
           {/* Event header */}
@@ -254,8 +254,8 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               }}
             />
             <div className="p-6">
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">{event.title}</h1>
-              <div className="flex flex-wrap gap-4 text-gray-600 mb-4">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">{event.title}</h1>
+              <div className="flex flex-wrap gap-4 text-gray-600 dark:text-gray-400 mb-4">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5" /><span>{event.date}</span>
                 </div>
@@ -266,13 +266,13 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   <MapPin className="w-5 h-5" /><span>{event.location}</span>
                 </div>
               </div>
-              <p className="text-gray-700">{event.description}</p>
+              <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
             </div>
           </Card>
 
           {/* Shift selection */}
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Choose Your Shift</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Choose Your Shift</h2>
             {errors.shift && <p className="text-red-600 text-sm mb-2">{errors.shift}</p>}
             <div className="grid gap-4">
               {shifts.map((shift) => {
@@ -281,22 +281,22 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   <Card
                     key={shift.id}
                     className={`p-6 cursor-pointer transition-all ${
-                      isSelected ? 'ring-2 ring-blue-600 bg-blue-50' : 'hover:shadow-lg'
+                      isSelected ? 'ring-2 ring-blue-600 bg-blue-50 dark:bg-blue-900/30' : 'hover:shadow-lg'
                     } ${shift.is_full ? 'opacity-50 cursor-not-allowed' : ''}`}
                     onClick={() => !shift.is_full && setSelectedShift(shift.id)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-xl font-semibold text-gray-900">{shift.name}</h3>
+                          <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{shift.name}</h3>
                           {isSelected && (
                             <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
                               <Check className="w-4 h-4 text-white" />
                             </div>
                           )}
                         </div>
-                        <p className="text-gray-600 mb-3">{shift.description}</p>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <p className="text-gray-600 dark:text-gray-400 mb-3">{shift.description}</p>
+                        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
                             {shift.start_time} - {shift.end_time}
@@ -321,10 +321,10 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
           {/* Registration form */}
           <Card className="p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Information</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Your Information</h2>
             {errors.submit && (
-              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-600 text-sm">{errors.submit}</p>
+              <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
+                <p className="text-red-600 dark:text-red-400 text-sm">{errors.submit}</p>
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -367,7 +367,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   disabled={submitting}
                 />
                 {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Get SMS reminders for your shift (feature coming soon!)
                 </p>
               </div>
@@ -386,8 +386,8 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
             </form>
           </Card>
 
-          <div className="text-center mt-6 text-gray-500 text-sm">
-            Powered by <span className="font-semibold text-gray-700">123impact</span>
+          <div className="text-center mt-6 text-gray-500 dark:text-gray-400 text-sm">
+            Powered by <span className="font-semibold text-gray-700 dark:text-gray-300">123impact</span>
           </div>
         </div>
       </main>

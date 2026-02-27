@@ -157,7 +157,7 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4 text-center">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center">
@@ -172,14 +172,14 @@ function LoginContent() {
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-800 dark:text-red-300 text-sm">
               <p className="font-semibold">Error:</p>
               <p>{error}</p>
             </div>
           )}
           
           {success && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-800 dark:text-green-300 text-sm">
               <p className="font-semibold">Success!</p>
               <p>{success}</p>
             </div>
@@ -233,7 +233,7 @@ function LoginContent() {
           {/* Toggle Sign In / Sign Up */}
           <div className="text-center text-sm">
             {mode === 'signin' ? (
-              <p className="text-gray-600">
+              <p className="text-gray-600 dark:text-gray-400">
                 Don't have an account?{' '}
                 <button
                   onClick={() => {
@@ -241,13 +241,13 @@ function LoginContent() {
                     setError(null)
                     setSuccess(null)
                   }}
-                  className="text-blue-600 hover:underline font-medium"
+                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
                 >
                   Sign up
                 </button>
               </p>
             ) : (
-              <p className="text-gray-600">
+              <p className="text-gray-600 dark:text-gray-400">
                 Already have an account?{' '}
                 <button
                   onClick={() => {
@@ -255,7 +255,7 @@ function LoginContent() {
                     setError(null)
                     setSuccess(null)
                   }}
-                  className="text-blue-600 hover:underline font-medium"
+                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
                 >
                   Sign in
                 </button>
@@ -268,7 +268,7 @@ function LoginContent() {
               <Separator />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-gray-500">Or continue with</span>
+              <span className="bg-white dark:bg-gray-900 px-2 text-gray-500 dark:text-gray-400">Or continue with</span>
             </div>
           </div>
           
@@ -276,7 +276,7 @@ function LoginContent() {
           <Button
             onClick={() => handleOAuthLogin('google')}
             disabled={isLoading !== null || isEmailLoading}
-            className="w-full h-12 text-base font-medium bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-300"
+            className="w-full h-12 text-base font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 border-2 border-gray-300 dark:border-gray-600"
             variant="outline"
           >
             {isLoading === 'google' ? (
@@ -296,7 +296,7 @@ function LoginContent() {
           <Button
             onClick={() => handleOAuthLogin('azure')}
             disabled={isLoading !== null || isEmailLoading}
-            className="w-full h-12 text-base font-medium bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-300"
+            className="w-full h-12 text-base font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 border-2 border-gray-300 dark:border-gray-600"
             variant="outline"
           >
             {isLoading === 'azure' ? (
@@ -317,13 +317,13 @@ function LoginContent() {
             )}
           </Button>
 
-          <p className="text-xs text-center text-gray-500 mt-4">
+          <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-4">
             By signing in, you agree to our{' '}
-            <a href="/terms" className="text-blue-600 hover:underline">
+            <a href="/terms" className="text-blue-600 dark:text-blue-400 hover:underline">
               Terms of Service
             </a>
             {' '}and{' '}
-            <a href="/privacy" className="text-blue-600 hover:underline">
+            <a href="/privacy" className="text-blue-600 dark:text-blue-400 hover:underline">
               Privacy Policy
             </a>
           </p>
@@ -336,7 +336,7 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-2">
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
           <span className="text-lg font-medium text-gray-600">Loading...</span>

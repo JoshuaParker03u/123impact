@@ -102,7 +102,7 @@ export default function SentMessagesHistory() {
             </div>
             <button
               onClick={() => copyRecipientsToClipboard(message.recipients)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+              className="px-4 py-2 bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-lg hover:opacity-90 text-sm"
             >
               Copy All Emails
             </button>

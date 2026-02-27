@@ -47,14 +47,14 @@ export default function SentMessagesHistory() {
   return (
     <div className="space-y-3">
       {messages.map((msg) => (
-        <div key={msg.id} className="border rounded-lg overflow-hidden">
+        <div key={msg.id} className="border dark:border-gray-700 rounded-lg overflow-hidden">
           <button
-            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800"
             onClick={() => setExpanded(expanded === msg.id ? null : msg.id)}
           >
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">{msg.subject}</p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 {new Date(msg.sent_at).toLocaleString()} &middot; {msg.recipient_emails.length} recipient{msg.recipient_emails.length !== 1 ? 's' : ''}
                 {msg.events && ` \u00b7 ${msg.events.title}`}
                 {msg.shifts && ` \u00b7 ${msg.shifts.name}`}
@@ -69,9 +69,9 @@ export default function SentMessagesHistory() {
           </button>
 
           {expanded === msg.id && (
-            <div className="px-4 pb-4 border-t bg-gray-50">
-              <p className="text-sm font-medium text-gray-700 mt-3 mb-1">Recipients</p>
-              <ul className="text-sm text-gray-600 space-y-0.5 max-h-40 overflow-y-auto">
+            <div className="px-4 pb-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-3 mb-1">Recipients</p>
+              <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-0.5 max-h-40 overflow-y-auto">
                 {msg.recipients.map((r) => (
                   <li key={r.email}>{r.email}</li>
                 ))}

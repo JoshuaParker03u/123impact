@@ -185,7 +185,7 @@ export default function AdminEventDetailPage() {
         {/* Back link */}
         <Link
           href="/admin/events"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-6"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-6"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Events
         </Link>
@@ -195,17 +195,17 @@ export default function AdminEventDetailPage() {
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-3xl font-bold text-gray-900">{event.title}</h1>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{event.title}</h1>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                   event.status === 'active'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-600'
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}>
                   {event.status}
                 </span>
               </div>
 
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600 mt-2">
+              <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mt-2">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />{event.date}
                 </span>
@@ -222,7 +222,7 @@ export default function AdminEventDetailPage() {
               </div>
 
               {event.description && (
-                <p className="mt-3 text-gray-700">{event.description}</p>
+                <p className="mt-3 text-gray-700 dark:text-gray-300">{event.description}</p>
               )}
             </div>
 
@@ -243,7 +243,7 @@ export default function AdminEventDetailPage() {
         </Card>
 
         {/* Shifts */}
-        <h2 className="text-xl font-semibold text-gray-900 mb-3">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
           Shifts ({event.shifts.length})
         </h2>
 
@@ -263,27 +263,27 @@ export default function AdminEventDetailPage() {
                 <Card key={shift.id} className="overflow-hidden">
                   {/* Shift row */}
                   <button
-                    className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
+                    className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                     onClick={() => toggleShift(shift.id)}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900">{shift.name}</p>
-                      <p className="text-sm text-gray-500 mt-0.5">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                         {start.toLocaleDateString()} &nbsp;
                         {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         {' – '}
                         {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                       {shift.description && (
-                        <p className="text-sm text-gray-600 mt-1">{shift.description}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
                       )}
                     </div>
 
                     <div className="flex items-center gap-3 ml-4">
                       <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${
                         isFull
-                          ? 'bg-red-100 text-red-700'
-                          : 'bg-blue-100 text-blue-700'
+                          ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                       }`}>
                         {shift.filled ?? 0}/{shift.capacity}
                       </span>
@@ -298,26 +298,26 @@ export default function AdminEventDetailPage() {
 
                   {/* Volunteer list */}
                   {isOpen && (
-                    <div className="border-t px-5 py-4 bg-gray-50">
+                    <div className="border-t dark:border-gray-700 px-5 py-4 bg-gray-50 dark:bg-gray-800/50">
                       {!shift.volunteers || shift.volunteers.length === 0 ? (
-                        <p className="text-sm text-gray-500">No volunteers registered yet.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No volunteers registered yet.</p>
                       ) : (
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="text-left text-gray-500 border-b">
+                            <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
                               <th className="pb-2 font-medium">Name</th>
                               <th className="pb-2 font-medium">Email</th>
                               <th className="pb-2 font-medium">Phone</th>
                               <th className="pb-2 font-medium">Registered</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-100">
+                          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                             {shift.volunteers.map((v) => (
-                              <tr key={v.id} className="text-gray-700">
+                              <tr key={v.id} className="text-gray-700 dark:text-gray-300">
                                 <td className="py-2 pr-4 font-medium">{v.name}</td>
                                 <td className="py-2 pr-4">{v.email}</td>
                                 <td className="py-2 pr-4">{v.phone ?? '—'}</td>
-                                <td className="py-2 text-gray-400">
+                                <td className="py-2 text-gray-400 dark:text-gray-500">
                                   {new Date(v.registered_at).toLocaleDateString()}
                                 </td>
                               </tr>

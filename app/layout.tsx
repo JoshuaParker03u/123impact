@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type React from "react";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ThemeProvider } from 'next-themes';
 import "./globals.css";
 import { OrganizationProvider } from '@/contexts/OrganizationContext';
 
@@ -21,12 +22,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
-        {/* If you have AuthProvider, nest OrganizationProvider inside it */}
-        <OrganizationProvider>
-          {children}
-        </OrganizationProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <OrganizationProvider>
+            {children}
+          </OrganizationProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

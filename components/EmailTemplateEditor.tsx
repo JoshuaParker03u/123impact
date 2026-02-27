@@ -64,32 +64,32 @@ export default function EmailTemplateEditor({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 space-y-4">
+    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 space-y-4">
       <h3 className="text-xl font-bold">
         {template ? 'Edit Template' : 'Create Template'}
       </h3>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Template Name
         </label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
           placeholder="e.g., Welcome Email"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           When to Send
         </label>
         <select
           value={triggerType}
           onChange={(e) => setTriggerType(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
         >
           <option value="signup">Immediately upon sign-up</option>
           <option value="7_days_before">7 days before shift</option>
@@ -99,21 +99,21 @@ export default function EmailTemplateEditor({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Subject Line
         </label>
         <input
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
           placeholder="Email subject"
         />
       </div>
 
       <div>
         <div className="flex justify-between items-center mb-2">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Email Body
           </label>
           <button
@@ -125,14 +125,14 @@ export default function EmailTemplateEditor({
         </div>
         
         {showVariables && (
-          <div className="mb-2 p-3 bg-gray-50 rounded border border-gray-200">
-            <p className="text-xs text-gray-600 mb-2">Click to insert:</p>
+          <div className="mb-2 p-3 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Click to insert:</p>
             <div className="flex flex-wrap gap-2">
               {Object.entries(variables).map(([key, description]) => (
                 <button
                   key={key}
                   onClick={() => insertVariable(key)}
-                  className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  className="text-xs px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
                   title={description}
                 >
                   {`{{${key}}}`}
@@ -146,7 +146,7 @@ export default function EmailTemplateEditor({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 font-mono text-sm"
           placeholder="Email content (use {{variable}} for dynamic content)"
         />
       </div>
@@ -159,7 +159,7 @@ export default function EmailTemplateEditor({
           onChange={(e) => setEnabled(e.target.checked)}
           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
         />
-        <label htmlFor="enabled" className="ml-2 text-sm text-gray-700">
+        <label htmlFor="enabled" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
           Template enabled (emails will be sent)
         </label>
       </div>
@@ -168,13 +168,13 @@ export default function EmailTemplateEditor({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg hover:opacity-90 disabled:opacity-50"
         >
           {saving ? 'Saving...' : 'Save Template'}
         </button>
         <button
           onClick={onCancel}
-          className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Cancel
         </button>

@@ -169,8 +169,8 @@ export default function AdminEventsPage() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Events</h1>
-          <Button onClick={handleCreateEvent} className="bg-blue-600 hover:bg-blue-700">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Events</h1>
+          <Button onClick={handleCreateEvent} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
             <Plus className="w-4 h-4 mr-2" />
             Create Event
           </Button>
@@ -189,7 +189,7 @@ export default function AdminEventsPage() {
             <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 mb-2">No events yet</h2>
             <p className="text-gray-600 mb-6">Create your first event to get started</p>
-            <Button onClick={handleCreateEvent} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={handleCreateEvent} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
               <Plus className="w-4 h-4 mr-2" />
               Create Event
             </Button>
@@ -210,8 +210,8 @@ export default function AdminEventsPage() {
                   <div className="p-6">
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-2">{event.title}</h2>
-                        <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{event.title}</h2>
+                        <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />
                             {event.date}
@@ -230,7 +230,7 @@ export default function AdminEventsPage() {
                           </span>
                         </div>
                         {event.description && (
-                          <p className="text-gray-700">{event.description}</p>
+                          <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
                         )}
                       </div>
                       <div className="flex gap-2 ml-4">
@@ -253,7 +253,7 @@ export default function AdminEventsPage() {
                     </div>
 
                     {/* Shifts Toggle */}
-                    <div className="flex items-center justify-between pt-4 border-t">
+                    <div className="flex items-center justify-between pt-4 border-t dark:border-gray-700">
                       <button
                         onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
                         className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
@@ -264,7 +264,7 @@ export default function AdminEventsPage() {
                       <Button
                         size="sm"
                         onClick={() => handleAddShift(event)}
-                        className="bg-blue-600 hover:bg-blue-700"
+                        className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90"
                       >
                         <Plus className="w-4 h-4 mr-1" />
                         Add Shift
@@ -274,9 +274,9 @@ export default function AdminEventsPage() {
 
                   {/* Shifts List (Collapsible) */}
                   {isExpanded && (
-                    <div className="border-t bg-gray-50 p-6">
+                    <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-6">
                       {!event.shifts || event.shifts.length === 0 ? (
-                        <p className="text-gray-600 text-center py-4">No shifts yet. Add one to get started!</p>
+                        <p className="text-gray-600 dark:text-gray-400 text-center py-4">No shifts yet. Add one to get started!</p>
                       ) : (
                         <div className="space-y-3">
                           {event.shifts.map((shift) => {
@@ -286,17 +286,17 @@ export default function AdminEventsPage() {
                             return (
                               <div
                                 key={shift.id}
-                                className="bg-white rounded-lg p-4 flex justify-between items-center"
+                                className="bg-white dark:bg-gray-800 rounded-lg p-4 flex justify-between items-center"
                               >
                                 <div className="flex-1">
                                   <div className="flex items-center gap-3 mb-1">
-                                    <h3 className="font-semibold text-gray-900">{shift.name}</h3>
+                                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</h3>
                                     <span className={`text-sm font-medium ${isFull ? 'text-red-600' : 'text-green-600'}`}>
                                       {shift.filled || 0}/{shift.capacity} volunteers
                                     </span>
                                   </div>
-                                  <p className="text-sm text-gray-600 mb-2">{shift.description}</p>
-                                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{shift.description}</p>
+                                  <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                                     <span className="flex items-center gap-1">
                                       <Clock className="w-3 h-3" />
                                       {shift.start_time} - {shift.end_time}
@@ -470,11 +470,11 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
                 type="text"
                 value={formData.event_id}
                 onChange={(e) => handleSlugChange(e.target.value)}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 placeholder="spring-cleanup-2025"
                 disabled={!!event} // Can't change ID after creation
               />
-              {!event && <p className="text-gray-400 text-xs mt-1">Auto-generated from title — you can edit it</p>}
+              {!event && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">Auto-generated from title — you can edit it</p>}
               {errors.event_id && <p className="text-red-600 text-sm mt-1">{errors.event_id}</p>}
             </div>
 
@@ -484,7 +484,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
                 type="text"
                 value={formData.title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
               />
               {errors.title && <p className="text-red-600 text-sm mt-1">{errors.title}</p>}
             </div>
@@ -496,7 +496,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
                   type="date"
                   value={formData.date}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="w-full border rounded-md px-3 py-2"
+                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 />
                 {errors.date && <p className="text-red-600 text-sm mt-1">{errors.date}</p>}
               </div>
@@ -507,7 +507,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
                   type="text"
                   value={formData.time}
                   onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  className="w-full border rounded-md px-3 py-2"
+                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                   placeholder="9:00 AM - 3:00 PM"
                 />
                 {errors.time && <p className="text-red-600 text-sm mt-1">{errors.time}</p>}
@@ -520,7 +520,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
                 type="text"
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
               />
               {errors.location && <p className="text-red-600 text-sm mt-1">{errors.location}</p>}
             </div>
@@ -530,7 +530,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 rows={3}
               />
             </div>
@@ -541,7 +541,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
                 type="text"
                 value={formData.image_url}
                 onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 placeholder="https://..."
               />
             </div>
@@ -551,7 +551,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
               <select
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
               >
                 <option value="active">Active</option>
                 <option value="cancelled">Cancelled</option>
@@ -563,7 +563,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
               <Button type="button" variant="outline" onClick={onClose} className="flex-1">
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting} className="flex-1 bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" disabled={submitting} className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
                 {submitting ? 'Saving...' : event ? 'Update Event' : 'Create Event'}
               </Button>
             </div>
@@ -648,7 +648,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
                 type="number"
                 value={formData.shift_id}
                 onChange={(e) => setFormData({ ...formData, shift_id: parseInt(e.target.value) })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 min="1"
               />
               {errors.shift_id && <p className="text-red-600 text-sm mt-1">{errors.shift_id}</p>}
@@ -660,7 +660,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 placeholder="Morning Team"
               />
               {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
@@ -673,7 +673,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
                   type="time"
                   value={formData.start_time}
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                  className="w-full border rounded-md px-3 py-2"
+                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 />
                 {errors.start_time && <p className="text-red-600 text-sm mt-1">{errors.start_time}</p>}
               </div>
@@ -684,7 +684,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
                   type="time"
                   value={formData.end_time}
                   onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                  className="w-full border rounded-md px-3 py-2"
+                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 />
                 {errors.end_time && <p className="text-red-600 text-sm mt-1">{errors.end_time}</p>}
               </div>
@@ -696,7 +696,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
                 type="number"
                 value={formData.capacity}
                 onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 min={shift?.filled || 1}
               />
               {shift && (
@@ -712,7 +712,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 rows={2}
               />
             </div>
@@ -721,7 +721,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
               <Button type="button" variant="outline" onClick={onClose} className="flex-1">
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting} className="flex-1 bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" disabled={submitting} className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
                 {submitting ? 'Saving...' : shift ? 'Update Shift' : 'Create Shift'}
               </Button>
             </div>
