@@ -18,7 +18,7 @@ export default function MessageComposer({
 }: MessageComposerProps) {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  const [recipientType, setRecipientType] = useState<'all' | 'event' | 'shift'>('all');
+  const [recipientType, setRecipientType] = useState<'event' | 'shift'>('event');
   const [selectedEvent, setSelectedEvent] = useState(eventId || '');
   const [selectedShift, setSelectedShift] = useState(shiftId || '');
   const [recipientCount, setRecipientCount] = useState(0);
@@ -81,15 +81,7 @@ export default function MessageComposer({
     let count = 0;
 
     try {
-      if (recipientType === 'all') {
-        // Count unique emails across all registrations
-        const { data } = await supabase
-          .from('volunteer_registrations')
-          .select('email');
-        
-        const uniqueEmails = new Set(data?.map(r => r.email) || []);
-        count = uniqueEmails.size;
-      } else if (recipientType === 'event' && selectedEvent) {
+      if (recipientType === 'event' && selectedEvent) {
         const { data: shifts } = await supabase
           .from('shifts')
           .select('id')
@@ -153,7 +145,7 @@ export default function MessageComposer({
           subject,
           message,
           recipientType,
-          eventId: recipientType !== 'all' ? selectedEvent : null,
+          eventId: selectedEvent || null,
           shiftId: recipientType === 'shift' ? selectedShift : null,
           scheduledFor: sendMode === 'scheduled' ? scheduledFor : null,
         }),
@@ -207,7 +199,6 @@ export default function MessageComposer({
                 onChange={(e) => setRecipientType(e.target.value as any)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
               >
-                <option value="all">All Volunteers</option>
                 <option value="event">Volunteers by Event</option>
                 <option value="shift">Volunteers by Shift</option>
               </select>

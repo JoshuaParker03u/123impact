@@ -62,12 +62,7 @@ export async function POST(request: Request) {
   try {
     let recipients: { name: string; email: string }[] = [];
 
-    if (recipientType === 'all') {
-      const { data } = await serviceSupabase
-        .from('volunteer_registrations')
-        .select('name, email');
-      recipients = data || [];
-    } else if (recipientType === 'event' && eventId) {
+    if (recipientType === 'event' && eventId) {
       const { data: shifts } = await serviceSupabase
         .from('shifts')
         .select('id')

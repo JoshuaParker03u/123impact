@@ -117,9 +117,18 @@ export default function AdminNavigation() {
             <Link href="/admin/volunteers" className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
               Volunteers
             </Link>
-            <Link href="/admin/organizations" className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
-              Organizations
-            </Link>
+            {currentOrganization ? (
+              <Link href="/admin/organizations" className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
+                Organizations
+              </Link>
+            ) : (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
+              >
+                Organizations
+              </button>
+            )}
             <Link
               href="/admin/messages"
               className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-700 dark:text-gray-300"
