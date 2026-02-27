@@ -6,7 +6,8 @@ import { createBrowserClient } from '@supabase/ssr';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, Link2, Check, QrCode, Download, X } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import Link from 'next/link';
 
 export default function AdminEventsPage() {
@@ -21,6 +22,8 @@ export default function AdminEventsPage() {
   const [selectedEventForShift, setSelectedEventForShift] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [copiedEventId, setCopiedEventId] = useState(null);
+  const [qrEvent, setQrEvent] = useState(null);
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -108,6 +111,13 @@ export default function AdminEventsPage() {
     } else {
       fetchEvents();
     }
+  };
+
+  const copyEventLink = (event) => {
+    const url = `${window.location.origin}/events/${event.event_id}/signup`;
+    navigator.clipboard.writeText(url);
+    setCopiedEventId(event.id);
+    setTimeout(() => setCopiedEventId(null), 2000);
   };
 
   const handleAddShift = (event) => {
@@ -295,25 +305,45 @@ export default function AdminEventsPage() {
                           <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
                         )}
                       </div>
-                      {isAdmin && (
-                        <div className="flex gap-2 ml-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditEvent(event)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteEvent(event.id)}
-                            className="text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyEventLink(event)}
+                          title="Copy signup link"
+                        >
+                          {copiedEventId === event.id
+                            ? <Check className="w-4 h-4 text-green-600" />
+                            : <Link2 className="w-4 h-4" />}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setQrEvent(event)}
+                          title="Show QR code"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </Button>
+                        {isAdmin && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditEvent(event)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteEvent(event.id)}
+                              className="text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* Shifts Toggle */}
@@ -415,6 +445,13 @@ export default function AdminEventsPage() {
           />
         )}
 
+        {qrEvent && (
+          <QRModal
+            event={qrEvent}
+            onClose={() => setQrEvent(null)}
+          />
+        )}
+
         {showShiftModal && selectedEventForShift && (
           <ShiftModal
             shift={editingShift}
@@ -429,6 +466,53 @@ export default function AdminEventsPage() {
         )}
       </div>
     </>
+  );
+}
+
+// QR Code Modal
+function QRModal({ event, onClose }) {
+  const url = `${window.location.origin}/events/${event.event_id}/signup`;
+
+  const downloadQR = () => {
+    const svg = document.getElementById('event-qr-svg');
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 300, 300);
+      ctx.drawImage(img, 0, 0, 300, 300);
+      const a = document.createElement('a');
+      a.download = `${event.event_id}-qr.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <Card className="p-6 w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{event.title}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex justify-center mb-4 bg-white p-4 rounded-lg">
+          <QRCodeSVG id="event-qr-svg" value={url} size={220} />
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 break-all">{url}</p>
+        <Button onClick={downloadQR} variant="outline" className="w-full">
+          <Download className="w-4 h-4 mr-2" />
+          Download PNG
+        </Button>
+      </Card>
+    </div>
   );
 }
 
