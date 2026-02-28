@@ -94,6 +94,15 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     load()
   }, [eventId])
 
+  // ── Auto-select first available shift ────────────────────────────────────
+
+  useEffect(() => {
+    if (shifts.length > 0 && selectedShift === null) {
+      const first = shifts.find(s => !s.is_full)
+      if (first) setSelectedShift(first.id)
+    }
+  }, [shifts])
+
   // ── Validation ───────────────────────────────────────────────────────────
 
   const validate = (): boolean => {
@@ -281,6 +290,13 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Choose Your Shift</h2>
             {errors.shift && <p className="text-red-600 text-sm mb-2">{errors.shift}</p>}
+            {shifts.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+                <Clock className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="text-lg font-medium">No shifts available at this time</p>
+                <p className="text-sm mt-1">Check back later — shifts will appear here once they're added.</p>
+              </div>
+            ) : null}
             <div className="grid gap-4">
               {shifts.map((shift) => {
                 const isSelected = selectedShift === shift.id

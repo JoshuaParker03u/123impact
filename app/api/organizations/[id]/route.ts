@@ -207,6 +207,58 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     }
 
     const service = buildServiceClient();
+
+    // 1. Get all events for this org
+    const { data: events } = await service
+      .from('events')
+      .select('id')
+      .eq('organization_id', id);
+
+    const eventIds = (events ?? []).map((e: any) => e.id);
+
+    if (eventIds.length > 0) {
+      // 2. Get all shifts for those events
+      const { data: shifts } = await service
+        .from('shifts')
+        .select('id')
+        .in('event_id', eventIds);
+
+      const shiftIds = (shifts ?? []).map((s: any) => s.id);
+
+      // 3. Delete volunteer registrations for those shifts
+      if (shiftIds.length > 0) {
+        await service
+          .from('volunteer_registrations')
+          .delete()
+          .in('shift_id', shiftIds);
+      }
+
+      // 4. Delete pending scheduled emails for those events
+      await service
+        .from('scheduled_emails')
+        .delete()
+        .in('event_id', eventIds)
+        .eq('status', 'pending');
+
+      // 5. Delete scheduled messages for those events
+      await service
+        .from('messages')
+        .delete()
+        .in('event_id', eventIds)
+        .eq('delivery_status', 'scheduled');
+
+      // 6. Delete the events (DB cascades to shifts)
+      await service
+        .from('events')
+        .delete()
+        .in('id', eventIds);
+    }
+
+    // 7. Delete org admins and volunteers
+    await service.from('organization_admins').delete().eq('organization_id', id);
+    await service.from('organization_volunteers').delete().eq('organization_id', id);
+
+    // 8. Delete the organization
     const { error: deleteError } = await service
       .from('organizations')
       .delete()
