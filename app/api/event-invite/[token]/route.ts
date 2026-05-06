@@ -135,13 +135,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // In-app notification
-  service.from('notifications').insert({
+  void service.from('notifications').insert({
     user_id: user.id,
     type:    'event_admin_added',
     title:   "You've been added as Event Admin",
     body:    `You've been added as Event Admin for "${event.title}" hosted by ${org.name}. Your access expires on ${expiryFormatted}.`,
     link:    `/admin/events/${event.id}`,
-  }).then(() => {}).catch((e: any) => console.error('Notification insert error:', e));
+  });
 
   return NextResponse.json({ success: true, action: 'accepted', event_id: event.id });
 }

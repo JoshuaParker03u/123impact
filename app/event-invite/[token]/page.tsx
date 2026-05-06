@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactElement } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Loader2, ShieldCheck, Calendar, MapPin, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -136,7 +136,7 @@ export default function EventInvitePage() {
 
   // Terminal statuses
   if (invite!.status !== 'pending') {
-    const msgs: Record<string, { icon: JSX.Element; heading: string; sub: string }> = {
+    const msgs: Record<string, { icon: ReactElement; heading: string; sub: string }> = {
       expired:  { icon: <AlertTriangle className="w-10 h-10 text-yellow-400 mx-auto mb-3" />, heading: 'Invitation expired', sub: 'Contact the event organizer to receive a new invitation.' },
       accepted: { icon: <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-3" />,  heading: 'Already accepted',  sub: 'You already have Event Admin access for this event.' },
       revoked:  { icon: <XCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />,         heading: 'Invitation cancelled', sub: 'This invitation is no longer valid. Contact the organizer if this is unexpected.' },

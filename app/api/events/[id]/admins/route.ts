@@ -169,13 +169,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (isInternal) {
     // In-app notification — fire and forget
-    service.from('notifications').insert({
+    void service.from('notifications').insert({
       user_id: targetUserId,
       type:    'event_admin_added',
       title:   "You've been added as Event Admin",
       body:    `You've been added as Event Admin for "${event.title}" hosted by ${org.name}. Your access expires on ${expiryFormatted}.`,
       link:    `/admin/events/${eventId}`,
-    }).then(() => {}).catch((e: any) => console.error('Notification insert error:', e));
+    });
   } else {
     // Send invitation email
     const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || '';
