@@ -47,7 +47,12 @@ function LoginContent() {
 
         if (user) {
           console.log('User already logged in, redirecting...')
-          router.push('/dashboard')
+          const redirectTo = searchParams.get('redirect')
+          if (redirectTo && (redirectTo.startsWith('/invite/') || redirectTo.startsWith('/event-invite/'))) {
+            router.push(redirectTo)
+          } else {
+            router.push('/dashboard')
+          }
           router.refresh()
         }
       } catch (err) {
@@ -61,9 +66,14 @@ function LoginContent() {
       console.log('Auth event:', event)
       
       if (event === 'SIGNED_IN' && session) {
-        console.log('User signed in, redirecting to dashboard')
+        console.log('User signed in, redirecting...')
         await new Promise(resolve => setTimeout(resolve, 100))
-        router.push('/dashboard')
+        const redirectTo = searchParams.get('redirect')
+        if (redirectTo && (redirectTo.startsWith('/invite/') || redirectTo.startsWith('/event-invite/'))) {
+          router.push(redirectTo)
+        } else {
+          router.push('/dashboard')
+        }
         router.refresh()
       }
       

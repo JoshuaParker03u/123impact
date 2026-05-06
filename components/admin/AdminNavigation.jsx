@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrganizationSwitch } from '@/hooks/useOrganizationSwitch';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { Heart, LogOut, ChevronDown, Check, Plus } from 'lucide-react';
+import { Heart, LogOut, ChevronDown, Check, Plus, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
@@ -48,6 +48,16 @@ function OrgAvatar({ org, size = 'sm' }) {
   );
 }
 
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 export default function AdminNavigation() {
   const {
     currentOrganization,
@@ -59,7 +69,11 @@ export default function AdminNavigation() {
 
   const [dropdownOpen, setDropdownOpen]       = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [notifOpen, setNotifOpen]             = useState(false);
+  const [notifications, setNotifications]     = useState([]);
+  const [notifLoading, setNotifLoading]       = useState(false);
   const dropdownRef = useRef(null);
+  const notifRef    = useRef(null);
   const router = useRouter();
 
   const supabase = createBrowserClient(
@@ -67,11 +81,40 @@ export default function AdminNavigation() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
 
-  // Close dropdown on outside click
+  const unreadCount = notifications.filter((n) => !n.read_at).length;
+
+  const fetchNotifications = useCallback(async () => {
+    setNotifLoading(true);
+    try {
+      const res = await fetch('/api/notifications');
+      if (res.ok) setNotifications(await res.json());
+    } finally {
+      setNotifLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+
+  const markAllRead = async () => {
+    await fetch('/api/notifications', { method: 'PATCH' });
+    setNotifications((prev) => prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+  };
+
+  const markRead = async (id, link) => {
+    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read_at: n.read_at ?? new Date().toISOString() } : n));
+    await fetch(`/api/notifications/${id}`, { method: 'PATCH' });
+    setNotifOpen(false);
+    if (link) router.push(link);
+  };
+
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setDropdownOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -221,6 +264,66 @@ export default function AdminNavigation() {
             </div>
 
             <ThemeToggle />
+
+            {/* Notification Bell */}
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => { setNotifOpen((o) => !o); if (!notifOpen) fetchNotifications(); }}
+                className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notifOpen && (
+                <div className="absolute right-0 top-full mt-2 w-96 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</p>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllRead}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+
+                  {/* List */}
+                  <ul className="max-h-[420px] overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800">
+                    {notifLoading ? (
+                      <li className="px-4 py-6 text-center text-sm text-gray-400">Loading…</li>
+                    ) : notifications.length === 0 ? (
+                      <li className="px-4 py-6 text-center text-sm text-gray-400">No notifications yet</li>
+                    ) : notifications.map((n) => (
+                      <li key={n.id}>
+                        <button
+                          onClick={() => markRead(n.id, n.link)}
+                          className={`w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${!n.read_at ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            {!n.read_at && (
+                              <span className="mt-1.5 w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                            )}
+                            <div className={!n.read_at ? '' : 'ml-4'}>
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-snug">{n.title}</p>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5 leading-snug">{n.body}</p>
+                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{timeAgo(n.created_at)}</p>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
 
             <Button
               variant="outline"

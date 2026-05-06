@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
@@ -9,7 +9,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
-  Mail, FileText, ArrowLeft, Loader2,
+  Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
+  Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
+  AlertTriangle,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -46,7 +48,502 @@ interface Event {
   location: string;
   image_url: string | null;
   status: string;
+  organization_id: string;
   shifts: Shift[];
+}
+
+interface OrgMember {
+  user_id: string;
+  email: string;
+  name: string | null;
+  role: string;
+}
+
+interface Assignment {
+  id: string;
+  event_id: string;
+  user_id: string | null;
+  email: string;
+  status: 'active' | 'pending' | 'expired' | 'revoked' | 'void';
+  expires_at: string;
+  invited_by: string;
+  user_name: string | null;
+  user_avatar: string | null;
+  inviter_name: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function statusBadge(status: Assignment['status']) {
+  const map: Record<string, string> = {
+    active:  'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    pending: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
+    expired: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+    revoked: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+    void:    'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+  };
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${map[status] ?? ''}`}>
+      {status}
+    </span>
+  );
+}
+
+function roleIcon(role: string) {
+  if (role === 'owner') return <Crown className="w-3.5 h-3.5 text-purple-500" />;
+  if (role === 'admin') return <Shield className="w-3.5 h-3.5 text-blue-500" />;
+  return <User className="w-3.5 h-3.5 text-gray-400" />;
+}
+
+// ---------------------------------------------------------------------------
+// Add Event Admin Modal
+// ---------------------------------------------------------------------------
+
+function AddAdminModal({
+  eventId,
+  orgId,
+  defaultExpiry,
+  onClose,
+  onAdded,
+}: {
+  eventId: string;
+  orgId: string;
+  defaultExpiry: string;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [query, setQuery]           = useState('');
+  const [members, setMembers]       = useState<OrgMember[]>([]);
+  const [filtered, setFiltered]     = useState<OrgMember[]>([]);
+  const [selected, setSelected]     = useState<OrgMember | null>(null);
+  const [externalEmail, setExternalEmail] = useState('');
+  const [expiresAt, setExpiresAt]   = useState(defaultExpiry);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState('');
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/organizations/${orgId}/members`)
+      .then((r) => r.json())
+      .then((data) => { setMembers(Array.isArray(data) ? data : []); setMembersLoaded(true); });
+    inputRef.current?.focus();
+  }, [orgId]);
+
+  useEffect(() => {
+    if (!query.trim()) { setFiltered([]); return; }
+    const q = query.toLowerCase();
+    setFiltered(
+      members.filter(
+        (m) =>
+          m.email?.toLowerCase().includes(q) ||
+          m.name?.toLowerCase().includes(q)
+      ).slice(0, 6)
+    );
+  }, [query, members]);
+
+  const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  const isExternal   = membersLoaded && !selected && isValidEmail(query) && filtered.length === 0;
+
+  async function submit() {
+    setError('');
+    const email = selected ? selected.email : query.trim();
+    if (!email || !isValidEmail(email)) { setError('Enter a valid email'); return; }
+    if (!expiresAt) { setError('Set an expiry date'); return; }
+
+    setSubmitting(true);
+    const res = await fetch(`/api/events/${eventId}/admins`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        expires_at: new Date(expiresAt).toISOString(),
+        user_id: selected?.user_id ?? null,
+      }),
+    });
+
+    const data = await res.json();
+    setSubmitting(false);
+
+    if (!res.ok) {
+      setError(data.error || 'Something went wrong');
+      return;
+    }
+    onAdded();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b dark:border-gray-800">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add Event Admin</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {/* Search / email field */}
+          <div className="relative">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Search member or enter email
+            </label>
+            {selected ? (
+              <div className="flex items-center gap-2 px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                {roleIcon(selected.role)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                    {selected.name || selected.email}
+                  </p>
+                  {selected.name && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{selected.email}</p>
+                  )}
+                </div>
+                <button onClick={() => { setSelected(null); setQuery(''); }} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Name or email…"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {filtered.length > 0 && (
+                  <ul className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                    {filtered.map((m) => (
+                      <li key={m.user_id}>
+                        <button
+                          onClick={() => { setSelected(m); setQuery(''); setFiltered([]); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
+                        >
+                          {roleIcon(m.role)}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                              {m.name || m.email}
+                            </p>
+                            {m.name && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{m.email}</p>
+                            )}
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            {isExternal && (
+              <p className="mt-1.5 text-xs text-blue-600 dark:text-blue-400">
+                Not an org member — an invitation email will be sent.
+              </p>
+            )}
+          </div>
+
+          {/* Expiry */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Access expires
+            </label>
+            <input
+              type="date"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-xs text-gray-400">Default: event end date + 5 days</p>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 py-4 border-t dark:border-gray-800">
+          <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button onClick={submit} disabled={submitting || (!selected && !isValidEmail(query))}>
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            {isExternal ? 'Send Invitation' : 'Add Admin'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Edit Expiry Modal
+// ---------------------------------------------------------------------------
+
+function EditExpiryModal({
+  assignment,
+  eventId,
+  onClose,
+  onSaved,
+}: {
+  assignment: Assignment;
+  eventId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const current = assignment.expires_at.split('T')[0];
+  const [expiresAt, setExpiresAt] = useState(current);
+  const [saving, setSaving]       = useState(false);
+
+  async function save() {
+    setSaving(true);
+    await fetch(`/api/events/${eventId}/admins/${assignment.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_expiry', expires_at: new Date(expiresAt).toISOString() }),
+    });
+    setSaving(false);
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b dark:border-gray-800">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Edit Expiry</h3>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+        </div>
+        <div className="px-6 py-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Updating expiry for <strong>{assignment.user_name || assignment.email}</strong>
+          </p>
+          <input
+            type="date"
+            value={expiresAt}
+            onChange={(e) => setExpiresAt(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t dark:border-gray-800">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Event Admins Tab
+// ---------------------------------------------------------------------------
+
+function EventAdminsTab({
+  eventId,
+  orgId,
+  orgPlan,
+  defaultExpiry,
+}: {
+  eventId: string;
+  orgId: string;
+  orgPlan: string;
+  defaultExpiry: string;
+}) {
+  const [assignments, setAssignments]     = useState<Assignment[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [showAddModal, setShowAddModal]   = useState(false);
+  const [editTarget, setEditTarget]       = useState<Assignment | null>(null);
+  const [revoking, setRevoking]           = useState<string | null>(null);
+  const [resending, setResending]         = useState<string | null>(null);
+
+  const isPaid = orgPlan !== 'free';
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch(`/api/events/${eventId}/admins`);
+    if (res.ok) setAssignments(await res.json());
+    setLoading(false);
+  }
+
+  useEffect(() => { if (isPaid) load(); else setLoading(false); }, [isPaid, eventId]);
+
+  async function revoke(id: string) {
+    setRevoking(id);
+    await fetch(`/api/events/${eventId}/admins/${id}`, { method: 'DELETE' });
+    setRevoking(null);
+    load();
+  }
+
+  async function resend(id: string) {
+    setResending(id);
+    await fetch(`/api/events/${eventId}/admins/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resend' }),
+    });
+    setResending(null);
+  }
+
+  const active  = assignments.filter((a) => ['active', 'pending'].includes(a.status));
+  const history = assignments.filter((a) => ['expired', 'revoked', 'void'].includes(a.status));
+
+  if (!isPaid) {
+    return (
+      <Card className="p-8 text-center">
+        <ShieldCheck className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+        <p className="text-gray-700 dark:text-gray-300 font-medium mb-1">Event Admin is a paid feature</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Upgrade your plan to assign Event Admins and enable cross-organization collaboration.
+        </p>
+        <Button variant="outline" disabled>Add Event Admin</Button>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Event Admins can view registrations and manage check-ins for this event only.
+        </p>
+        <Button onClick={() => setShowAddModal(true)} className="gap-2">
+          <Plus className="w-4 h-4" /> Add Event Admin
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+        </div>
+      ) : (
+        <>
+          {active.length === 0 ? (
+            <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
+              No Event Admins assigned yet.
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {active.map((a) => {
+                const expired = new Date(a.expires_at) < new Date();
+                return (
+                  <Card key={a.id} className="px-5 py-4">
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {a.user_name || a.email}
+                          </p>
+                          {statusBadge(a.status)}
+                        </div>
+                        {a.user_name && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{a.email}</p>
+                        )}
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          Invited by {a.inviter_name} &middot; Expires{' '}
+                          <span className={expired ? 'text-red-500' : ''}>
+                            {new Date(a.expires_at).toLocaleDateString()}
+                          </span>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {a.status === 'pending' && (
+                          <button
+                            onClick={() => resend(a.id)}
+                            disabled={resending === a.id}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            title="Resend invitation"
+                          >
+                            {resending === a.id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <RefreshCw className="w-3.5 h-3.5" />}
+                            Resend
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setEditTarget(a)}
+                          className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                          title="Edit expiry"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => revoke(a.id)}
+                          disabled={revoking === a.id}
+                          className="p-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          title="Revoke access"
+                        >
+                          {revoking === a.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {history.length > 0 && (
+            <details className="mt-6">
+              <summary className="text-sm text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300 select-none">
+                Show history ({history.length})
+              </summary>
+              <div className="mt-2 space-y-2">
+                {history.map((a) => (
+                  <Card key={a.id} className="px-5 py-3 opacity-70">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {a.user_name || a.email}
+                          </p>
+                          {statusBadge(a.status)}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Invited by {a.inviter_name} &middot; Expired {new Date(a.expires_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </details>
+          )}
+        </>
+      )}
+
+      {showAddModal && (
+        <AddAdminModal
+          eventId={eventId}
+          orgId={orgId}
+          defaultExpiry={defaultExpiry}
+          onClose={() => setShowAddModal(false)}
+          onAdded={load}
+        />
+      )}
+
+      {editTarget && (
+        <EditExpiryModal
+          assignment={editTarget}
+          eventId={eventId}
+          onClose={() => setEditTarget(null)}
+          onSaved={load}
+        />
+      )}
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +559,9 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'shifts' | 'admins'>('shifts');
+  const [userRole, setUserRole]   = useState<string | null>(null);
+  const [orgPlan, setOrgPlan]     = useState<string>('free');
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -77,7 +577,8 @@ export default function AdminEventDetailPage() {
       .from('events')
       .select(`
         id, event_id, title, description, date, time,
-        location, image_url, status,
+        location, image_url, status, organization_id,
+        organizations!inner(plan),
         shifts (
           id, shift_id, name, description,
           start_time, end_time, capacity
@@ -91,6 +592,9 @@ export default function AdminEventDetailPage() {
       setLoading(false);
       return;
     }
+
+    const plan = (data as any).organizations?.plan ?? 'free';
+    setOrgPlan(plan);
 
     const shiftIds = (data.shifts ?? []).map((s) => s.id);
     const { data: regRows } = await supabase
@@ -107,7 +611,20 @@ export default function AdminEventDetailPage() {
       .map((s) => ({ ...s, filled: countMap[s.id] ?? 0 }))
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-    setEvent({ ...data, shifts: sorted });
+    setEvent({ ...data, shifts: sorted } as Event);
+
+    // Load current user's org role
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: membership } = await supabase
+        .from('organization_admins')
+        .select('role')
+        .eq('organization_id', (data as any).organization_id)
+        .eq('user_id', user.id)
+        .single();
+      setUserRole(membership?.role ?? null);
+    }
+
     setLoading(false);
   }
 
@@ -117,7 +634,6 @@ export default function AdminEventDetailPage() {
       return;
     }
 
-    // Load volunteers for this shift if not already loaded
     const shift = event?.shifts.find((s) => s.id === shiftId);
     if (shift && !shift.volunteers) {
       setLoadingVolunteers(shiftId);
@@ -141,6 +657,24 @@ export default function AdminEventDetailPage() {
 
     setExpanded(shiftId);
   }
+
+  // Compute default expiry: latest shift end + 5 days, or event date + 5 days
+  function defaultExpiry(): string {
+    if (!event) return '';
+    let base: Date;
+    if (event.shifts.length > 0) {
+      const latest = event.shifts.reduce((max, s) =>
+        new Date(s.end_time) > new Date(max.end_time) ? s : max
+      );
+      base = new Date(latest.end_time);
+    } else {
+      base = new Date(`${event.date}T${event.time}`);
+    }
+    base.setDate(base.getDate() + 5);
+    return base.toISOString().split('T')[0];
+  }
+
+  const canManageAdmins = userRole === 'owner' || userRole === 'admin';
 
   // ---------------------------------------------------------------------------
   // Render
@@ -242,95 +776,133 @@ export default function AdminEventDetailPage() {
           </div>
         </Card>
 
-        {/* Shifts */}
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          Shifts ({event.shifts.length})
-        </h2>
-
-        {event.shifts.length === 0 ? (
-          <Card className="p-8 text-center text-gray-500">
-            No shifts added yet.
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {event.shifts.map((shift) => {
-              const isOpen   = expanded === shift.id;
-              const isFull   = (shift.filled ?? 0) >= shift.capacity;
-              const start    = new Date(shift.start_time);
-              const end      = new Date(shift.end_time);
-
-              return (
-                <Card key={shift.id} className="overflow-hidden">
-                  {/* Shift row */}
-                  <button
-                    className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                    onClick={() => toggleShift(shift.id)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                        {start.toLocaleDateString()} &nbsp;
-                        {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        {' – '}
-                        {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      {shift.description && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 ml-4">
-                      <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${
-                        isFull
-                          ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                      }`}>
-                        {shift.filled ?? 0}/{shift.capacity}
-                      </span>
-                      {loadingVolunteers === shift.id
-                        ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                        : isOpen
-                          ? <ChevronUp className="w-4 h-4 text-gray-400" />
-                          : <ChevronDown className="w-4 h-4 text-gray-400" />
-                      }
-                    </div>
-                  </button>
-
-                  {/* Volunteer list */}
-                  {isOpen && (
-                    <div className="border-t dark:border-gray-700 px-5 py-4 bg-gray-50 dark:bg-gray-800/50">
-                      {!shift.volunteers || shift.volunteers.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No volunteers registered yet.</p>
-                      ) : (
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                              <th className="pb-2 font-medium">Name</th>
-                              <th className="pb-2 font-medium">Email</th>
-                              <th className="pb-2 font-medium">Phone</th>
-                              <th className="pb-2 font-medium">Registered</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {shift.volunteers.map((v) => (
-                              <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                <td className="py-2 pr-4 font-medium">{v.name}</td>
-                                <td className="py-2 pr-4">{v.email}</td>
-                                <td className="py-2 pr-4">{v.phone ?? '—'}</td>
-                                <td className="py-2 text-gray-400 dark:text-gray-500">
-                                  {new Date(v.registered_at).toLocaleDateString()}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
+        {/* Tabs — only show Event Admins tab to org admins/owners */}
+        {canManageAdmins && (
+          <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+            <button
+              onClick={() => setActiveTab('shifts')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'shifts'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              Shifts ({event.shifts.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('admins')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'admins'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Event Admins
+            </button>
           </div>
+        )}
+
+        {/* Tab content */}
+        {activeTab === 'admins' && canManageAdmins ? (
+          <EventAdminsTab
+            eventId={event.id}
+            orgId={event.organization_id}
+            orgPlan={orgPlan}
+            defaultExpiry={defaultExpiry()}
+          />
+        ) : (
+          <>
+            {!canManageAdmins && (
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                Shifts ({event.shifts.length})
+              </h2>
+            )}
+
+            {event.shifts.length === 0 ? (
+              <Card className="p-8 text-center text-gray-500">
+                No shifts added yet.
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {event.shifts.map((shift) => {
+                  const isOpen   = expanded === shift.id;
+                  const isFull   = (shift.filled ?? 0) >= shift.capacity;
+                  const start    = new Date(shift.start_time);
+                  const end      = new Date(shift.end_time);
+
+                  return (
+                    <Card key={shift.id} className="overflow-hidden">
+                      <button
+                        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        onClick={() => toggleShift(shift.id)}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                            {start.toLocaleDateString()} &nbsp;
+                            {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {' – '}
+                            {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          {shift.description && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 ml-4">
+                          <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${
+                            isFull
+                              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                              : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                          }`}>
+                            {shift.filled ?? 0}/{shift.capacity}
+                          </span>
+                          {loadingVolunteers === shift.id
+                            ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                            : isOpen
+                              ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                              : <ChevronDown className="w-4 h-4 text-gray-400" />
+                          }
+                        </div>
+                      </button>
+
+                      {isOpen && (
+                        <div className="border-t dark:border-gray-700 px-5 py-4 bg-gray-50 dark:bg-gray-800/50">
+                          {!shift.volunteers || shift.volunteers.length === 0 ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">No volunteers registered yet.</p>
+                          ) : (
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                                  <th className="pb-2 font-medium">Name</th>
+                                  <th className="pb-2 font-medium">Email</th>
+                                  <th className="pb-2 font-medium">Phone</th>
+                                  <th className="pb-2 font-medium">Registered</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {shift.volunteers.map((v) => (
+                                  <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                                    <td className="py-2 pr-4 font-medium">{v.name}</td>
+                                    <td className="py-2 pr-4">{v.email}</td>
+                                    <td className="py-2 pr-4">{v.phone ?? '—'}</td>
+                                    <td className="py-2 text-gray-400 dark:text-gray-500">
+                                      {new Date(v.registered_at).toLocaleDateString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
     </>
