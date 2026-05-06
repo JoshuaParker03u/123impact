@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { use } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,6 +59,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export default function EventSignup({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params)
+  const searchParams = useSearchParams()
+  const refToken = searchParams.get('ref')
 
   const [event, setEvent]                 = useState<Event | null>(null)
   const [shifts, setShifts]               = useState<Shift[]>([])
@@ -84,6 +87,15 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
         // GET /api/events/:id/shifts  — public
         const shiftsData = await apiFetch<Shift[]>(`events/${eventData.id}/shifts`)
         setShifts(shiftsData)
+
+        // Record anonymous QR scan if a ref token is present
+        if (refToken) {
+          fetch('/api/qr/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ref_token: refToken, event_id: eventData.id }),
+          }).catch(() => {}) // fire-and-forget, never block registration
+        }
       } catch (err) {
         setPageError(err instanceof Error ? err.message : 'Failed to load event')
       } finally {

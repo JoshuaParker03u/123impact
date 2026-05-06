@@ -276,7 +276,7 @@ export default function AdminEventsPage() {
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <Link href={`/events/${event.event_id}/signup`} className="group">
+                          <Link href={`/admin/events/${event.event_id}`} className="group">
                             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{event.title}</h2>
                           </Link>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusBadgeClass[event.status] ?? statusBadgeClass.completed}`}>

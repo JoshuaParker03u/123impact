@@ -48,7 +48,11 @@ function LoginContent() {
         if (user) {
           console.log('User already logged in, redirecting...')
           const redirectTo = searchParams.get('redirect')
-          if (redirectTo && (redirectTo.startsWith('/invite/') || redirectTo.startsWith('/event-invite/'))) {
+          if (redirectTo && (
+            redirectTo.startsWith('/invite/') ||
+            redirectTo.startsWith('/event-invite/') ||
+            redirectTo.startsWith('/events/')
+          )) {
             router.push(redirectTo)
           } else {
             router.push('/dashboard')

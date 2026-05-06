@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
-  AlertTriangle,
+  AlertTriangle, QrCode, Download,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -547,6 +548,252 @@ function EventAdminsTab({
 }
 
 // ---------------------------------------------------------------------------
+// QR Codes Tab
+// ---------------------------------------------------------------------------
+
+interface QRInstance {
+  id: string;
+  label: string;
+  ref_token: string;
+  is_active: boolean;
+  scan_count: number;
+  created_at: string;
+}
+
+function QRCodesTab({ eventId }: { eventId: string }) {
+  const [instances, setInstances]         = useState<QRInstance[]>([]);
+  const [eventSlug, setEventSlug]         = useState('');
+  const [loading, setLoading]             = useState(true);
+  const [adding, setAdding]               = useState(false);
+  const [newLabel, setNewLabel]           = useState('');
+  const [showAddForm, setShowAddForm]     = useState(false);
+  const [regenerating, setRegenerating]   = useState<string | null>(null);
+  const [previewId, setPreviewId]         = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`/api/events/${eventId}/qr-instances`);
+    if (res.ok) {
+      const json = await res.json();
+      setInstances(json.instances ?? []);
+      setEventSlug(json.event_slug ?? '');
+    }
+    setLoading(false);
+  }, [eventId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function signupUrl(refToken: string) {
+    const base = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${base}/events/${eventSlug}/signup?ref=${refToken}`;
+  }
+
+  function downloadPng(refToken: string, label: string) {
+    const canvas = document.getElementById(`qr-canvas-${refToken}`) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `qr-${label.replace(/\s+/g, '-').toLowerCase()}.png`;
+    a.click();
+  }
+
+  function downloadSvg(refToken: string, label: string) {
+    const svgEl = document.getElementById(`qr-svg-${refToken}`) as SVGElement | null;
+    if (!svgEl) return;
+    const blob = new Blob([svgEl.outerHTML], { type: 'image/svg+xml' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `qr-${label.replace(/\s+/g, '-').toLowerCase()}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function addInstance() {
+    if (!newLabel.trim()) return;
+    setAdding(true);
+    const res = await fetch(`/api/events/${eventId}/qr-instances`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: newLabel.trim() }),
+    });
+    setAdding(false);
+    if (res.ok) {
+      setNewLabel('');
+      setShowAddForm(false);
+      load();
+    }
+  }
+
+  async function regenerate(instanceId: string) {
+    if (!confirm('Regenerate this QR code? The old code will stop working immediately.')) return;
+    setRegenerating(instanceId);
+    const res = await fetch(`/api/events/${eventId}/qr-instances/${instanceId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'regenerate' }),
+    });
+    setRegenerating(null);
+    if (res.ok) load();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  const active = instances.filter((i) => i.is_active);
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Each placement gets a unique QR code. Scans are tracked anonymously (date only, no PII).
+          </p>
+        </div>
+        <Button onClick={() => setShowAddForm(true)} className="gap-2">
+          <Plus className="w-4 h-4" /> Add Placement
+        </Button>
+      </div>
+
+      {showAddForm && (
+        <Card className="p-4 mb-4 flex items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Placement label
+            </label>
+            <input
+              autoFocus
+              type="text"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addInstance()}
+              placeholder="e.g. Front Entrance, Parking Lot"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <Button onClick={addInstance} disabled={adding || !newLabel.trim()}>
+            {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
+          </Button>
+          <Button variant="outline" onClick={() => { setShowAddForm(false); setNewLabel(''); }}>
+            Cancel
+          </Button>
+        </Card>
+      )}
+
+      {active.length === 0 ? (
+        <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
+          No QR placements yet. Add one to get started.
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {active.map((inst) => {
+            const url = signupUrl(inst.ref_token);
+            return (
+              <Card key={inst.id} className="p-5">
+                <div className="flex items-start gap-5 flex-wrap">
+                  {/* QR preview toggle */}
+                  <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                    {/* Hidden canvases/svgs used for download */}
+                    <div className="hidden">
+                      <QRCodeCanvas
+                        id={`qr-canvas-${inst.ref_token}`}
+                        value={url}
+                        size={512}
+                        level="M"
+                      />
+                      <QRCodeSVG
+                        id={`qr-svg-${inst.ref_token}`}
+                        value={url}
+                        size={512}
+                        level="M"
+                      />
+                    </div>
+
+                    {previewId === inst.id ? (
+                      <div
+                        className="cursor-pointer"
+                        onClick={() => setPreviewId(null)}
+                        title="Click to hide"
+                      >
+                        <QRCodeSVG value={url} size={120} level="M" />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setPreviewId(inst.id)}
+                        className="w-[120px] h-[120px] border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                        title="Show QR preview"
+                      >
+                        <QrCode className="w-10 h-10" />
+                      </button>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      {previewId === inst.id ? 'Click to hide' : 'Click to preview'}
+                    </span>
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">{inst.label}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                      {inst.scan_count} scan{inst.scan_count !== 1 ? 's' : ''} &middot;{' '}
+                      Created {new Date(inst.created_at).toLocaleDateString()}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 truncate font-mono">{url}</p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => downloadPng(inst.ref_token, inst.label)}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      title="Download PNG"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      PNG
+                    </button>
+                    <button
+                      onClick={() => downloadSvg(inst.ref_token, inst.label)}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      title="Download SVG"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      SVG
+                    </button>
+                    <button
+                      onClick={() => regenerate(inst.id)}
+                      disabled={regenerating === inst.id}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                      title="Regenerate (invalidates old code)"
+                    >
+                      {regenerating === inst.id
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <RefreshCw className="w-3.5 h-3.5" />}
+                      Regenerate
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Type 2 note */}
+      <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm text-blue-700 dark:text-blue-300">
+        <strong>Personal check-in codes</strong> — Each registered volunteer has their own QR code
+        available after sign-up. Staff can scan it to check them in at the event. No configuration required.
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -559,7 +806,7 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'shifts' | 'admins'>('shifts');
+  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr'>('shifts');
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
 
@@ -578,13 +825,12 @@ export default function AdminEventDetailPage() {
       .select(`
         id, event_id, title, description, date, time,
         location, image_url, status, organization_id,
-        organizations!inner(plan),
         shifts (
           id, shift_id, name, description,
           start_time, end_time, capacity
         )
       `)
-      .eq('id', eventId)
+      .eq('event_id', eventId)
       .single();
 
     if (error || !data) {
@@ -593,8 +839,13 @@ export default function AdminEventDetailPage() {
       return;
     }
 
-    const plan = (data as any).organizations?.plan ?? 'free';
-    setOrgPlan(plan);
+    // Fetch org plan separately — column may not exist until migration runs
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('plan')
+      .eq('id', (data as any).organization_id)
+      .maybeSingle();
+    setOrgPlan((orgData as any)?.plan ?? 'free');
 
     const shiftIds = (data.shifts ?? []).map((s) => s.id);
     const { data: regRows } = await supabase
@@ -660,18 +911,29 @@ export default function AdminEventDetailPage() {
 
   // Compute default expiry: latest shift end + 5 days, or event date + 5 days
   function defaultExpiry(): string {
-    if (!event) return '';
-    let base: Date;
-    if (event.shifts.length > 0) {
-      const latest = event.shifts.reduce((max, s) =>
-        new Date(s.end_time) > new Date(max.end_time) ? s : max
-      );
-      base = new Date(latest.end_time);
-    } else {
-      base = new Date(`${event.date}T${event.time}`);
+    try {
+      if (!event) throw new Error('no event');
+      let base: Date | null = null;
+      if (event.shifts.length > 0) {
+        const latest = event.shifts.reduce((max, s) =>
+          new Date(s.end_time) > new Date(max.end_time) ? s : max
+        );
+        const d = new Date(latest.end_time);
+        if (!isNaN(d.getTime())) base = d;
+      }
+      if (!base) {
+        const d = new Date(event.date);
+        if (!isNaN(d.getTime())) base = d;
+      }
+      if (!base) throw new Error('invalid date');
+      base.setDate(base.getDate() + 5);
+      return base.toISOString().split('T')[0];
+    } catch {
+      // Fallback: 7 days from today
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return d.toISOString().split('T')[0];
     }
-    base.setDate(base.getDate() + 5);
-    return base.toISOString().split('T')[0];
   }
 
   const canManageAdmins = userRole === 'owner' || userRole === 'admin';
@@ -776,19 +1038,30 @@ export default function AdminEventDetailPage() {
           </div>
         </Card>
 
-        {/* Tabs — only show Event Admins tab to org admins/owners */}
-        {canManageAdmins && (
-          <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
-            <button
-              onClick={() => setActiveTab('shifts')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'shifts'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-            >
-              Shifts ({event.shifts.length})
-            </button>
+        {/* Tabs — always show QR tab; only show Event Admins to org admins/owners */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+          <button
+            onClick={() => setActiveTab('shifts')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'shifts'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            Shifts ({event.shifts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('qr')}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'qr'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <QrCode className="w-4 h-4" />
+            QR Codes
+          </button>
+          {canManageAdmins && (
             <button
               onClick={() => setActiveTab('admins')}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -800,8 +1073,8 @@ export default function AdminEventDetailPage() {
               <ShieldCheck className="w-4 h-4" />
               Event Admins
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Tab content */}
         {activeTab === 'admins' && canManageAdmins ? (
@@ -811,6 +1084,8 @@ export default function AdminEventDetailPage() {
             orgPlan={orgPlan}
             defaultExpiry={defaultExpiry()}
           />
+        ) : activeTab === 'qr' ? (
+          <QRCodesTab eventId={event.id} />
         ) : (
           <>
             {!canManageAdmins && (
