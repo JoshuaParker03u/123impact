@@ -125,8 +125,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   if ('error' in check) return NextResponse.json({ error: check.error }, { status: check.status as number });
 
   const { event } = check as any;
-  const { label } = await req.json();
+  const { label, type } = await req.json();
   if (!label?.trim()) return NextResponse.json({ error: 'Label is required' }, { status: 400 });
+  const instanceType = type === 'link' ? 'link' : 'qr';
 
   const { data: instance, error } = await service
     .from('qr_code_instances')
@@ -134,6 +135,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       event_id:        eventId,
       organization_id: event.organization_id,
       label:           label.trim(),
+      type:            instanceType,
     })
     .select()
     .single();

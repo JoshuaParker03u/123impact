@@ -8,11 +8,13 @@ import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
+import AnalyticsTab from './AnalyticsTab';
+import LiveTab from './LiveTab';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
-  AlertTriangle, QrCode, Download,
+  AlertTriangle, QrCode, Download, BarChart2, Radio, Link2,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -558,6 +560,7 @@ interface QRInstance {
   is_active: boolean;
   scan_count: number;
   created_at: string;
+  type: 'qr' | 'link';
 }
 
 function QRCodesTab({ eventId }: { eventId: string }) {
@@ -566,7 +569,7 @@ function QRCodesTab({ eventId }: { eventId: string }) {
   const [loading, setLoading]             = useState(true);
   const [adding, setAdding]               = useState(false);
   const [newLabel, setNewLabel]           = useState('');
-  const [showAddForm, setShowAddForm]     = useState(false);
+  const [showAddForm, setShowAddForm]     = useState<'qr' | 'link' | null>(null);
   const [regenerating, setRegenerating]   = useState<string | null>(null);
   const [previewId, setPreviewId]         = useState<string | null>(null);
 
@@ -611,17 +614,17 @@ function QRCodesTab({ eventId }: { eventId: string }) {
   }
 
   async function addInstance() {
-    if (!newLabel.trim()) return;
+    if (!newLabel.trim() || !showAddForm) return;
     setAdding(true);
     const res = await fetch(`/api/events/${eventId}/qr-instances`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: newLabel.trim() }),
+      body: JSON.stringify({ label: newLabel.trim(), type: showAddForm }),
     });
     setAdding(false);
     if (res.ok) {
       setNewLabel('');
-      setShowAddForm(false);
+      setShowAddForm(null);
       load();
     }
   }
@@ -651,21 +654,24 @@ function QRCodesTab({ eventId }: { eventId: string }) {
   return (
     <>
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Each placement gets a unique QR code. Scans are tracked anonymously (date only, no PII).
-          </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          QR placements and tracking links — all scans/clicks tracked anonymously (date only, no PII).
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowAddForm('link')} className="gap-1.5 text-sm">
+            <Link2 className="w-4 h-4" /> Tracking Link
+          </Button>
+          <Button onClick={() => setShowAddForm('qr')} className="gap-1.5 text-sm">
+            <Plus className="w-4 h-4" /> QR Placement
+          </Button>
         </div>
-        <Button onClick={() => setShowAddForm(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> Add Placement
-        </Button>
       </div>
 
       {showAddForm && (
         <Card className="p-4 mb-4 flex items-end gap-3">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Placement label
+              {showAddForm === 'link' ? 'Tracking link label' : 'Placement label'}
             </label>
             <input
               autoFocus
@@ -673,14 +679,14 @@ function QRCodesTab({ eventId }: { eventId: string }) {
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addInstance()}
-              placeholder="e.g. Front Entrance, Parking Lot"
+              placeholder={showAddForm === 'link' ? 'e.g. April newsletter, Instagram bio' : 'e.g. Front Entrance, Parking Lot'}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <Button onClick={addInstance} disabled={adding || !newLabel.trim()}>
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
           </Button>
-          <Button variant="outline" onClick={() => { setShowAddForm(false); setNewLabel(''); }}>
+          <Button variant="outline" onClick={() => { setShowAddForm(null); setNewLabel(''); }}>
             Cancel
           </Button>
         </Card>
@@ -693,87 +699,90 @@ function QRCodesTab({ eventId }: { eventId: string }) {
       ) : (
         <div className="space-y-3">
           {active.map((inst) => {
-            const url = signupUrl(inst.ref_token);
+            const url    = signupUrl(inst.ref_token);
+            const isLink = inst.type === 'link';
             return (
               <Card key={inst.id} className="p-5">
                 <div className="flex items-start gap-5 flex-wrap">
-                  {/* QR preview toggle */}
-                  <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                    {/* Hidden canvases/svgs used for download */}
-                    <div className="hidden">
-                      <QRCodeCanvas
-                        id={`qr-canvas-${inst.ref_token}`}
-                        value={url}
-                        size={512}
-                        level="M"
-                      />
-                      <QRCodeSVG
-                        id={`qr-svg-${inst.ref_token}`}
-                        value={url}
-                        size={512}
-                        level="M"
-                      />
-                    </div>
-
-                    {previewId === inst.id ? (
-                      <div
-                        className="cursor-pointer"
-                        onClick={() => setPreviewId(null)}
-                        title="Click to hide"
-                      >
-                        <QRCodeSVG value={url} size={120} level="M" />
+                  {/* QR preview (only for qr type) */}
+                  {!isLink && (
+                    <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                      <div className="hidden">
+                        <QRCodeCanvas id={`qr-canvas-${inst.ref_token}`} value={url} size={512} level="M" />
+                        <QRCodeSVG   id={`qr-svg-${inst.ref_token}`}   value={url} size={512} level="M" />
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => setPreviewId(inst.id)}
-                        className="w-[120px] h-[120px] border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
-                        title="Show QR preview"
-                      >
-                        <QrCode className="w-10 h-10" />
-                      </button>
-                    )}
-                    <span className="text-xs text-gray-400">
-                      {previewId === inst.id ? 'Click to hide' : 'Click to preview'}
-                    </span>
-                  </div>
+                      {previewId === inst.id ? (
+                        <div className="cursor-pointer" onClick={() => setPreviewId(null)} title="Click to hide">
+                          <QRCodeSVG value={url} size={120} level="M" />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setPreviewId(inst.id)}
+                          className="w-[120px] h-[120px] border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                        >
+                          <QrCode className="w-10 h-10" />
+                        </button>
+                      )}
+                      <span className="text-xs text-gray-400">
+                        {previewId === inst.id ? 'Click to hide' : 'Click to preview'}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-gray-100">{inst.label}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100">{inst.label}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        isLink
+                          ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      }`}>
+                        {isLink ? 'Tracking Link' : 'QR Code'}
+                      </span>
+                    </div>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                      {inst.scan_count} scan{inst.scan_count !== 1 ? 's' : ''} &middot;{' '}
+                      {inst.scan_count} {isLink ? 'click' : 'scan'}{inst.scan_count !== 1 ? 's' : ''} &middot;{' '}
                       Created {new Date(inst.created_at).toLocaleDateString()}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 truncate font-mono">{url}</p>
+                    {isLink && (
+                      <button
+                        onClick={() => navigator.clipboard.writeText(url)}
+                        className="mt-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        Copy link
+                      </button>
+                    )}
                   </div>
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => downloadPng(inst.ref_token, inst.label)}
-                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                      title="Download PNG"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      PNG
-                    </button>
-                    <button
-                      onClick={() => downloadSvg(inst.ref_token, inst.label)}
-                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                      title="Download SVG"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      SVG
-                    </button>
+                    {!isLink && (
+                      <>
+                        <button
+                          onClick={() => downloadPng(inst.ref_token, inst.label)}
+                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                          title="Download PNG"
+                        >
+                          <Download className="w-3.5 h-3.5" />PNG
+                        </button>
+                        <button
+                          onClick={() => downloadSvg(inst.ref_token, inst.label)}
+                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                          title="Download SVG"
+                        >
+                          <Download className="w-3.5 h-3.5" />SVG
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => regenerate(inst.id)}
                       disabled={regenerating === inst.id}
                       className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
-                      title="Regenerate (invalidates old code)"
+                      title="Regenerate (invalidates old token)"
                     >
-                      {regenerating === inst.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <RefreshCw className="w-3.5 h-3.5" />}
+                      {regenerating === inst.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                       Regenerate
                     </button>
                   </div>
@@ -784,10 +793,10 @@ function QRCodesTab({ eventId }: { eventId: string }) {
         </div>
       )}
 
-      {/* Type 2 note */}
+      {/* Personal check-in note */}
       <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm text-blue-700 dark:text-blue-300">
-        <strong>Personal check-in codes</strong> — Each registered volunteer has their own QR code
-        available after sign-up. Staff can scan it to check them in at the event. No configuration required.
+        <strong>Personal check-in codes</strong> — Each registrant also has their own unique QR code
+        for check-in on event day. Staff can scan it at the door. No setup required.
       </div>
     </>
   );
@@ -806,7 +815,7 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr'>('shifts');
+  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr' | 'analytics' | 'live'>('shifts');
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
 
@@ -1038,43 +1047,39 @@ export default function AdminEventDetailPage() {
           </div>
         </Card>
 
-        {/* Tabs — always show QR tab; only show Event Admins to org admins/owners */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
-          <button
-            onClick={() => setActiveTab('shifts')}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'shifts'
+        {/* Tabs */}
+        {(() => {
+          const isToday = event.date === new Date().toISOString().split('T')[0];
+          const tabClass = (active: boolean) =>
+            `flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+              active
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            Shifts ({event.shifts.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('qr')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'qr'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            <QrCode className="w-4 h-4" />
-            QR Codes
-          </button>
-          {canManageAdmins && (
-            <button
-              onClick={() => setActiveTab('admins')}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'admins'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              Event Admins
-            </button>
-          )}
-        </div>
+            }`;
+          return (
+            <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6">
+              <button onClick={() => setActiveTab('shifts')} className={tabClass(activeTab === 'shifts')}>
+                Shifts ({event.shifts.length})
+              </button>
+              <button onClick={() => setActiveTab('analytics')} className={tabClass(activeTab === 'analytics')}>
+                <BarChart2 className="w-4 h-4" />Analytics
+              </button>
+              {isToday && (
+                <button onClick={() => setActiveTab('live')} className={tabClass(activeTab === 'live')}>
+                  <Radio className="w-4 h-4" />Live
+                </button>
+              )}
+              <button onClick={() => setActiveTab('qr')} className={tabClass(activeTab === 'qr')}>
+                <QrCode className="w-4 h-4" />Marketing
+              </button>
+              {canManageAdmins && (
+                <button onClick={() => setActiveTab('admins')} className={tabClass(activeTab === 'admins')}>
+                  <ShieldCheck className="w-4 h-4" />Event Admins
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Tab content */}
         {activeTab === 'admins' && canManageAdmins ? (
@@ -1084,6 +1089,10 @@ export default function AdminEventDetailPage() {
             orgPlan={orgPlan}
             defaultExpiry={defaultExpiry()}
           />
+        ) : activeTab === 'analytics' ? (
+          <AnalyticsTab eventId={event.id} />
+        ) : activeTab === 'live' ? (
+          <LiveTab eventId={event.id} />
         ) : activeTab === 'qr' ? (
           <QRCodesTab eventId={event.id} />
         ) : (

@@ -536,14 +536,17 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
   const [formData, setFormData] = useState({
-    event_id: event?.event_id || '',
-    title: event?.title || '',
-    date: event?.date || '',
-    time: event?.time || '',
-    location: event?.location || '',
-    description: event?.description || '',
-    image_url: event?.image_url || '',
-    status: event?.status || 'active'
+    event_id:      event?.event_id      || '',
+    title:         event?.title         || '',
+    date:          event?.date          || '',
+    time:          event?.time          || '',
+    location:      event?.location      || '',
+    description:   event?.description   || '',
+    image_url:     event?.image_url     || '',
+    status:        event?.status        || 'active',
+    event_format:  event?.event_format  || 'in_person',
+    online_url:    event?.online_url    || '',
+    recording_url: event?.recording_url || '',
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -590,15 +593,18 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
         const { error } = await supabase
           .from('events')
           .insert({
-            event_id: formData.event_id,
-            title: formData.title,
-            date: formData.date,
-            time: formData.time,
-            location: formData.location,
-            description: formData.description,
-            image_url: formData.image_url,
-            status: formData.status,
-            organization_id: organizationId
+            event_id:      formData.event_id,
+            title:         formData.title,
+            date:          formData.date,
+            time:          formData.time,
+            location:      formData.location,
+            description:   formData.description,
+            image_url:     formData.image_url,
+            status:        formData.status,
+            event_format:  formData.event_format,
+            online_url:    formData.online_url || null,
+            recording_url: formData.recording_url || null,
+            organization_id: organizationId,
           });
         if (error) throw error;
       }
@@ -678,6 +684,39 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
             </div>
 
             <div>
+              <label className="block text-sm font-medium mb-1">Event Format</label>
+              <div className="flex gap-2">
+                {[['in_person', 'In Person'], ['online', 'Online'], ['hybrid', 'Hybrid']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, event_format: val })}
+                    className={`flex-1 py-2 rounded-md text-sm font-medium border transition-colors ${
+                      formData.event_format === val
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {(formData.event_format === 'online' || formData.event_format === 'hybrid') && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Online URL (Zoom, livestream, etc.)</label>
+                <input
+                  type="url"
+                  value={formData.online_url}
+                  onChange={(e) => setFormData({ ...formData, online_url: e.target.value })}
+                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                  placeholder="https://zoom.us/j/..."
+                />
+              </div>
+            )}
+
+            <div>
               <label className="block text-sm font-medium mb-1">Description (optional)</label>
               <textarea
                 value={formData.description}
@@ -695,6 +734,17 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
                 onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 placeholder="https://..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Recording URL (optional — add after the event)</label>
+              <input
+                type="url"
+                value={formData.recording_url}
+                onChange={(e) => setFormData({ ...formData, recording_url: e.target.value })}
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                placeholder="https://youtube.com/watch?v=..."
               />
             </div>
 

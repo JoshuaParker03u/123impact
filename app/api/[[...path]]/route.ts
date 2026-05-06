@@ -497,17 +497,20 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // Inserts into volunteer_registrations and queues automated emails.
     if (seg.length === 1 && seg[0] === 'volunteer-registrations') {
       const body = await request.json();
-      const { shift_id, name, email, phone } = body;
+      const { shift_id, name, email, phone, attendee_type } = body;
 
       if (!shift_id || !name || !email) {
         return fail('shift_id, name, and email are required');
       }
 
+      const validTypes = ['volunteer', 'attendee', 'speaker'];
+      const resolvedType = validTypes.includes(attendee_type) ? attendee_type : 'volunteer';
+
       const supabase = buildServiceClient();
 
       const { data: registration, error: regError } = await supabase
         .from('volunteer_registrations')
-        .insert({ shift_id, name, email, phone: phone ?? null })
+        .insert({ shift_id, name, email, phone: phone ?? null, attendee_type: resolvedType })
         .select()
         .single();
 

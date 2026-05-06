@@ -67,7 +67,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   const [loading, setLoading]             = useState(true)
   const [pageError, setPageError]         = useState<string | null>(null)
   const [selectedShift, setSelectedShift] = useState<string | null>(null)
-  const [formData, setFormData]           = useState({ name: '', email: '', phone: '' })
+  const [formData, setFormData]           = useState({ name: '', email: '', phone: '', attendee_type: 'volunteer' })
   const [submitted, setSubmitted]         = useState(false)
   const [submitting, setSubmitting]       = useState(false)
   const [errors, setErrors]               = useState<Record<string, string>>({})
@@ -154,10 +154,11 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
       await apiFetch('volunteer-registrations', {
         method: 'POST',
         body: JSON.stringify({
-          shift_id: selectedShift,
-          name:     formData.name,
-          email:    formData.email.toLowerCase(),
-          phone:    formData.phone.trim() || null,
+          shift_id:      selectedShift,
+          name:          formData.name,
+          email:         formData.email.toLowerCase(),
+          phone:         formData.phone.trim() || null,
+          attendee_type: formData.attendee_type,
         }),
       })
 
@@ -363,6 +364,26 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label>I am registering as a *</Label>
+                <div className="flex gap-2 mt-1">
+                  {[['volunteer', 'Volunteer'], ['attendee', 'Attendee'], ['speaker', 'Speaker']].map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => handleInputChange('attendee_type', val)}
+                      className={`flex-1 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        formData.attendee_type === val
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <Label htmlFor="name">Full Name *</Label>
                 <Input
