@@ -1,6 +1,6 @@
-import sgMail from '@sendgrid/mail';
+import { MailerSend, EmailParams as MSEmailParams, Sender, Recipient } from 'mailersend';
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY! });
 
 export interface EmailParams {
   to: string | string[];
@@ -8,57 +8,50 @@ export interface EmailParams {
   html: string;
   from?: {
     email: string;
-    name: string;
+    name?: string;
   };
 }
 
-export async function sendEmail(params: EmailParams) {
-  const { to, subject, html, from } = params;
-  
-  const msg = {
-    to: Array.isArray(to) ? to : [to],
-    from: from || {
-      email: process.env.SENDGRID_FROM_EMAIL!,
-      name: process.env.SENDGRID_FROM_NAME!,
-    },
-    subject,
-    html,
-  };
+function defaultSender(from?: EmailParams['from']) {
+  return new Sender(
+    from?.email ?? process.env.MAILERSEND_FROM_EMAIL!,
+    from?.name  ?? process.env.MAILERSEND_FROM_NAME
+  );
+}
 
+function toRecipients(to: string | string[]) {
+  return (Array.isArray(to) ? to : [to]).map((email) => new Recipient(email));
+}
+
+export async function sendEmail({ to, subject, html, from }: EmailParams) {
+  const params = new MSEmailParams()
+    .setFrom(defaultSender(from))
+    .setTo(toRecipients(to))
+    .setSubject(subject)
+    .setHtml(html);
   try {
-    await sgMail.send(msg);
+    await mailerSend.email.send(params);
     return { success: true };
   } catch (error: any) {
-    console.error('Email send error:', error);
-    return { 
-      success: false, 
-      error: error?.response?.body?.errors?.[0]?.message || error.message 
-    };
+    console.error('MailerSend error:', error);
+    return { success: false, error: error.message ?? 'Unknown error' };
   }
 }
 
-export async function sendBulkEmail(params: EmailParams & { bcc?: string[] }) {
-  const { to, subject, html, from, bcc } = params;
-  
-  const msg = {
-    to: Array.isArray(to) ? to[0] : to,
-    bcc: bcc || (Array.isArray(to) ? to.slice(1) : []),
-    from: from || {
-      email: process.env.SENDGRID_FROM_EMAIL!,
-      name: process.env.SENDGRID_FROM_NAME!,
-    },
-    subject,
-    html,
-  };
-
+export async function sendBulkEmail({ to, subject, html, bcc, from }: EmailParams & { bcc?: string[] }) {
+  const primaryTo = Array.isArray(to) ? to[0] : to;
+  const bccList   = bcc ?? (Array.isArray(to) ? to.slice(1) : []);
+  const params = new MSEmailParams()
+    .setFrom(defaultSender(from))
+    .setTo([new Recipient(primaryTo)])
+    .setBcc(bccList.map((email) => new Recipient(email)))
+    .setSubject(subject)
+    .setHtml(html);
   try {
-    await sgMail.send(msg);
+    await mailerSend.email.send(params);
     return { success: true };
   } catch (error: any) {
-    console.error('Bulk email send error:', error);
-    return { 
-      success: false, 
-      error: error?.response?.body?.errors?.[0]?.message || error.message 
-    };
+    console.error('MailerSend bulk error:', error);
+    return { success: false, error: error.message ?? 'Unknown error' };
   }
 }
