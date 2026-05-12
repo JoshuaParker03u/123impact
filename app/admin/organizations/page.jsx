@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
@@ -490,7 +490,7 @@ function MembersTab({ org, currentUserId, userRole }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
-export default function OrganizationsPage() {
+function OrganizationsPageContent() {
   const { currentOrganization, loading: orgLoading, refreshOrganizations, userRole } = useOrganization();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -736,5 +736,13 @@ export default function OrganizationsPage() {
         )}
       </div>
     </>
+  );
+}
+
+export default function OrganizationsPage() {
+  return (
+    <Suspense>
+      <OrganizationsPageContent />
+    </Suspense>
   );
 }
