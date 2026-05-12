@@ -20,6 +20,7 @@ function LoginContent() {
   const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -105,6 +106,12 @@ function LoginContent() {
 
     try {
       if (mode === 'signup') {
+        if (password !== confirmPassword) {
+          setError('Passwords do not match.')
+          setIsEmailLoading(false)
+          return
+        }
+
         // Sign up
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -123,6 +130,7 @@ function LoginContent() {
           setSuccess('Check your email for the verification link!')
           setEmail('')
           setPassword('')
+          setConfirmPassword('')
         }
       } else {
         // Sign in
@@ -210,6 +218,22 @@ function LoginContent() {
               />
             </div>
 
+            {mode === 'signup' && (
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  disabled={isEmailLoading}
+                />
+              </div>
+            )}
+
             <Button
               type="submit"
               disabled={isEmailLoading}
@@ -236,6 +260,7 @@ function LoginContent() {
                     setMode('signup')
                     setError(null)
                     setSuccess(null)
+                    setConfirmPassword('')
                   }}
                   className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
                 >
