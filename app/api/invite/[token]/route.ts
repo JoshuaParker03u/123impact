@@ -117,6 +117,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   if (action === 'accept') {
+    // Verify the logged-in user's email matches the invited email
+    if (user.email?.toLowerCase() !== invite.email?.toLowerCase()) {
+      return NextResponse.json(
+        { error: 'This invitation was sent to a different email address. Please sign in with the invited email.' },
+        { status: 403 }
+      );
+    }
+
     // Check not already a member
     const { data: existing } = await service
       .from('organization_admins')

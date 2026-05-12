@@ -81,7 +81,7 @@ async function sendInvitationEmail(
     <p style="color:#9ca3af;font-size:12px;margin-top:24px;">If you weren't expecting this invitation, you can ignore this email.</p>
   `);
 
-  await sendEmail({
+  return sendEmail({
     to: inviteeEmail,
     subject: `You've been invited to join ${orgName} on 123impact`,
     html,
@@ -215,8 +215,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || '';
-  sendInvitationEmail(inviterName, email, org?.name ?? 'an organization', role, invitation.token, expiresAt, origin)
-    .catch((e) => console.error('sendInvitationEmail error:', e));
+  const emailResult = await sendInvitationEmail(inviterName, email, org?.name ?? 'an organization', role, invitation.token, expiresAt, origin)
+    .catch((e) => ({ success: false, error: e.message }));
 
-  return NextResponse.json(invitation, { status: 201 });
+  if (emailResult && !emailResult.success) {
+    console.error('sendInvitationEmail failed:', emailResult.error);
+  }
+
+  return NextResponse.json({ ...invitation, email_sent: !emailResult || emailResult.success }, { status: 201 });
 }

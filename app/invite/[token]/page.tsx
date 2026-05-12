@@ -35,19 +35,38 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
 
   useEffect(() => {
     async function init() {
+      // Exchange OAuth code if present (client-side PKCE exchange, same as dashboard)
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      if (code) {
+        await supabase.auth.exchangeCodeForSession(code);
+        // Remove code from URL without triggering a reload
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
       const [{ data: { user: u } }, res] = await Promise.all([
         supabase.auth.getUser(),
         fetch(`/api/invite/${token}`),
       ]);
 
-      setUser(u);
-
       if (!res.ok) {
         const err = await res.json();
         setApiError(err.error ?? 'not_found');
-      } else {
-        setInvite(await res.json());
+        setLoading(false);
+        return;
       }
+
+      const inviteData = await res.json();
+      setInvite(inviteData);
+
+      // If a different user is logged in, sign them out so the invitee must authenticate
+      if (u && u.email?.toLowerCase() !== inviteData.email?.toLowerCase()) {
+        await supabase.auth.signOut();
+        setUser(null);
+      } else {
+        setUser(u);
+      }
+
       setLoading(false);
     }
     init();
@@ -73,10 +92,11 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
       }
       if (action === 'accept') {
         setDone('accepted');
-        setTimeout(() => router.push(data.redirect ?? '/admin/organizations'), 2000);
+        // Full reload so OrganizationContext re-fetches and picks up the new membership
+        setTimeout(() => { window.location.href = data.redirect ?? '/admin/organizations'; }, 2000);
       } else {
         setDone('declined');
-        setTimeout(() => router.push(data.redirect ?? '/'), 1500);
+        setTimeout(() => { window.location.href = data.redirect ?? '/'; }, 1500);
       }
     } finally {
       setActing(false);
@@ -140,14 +160,17 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
           <strong>{invite.inviter_name}</strong> has invited you to join as a{' '}
           <RolePill role={invite.role} />.
         </p>
-        <p className="text-sm text-gray-500 mb-6">
-          Log in or create an account to accept this invitation.
+        <p className="text-sm text-gray-500 mb-1">
+          Sign in with <span className="font-medium text-gray-700 dark:text-gray-300">{invite.email}</span> to accept.
+        </p>
+        <p className="text-xs text-gray-400 mb-6">
+          This invitation is tied to that email address.
         </p>
         <Button
           className="w-full bg-gradient-to-r from-blue-600 to-purple-600"
           onClick={() => router.push(`/login?redirect=/invite/${token}`)}
         >
-          Log in to accept
+          Sign in to accept
         </Button>
       </PageShell>
     );
@@ -161,7 +184,10 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
         <p>
           <strong>{invite.inviter_name}</strong> has invited you to join as a <RolePill role={invite.role} />.
         </p>
-        <p className="text-sm text-gray-400 flex items-center gap-1 justify-center">
+        <p className="text-sm text-gray-500 mt-1">
+          Invited: <span className="font-medium">{invite.email}</span>
+        </p>
+        <p className="text-sm text-gray-400 flex items-center gap-1 justify-center mt-1">
           <Clock className="w-3.5 h-3.5" />
           Expires {new Date(invite.expires_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
         </p>

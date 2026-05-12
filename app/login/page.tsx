@@ -2,7 +2,6 @@
 import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -44,9 +43,7 @@ function LoginContent() {
     const checkAndRedirect = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser()
-
         if (user) {
-          console.log('User already logged in, redirecting...')
           const redirectTo = searchParams.get('redirect')
           if (redirectTo && (
             redirectTo.startsWith('/invite/') ||
@@ -57,51 +54,31 @@ function LoginContent() {
           } else {
             router.push('/dashboard')
           }
-          router.refresh()
         }
       } catch (err) {
         console.error('Error checking session:', err)
       }
     }
-    
     checkAndRedirect()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
-      console.log('Auth event:', event)
-      
-      if (event === 'SIGNED_IN' && session) {
-        console.log('User signed in, redirecting...')
-        await new Promise(resolve => setTimeout(resolve, 100))
-        const redirectTo = searchParams.get('redirect')
-        if (redirectTo && (redirectTo.startsWith('/invite/') || redirectTo.startsWith('/event-invite/'))) {
-          router.push(redirectTo)
-        } else {
-          router.push('/dashboard')
-        }
-        router.refresh()
-      }
-      
-      if (event === 'SIGNED_OUT') {
-        console.log('User signed out')
-        router.push('/login')
-      }
-
-      if (event === 'TOKEN_REFRESHED') {
-        console.log('Token refreshed')
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [supabase, router])
+  }, [supabase, router, searchParams])
 
   const handleOAuthLogin = async (provider: 'google' | 'azure') => {
     try {
       setIsLoading(provider)
       setError(null)
-      
-      const { data, error } = await supabase.auth.signInWithOAuth({
+
+      const redirectParam = searchParams.get('redirect')
+      if (redirectParam && (
+        redirectParam.startsWith('/invite/') ||
+        redirectParam.startsWith('/event-invite/') ||
+        redirectParam.startsWith('/events/')
+      )) {
+        // Cookie survives the OAuth roundtrip; URL params may not
+        // Do NOT encodeURIComponent — slashes are safe in cookie values and encoding breaks startsWith checks
+        document.cookie = `oauth_redirect=${redirectParam}; path=/; max-age=300; SameSite=Lax`
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
@@ -149,14 +126,23 @@ function LoginContent() {
         }
       } else {
         // Sign in
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
 
         if (error) throw error
 
-        // Redirect will happen via onAuthStateChange
+        const redirectTo = searchParams.get('redirect')
+        if (redirectTo && (
+          redirectTo.startsWith('/invite/') ||
+          redirectTo.startsWith('/event-invite/') ||
+          redirectTo.startsWith('/events/')
+        )) {
+          router.push(redirectTo)
+        } else {
+          router.push('/dashboard')
+        }
       }
     } catch (err: any) {
       console.error('Email auth error:', err)
