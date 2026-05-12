@@ -146,13 +146,16 @@ export default function AdminNavigation() {
 
           {/* Left — Brand + Nav links */}
           <div className="flex items-center space-x-8">
-            <Link href="/dashboard" className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-2">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <Heart className="w-4 h-4 text-white" />
               </div>
               <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 123impact
               </span>
+            </Link>
+            <Link href="/dashboard" className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
+              Dashboard
             </Link>
             <Link href="/admin/events" className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
               Events
@@ -175,15 +178,6 @@ export default function AdminNavigation() {
                 Organizations
               </button>
             )}
-            <Link
-              href="/admin/messages"
-              className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-700 dark:text-gray-300"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              Messages
-            </Link>
           </div>
 
           {/* Right — Org switcher + Theme toggle + Sign out */}

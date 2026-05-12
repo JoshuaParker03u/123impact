@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import Header from '@/components/layout/Header'
+import AdminNavigation from '@/components/admin/AdminNavigation'
 
 export default async function Home() {
   const cookieStore = await cookies()
@@ -16,18 +16,17 @@ export default async function Home() {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             )
-          } catch { /* Server Component — safe to ignore */ }
+          } catch {}
         },
       },
     }
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (user) redirect('/admin/events')
 
   return (
     <>
-      <Header />
+      {user ? <AdminNavigation /> : <Header />}
       <main className="container mx-auto px-4 py-16">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">

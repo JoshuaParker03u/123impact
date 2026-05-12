@@ -1153,6 +1153,11 @@ export default function AdminEventDetailPage() {
 
             {/* Action buttons */}
             <div className="flex flex-col gap-2 shrink-0">
+              <Link href={`/events/${event.event_id}/signup`} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" className="w-full justify-start gap-2">
+                  <Link2 className="w-4 h-4" /> View Signup Page
+                </Button>
+              </Link>
               <Link href={`/admin/events/${event.id}/templates`}>
                 <Button variant="outline" className="w-full justify-start gap-2">
                   <FileText className="w-4 h-4" /> Email Templates

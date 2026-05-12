@@ -3,10 +3,9 @@
 import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Heart, LogOut, Sparkles, CheckCircle2, LayoutDashboard, ShieldCheck, Calendar, Clock } from 'lucide-react'
-import ThemeToggle from '@/components/ThemeToggle'
+import { Sparkles, CheckCircle2, ShieldCheck, Calendar, Clock } from 'lucide-react'
+import AdminNavigation from '@/components/admin/AdminNavigation'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 
@@ -114,11 +113,6 @@ function DashboardContent() {
     handleAuthCallback()
   }, [supabase, router, searchParams])
 
-  const handleSignOut = async () => {
-    console.log('Dashboard: Signing out...')
-    await supabase.auth.signOut()
-    window.location.href = '/login'
-  }
 
   if (isLoading) {
     return (
@@ -133,25 +127,7 @@ function DashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <header className="sticky top-0 z-50 border-b bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-sm">
-              <Heart className="w-6 h-6 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              123impact
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button onClick={handleSignOut} variant="outline" className="gap-2 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
+      <AdminNavigation />
 
       <main className="container mx-auto px-4 py-8">
         {/* Email Verified Banner */}
@@ -227,18 +203,9 @@ function DashboardContent() {
               </p>
             </div>
 
-            <div className="mt-6">
-              {hasOrg ? (
-                <Link href="/admin/events">
-                  <Button className="gap-2 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
-                    <LayoutDashboard className="w-4 h-4" />
-                    Go to Admin Panel
-                  </Button>
-                </Link>
-              ) : eventAdminAssignments.length === 0 ? (
-                <p className="text-sm text-gray-500">You don't belong to any organization yet. Accept an invitation to get started.</p>
-              ) : null}
-            </div>
+            {!hasOrg && eventAdminAssignments.length === 0 && (
+              <p className="text-sm text-gray-500 mt-4">You don't belong to any organization yet. Accept an invitation to get started.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -250,6 +217,11 @@ function DashboardContent() {
                 <ShieldCheck className="w-5 h-5 text-blue-600" />
                 {hasOrg ? 'Events You\'re Managing' : 'Your Event Admin Access'}
               </CardTitle>
+              {hasOrg && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Events from other organizations where you have been assigned as Event Admin
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               {eventAdminAssignments.map((a: any) => (
@@ -264,18 +236,21 @@ function DashboardContent() {
                         </div>
                       )}
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{a.event.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{a.event.title}</p>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium">Event Admin</span>
+                        </div>
                         <p className="text-xs text-gray-500">{a.org.name}</p>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0 ml-4">
                       <div className="flex items-center gap-1 text-xs text-gray-400">
                         <Calendar className="w-3.5 h-3.5" />
-                        {new Date(a.event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {new Date(a.event.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
                       <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
                         <Clock className="w-3.5 h-3.5" />
-                        Access until {new Date(a.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        Access until {new Date(a.expires_at.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
                     </div>
                   </div>
