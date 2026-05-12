@@ -65,7 +65,7 @@ export default function AdminNavigation() {
     switchOrganization,
   } = useOrganizationSwitch();
 
-  const { refreshOrganizations } = useOrganization();
+  const { refreshOrganization } = useOrganization();
 
   const [dropdownOpen, setDropdownOpen]       = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -146,7 +146,7 @@ export default function AdminNavigation() {
     setShowCreateModal(false);
     // Pre-set localStorage so the refresh auto-selects the new org
     localStorage.setItem('123impact_current_org_id', newOrg.id);
-    await refreshOrganizations();
+    await refreshOrganization();
   };
 
   const navLinkClass = 'text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium';
@@ -175,10 +175,10 @@ export default function AdminNavigation() {
               <Link href="/admin/volunteers" className={navLinkClass}>Volunteers</Link>
               <Link href="/admin/analytics" className={navLinkClass}>Analytics</Link>
               {currentOrganization ? (
-                <Link href="/admin/organizations" className={navLinkClass}>Organizations</Link>
+                <Link href="/admin/organizations" className={navLinkClass}>Organization</Link>
               ) : (
                 <button onClick={() => setShowCreateModal(true)} className={navLinkClass}>
-                  Organizations
+                  Organization
                 </button>
               )}
             </div>
@@ -214,7 +214,7 @@ export default function AdminNavigation() {
               {dropdownOpen && (
                 <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
                   <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Your Organizations</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Your Organization</p>
                   </div>
                   <ul className="py-1 max-h-64 overflow-y-auto">
                     {availableOrganizations.length === 0 ? (
@@ -367,14 +367,14 @@ export default function AdminNavigation() {
               onClick={() => setMobileMenuOpen(false)}
               className="block px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 font-medium"
             >
-              Organizations
+              Organization
             </Link>
           ) : (
             <button
               onClick={() => { setMobileMenuOpen(false); setShowCreateModal(true); }}
               className="w-full text-left px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 font-medium"
             >
-              Organizations
+              Organization
             </button>
           )}
 

@@ -8,6 +8,25 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X } from 'lucide-react';
 
+const AVATAR_COLORS = [
+  'from-blue-500 to-blue-700',
+  'from-purple-500 to-purple-700',
+  'from-green-500 to-green-700',
+  'from-orange-500 to-orange-700',
+  'from-pink-500 to-pink-700',
+  'from-teal-500 to-teal-700',
+];
+
+function VolunteerAvatar({ name }) {
+  const initials = name ? name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() : '?';
+  const color = AVATAR_COLORS[(name?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length];
+  return (
+    <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white text-sm font-bold flex-shrink-0`}>
+      {initials}
+    </div>
+  );
+}
+
 export default function AdminVolunteersPage() {
   const { currentOrganization, loading: orgLoading } = useOrganization();
   const [volunteers, setVolunteers] = useState([]);
@@ -308,10 +327,15 @@ export default function AdminVolunteersPage() {
                     {filteredVolunteers.map((volunteer) => (
                       <tr key={volunteer.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                         <td className="p-4">
-                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.name}</p>
-                          <div className="flex items-center gap-3 mt-1 text-sm text-gray-600 dark:text-gray-400">
-                            <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{volunteer.email}</span>
-                            {volunteer.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{volunteer.phone}</span>}
+                          <div className="flex items-center gap-3">
+                            <VolunteerAvatar name={volunteer.name} />
+                            <div>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.name}</p>
+                              <div className="flex items-center gap-3 mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                                <a href={`mailto:${volunteer.email}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Mail className="w-3 h-3" />{volunteer.email}</a>
+                                {volunteer.phone && <a href={`tel:${volunteer.phone}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Phone className="w-3 h-3" />{volunteer.phone}</a>}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td className="p-4">
@@ -346,11 +370,14 @@ export default function AdminVolunteersPage() {
               {filteredVolunteers.map((volunteer) => (
                 <Card key={volunteer.id} className="p-4">
                   <div className="flex justify-between items-start">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{volunteer.name}</p>
-                      <div className="flex flex-col gap-0.5 mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        <span className="flex items-center gap-1"><Mail className="w-3 h-3 flex-shrink-0" />{volunteer.email}</span>
-                        {volunteer.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3 flex-shrink-0" />{volunteer.phone}</span>}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <VolunteerAvatar name={volunteer.name} />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{volunteer.name}</p>
+                        <div className="flex flex-col gap-0.5 mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                          <a href={`mailto:${volunteer.email}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate"><Mail className="w-3 h-3 flex-shrink-0" />{volunteer.email}</a>
+                          {volunteer.phone && <a href={`tel:${volunteer.phone}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Phone className="w-3 h-3 flex-shrink-0" />{volunteer.phone}</a>}
+                        </div>
                       </div>
                     </div>
                     <button

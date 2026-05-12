@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { User, Lock, Link2, Globe, Trash2 } from 'lucide-react'
+import { User, Lock, Link2, Globe, Trash2, LogOut as LeaveIcon } from 'lucide-react'
 import type { User as SupabaseUser, UserIdentity } from '@supabase/supabase-js'
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -73,6 +73,12 @@ export default function SettingsPage() {
   const [unlinkingId, setUnlinkingId]   = useState<string | null>(null)
   const [unlinkResult, setUnlinkResult] = useState<{ ok?: string; err?: string }>({})
 
+  // Organizations
+  const [orgs, setOrgs]               = useState<any[]>([])
+  const [leavingOrgId, setLeavingOrgId] = useState<string | null>(null)
+  const [leaveResult, setLeaveResult] = useState<{ ok?: string; err?: string }>({})
+  const [leavingInProgress, setLeavingInProgress] = useState<string | null>(null)
+
   // Delete account
   const [showDelete, setShowDelete]     = useState(false)
   const [deleteInput, setDeleteInput]   = useState('')
@@ -88,6 +94,10 @@ export default function SettingsPage() {
       setIdentities(user.identities ?? [])
       setLoading(false)
     })
+
+    fetch('/api/organizations/user')
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(({ data }) => setOrgs(data ?? []))
 
     try {
       setTimezones(Intl.supportedValuesOf('timeZone'))
@@ -167,6 +177,22 @@ export default function SettingsPage() {
       setUnlinkResult({ ok: `${PROVIDER_LABELS[identity.provider] ?? identity.provider} disconnected.` })
     }
     setUnlinkingId(null)
+  }
+
+  // --- Leave org ---
+  const leaveOrg = async (orgId: string) => {
+    setLeavingInProgress(orgId)
+    setLeaveResult({})
+    const res = await fetch(`/api/organizations/${orgId}/leave`, { method: 'DELETE' })
+    if (res.ok) {
+      setOrgs(prev => prev.filter(o => o.id !== orgId))
+      setLeaveResult({ ok: 'You have left the organization.' })
+    } else {
+      const { error } = await res.json()
+      setLeaveResult({ err: error })
+    }
+    setLeavingOrgId(null)
+    setLeavingInProgress(null)
   }
 
   // --- Delete account ---
@@ -303,6 +329,74 @@ export default function SettingsPage() {
             {unlinkResult.err && <p className="text-sm text-red-600 dark:text-red-400">{unlinkResult.err}</p>}
           </CardContent>
         </Card>
+
+        {/* Organizations */}
+        {orgs.length > 0 && (
+          <Card className="shadow-sm border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <LeaveIcon className="w-5 h-5 text-blue-600" /> Organizations
+              </CardTitle>
+              <CardDescription>Organizations you belong to. You can leave any organization as long as you are not its sole owner.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {leaveResult.ok  && <p className="text-sm text-green-600 dark:text-green-400">{leaveResult.ok}</p>}
+              {leaveResult.err && <p className="text-sm text-red-600 dark:text-red-400">{leaveResult.err}</p>}
+              {orgs.map(org => {
+                const initials = (org.name ?? '?').slice(0, 2).toUpperCase()
+                const isSoleOwner = org.role === 'owner'
+                const isConfirming = leavingOrgId === org.id
+                return (
+                  <div key={org.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {org.logo_url ? (
+                        <img src={org.logo_url} alt={org.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{org.name}</p>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${
+                          org.role === 'owner' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' :
+                          org.role === 'admin' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
+                          'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                        }`}>{org.role}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                      {isConfirming ? (
+                        <>
+                          <span className="text-xs text-gray-600 dark:text-gray-400">Leave {org.name}?</span>
+                          <Button size="sm" variant="outline"
+                            onClick={() => leaveOrg(org.id)}
+                            disabled={leavingInProgress === org.id}
+                            className="text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20 text-xs"
+                          >
+                            {leavingInProgress === org.id ? 'Leaving…' : 'Yes, leave'}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setLeavingOrgId(null)} className="text-xs">Cancel</Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isSoleOwner}
+                          onClick={() => { setLeavingOrgId(org.id); setLeaveResult({}) }}
+                          title={isSoleOwner ? 'Transfer ownership before leaving' : undefined}
+                          className={isSoleOwner ? 'opacity-40 cursor-not-allowed' : 'text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20'}
+                        >
+                          Leave
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Timezone */}
         <Card className="shadow-sm border-gray-200 dark:border-gray-700">

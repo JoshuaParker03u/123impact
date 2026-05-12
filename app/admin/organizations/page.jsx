@@ -5,7 +5,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Upload, Link as LinkIcon, X, Loader2, Check, AlertTriangle,
   UserPlus, Users, Mail, RefreshCw, Trash2, Crown, Shield, User,
@@ -493,6 +493,7 @@ function MembersTab({ org, currentUserId, userRole }) {
 export default function OrganizationsPage() {
   const { currentOrganization, loading: orgLoading, refreshOrganizations, userRole } = useOrganization();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [activeTab, setActiveTab]     = useState('settings');
   const [org, setOrg]                 = useState(null);
@@ -509,6 +510,10 @@ export default function OrganizationsPage() {
   const [form, setForm] = useState({
     name: '', description: '', contact_email: '', contact_phone: '', website: '', status: 'active',
   });
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'members') setActiveTab('members');
+  }, [searchParams]);
 
   useEffect(() => {
     if (!currentOrganization) return;
