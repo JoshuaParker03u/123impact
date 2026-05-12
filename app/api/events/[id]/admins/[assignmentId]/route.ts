@@ -41,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Verify caller is org admin for this event
   const { data: event } = await service
     .from('events')
-    .select('organization_id, title, organizations!inner(name)')
+    .select('organization_id, title, date, organizations!inner(name)')
     .eq('id', eventId)
     .single();
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -86,8 +86,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Can only resend pending invitations' }, { status: 400 });
     }
 
-    // Reset expiry to 7 days from now (or keep original — using 7 days for resend)
-    const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    // Expiry = event end date + 5 days; fall back to 7 days from now if event is past
+    const eventDate = new Date((event as any).date);
+    const defaultExpiry = new Date(eventDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+    const newExpiry = defaultExpiry > new Date()
+      ? defaultExpiry.toISOString()
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     await service
       .from('event_admin_assignments')
       .update({ expires_at: newExpiry, updated_at: new Date().toISOString() })

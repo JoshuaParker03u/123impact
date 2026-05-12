@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Heart, LogOut, Sparkles, CheckCircle2, LayoutDashboard } from 'lucide-react'
+import { Heart, LogOut, Sparkles, CheckCircle2, LayoutDashboard, ShieldCheck, Calendar, Clock } from 'lucide-react'
 import ThemeToggle from '@/components/ThemeToggle'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
@@ -16,6 +16,8 @@ function DashboardContent() {
   const [isFirstLogin, setIsFirstLogin] = useState(false)
   const [authProvider, setAuthProvider] = useState<string>('Unknown')
   const [showVerifiedBanner, setShowVerifiedBanner] = useState(false)
+  const [eventAdminAssignments, setEventAdminAssignments] = useState<any[]>([])
+  const [hasOrg, setHasOrg] = useState<boolean | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
@@ -88,7 +90,20 @@ function DashboardContent() {
         const accountAge = Date.now() - new Date(user.created_at).getTime()
         const fiveMinutes = 5 * 60 * 1000
         setIsFirstLogin(accountAge < fiveMinutes)
-        
+
+        // Load Event Admin assignments and org membership in parallel
+        const [assignmentsRes, orgsRes] = await Promise.all([
+          fetch('/api/users/me/event-admin-assignments'),
+          fetch('/api/organizations/user'),
+        ])
+        if (assignmentsRes.ok) setEventAdminAssignments(await assignmentsRes.json())
+        if (orgsRes.ok) {
+          const { data } = await orgsRes.json()
+          setHasOrg((data ?? []).length > 0)
+        } else {
+          setHasOrg(false)
+        }
+
         setIsLoading(false)
       } catch (err) {
         console.error('Dashboard: Unexpected error in fetchUser:', err)
@@ -213,15 +228,72 @@ function DashboardContent() {
             </div>
 
             <div className="mt-6">
-              <Link href="/admin/events">
-                <Button className="gap-2 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
-                  <LayoutDashboard className="w-4 h-4" />
-                  Go to Admin Panel
-                </Button>
-              </Link>
+              {hasOrg ? (
+                <Link href="/admin/events">
+                  <Button className="gap-2 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
+                    <LayoutDashboard className="w-4 h-4" />
+                    Go to Admin Panel
+                  </Button>
+                </Link>
+              ) : eventAdminAssignments.length === 0 ? (
+                <p className="text-sm text-gray-500">You don't belong to any organization yet. Accept an invitation to get started.</p>
+              ) : null}
             </div>
           </CardContent>
         </Card>
+
+        {/* Event Admin assignments */}
+        {eventAdminAssignments.length > 0 && (
+          <Card className="mt-6 shadow-sm border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-blue-600" />
+                {hasOrg ? 'Events You\'re Managing' : 'Your Event Admin Access'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {eventAdminAssignments.map((a: any) => (
+                <Link key={a.id} href={`/admin/events/${a.event.event_id}`} className="block">
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      {a.org.logo_url ? (
+                        <img src={a.org.logo_url} alt={a.org.name} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {a.org.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{a.event.title}</p>
+                        <p className="text-xs text-gray-500">{a.org.name}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <div className="flex items-center gap-1 text-xs text-gray-400">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {new Date(a.event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Access until {new Date(a.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* No org, no assignments — expired state */}
+        {hasOrg === false && eventAdminAssignments.length === 0 && !isLoading && (
+          <Card className="mt-6 shadow-sm border-gray-200 dark:border-gray-700">
+            <CardContent className="pt-6 text-center text-gray-500 text-sm">
+              Your Event Admin access has expired or you haven't been assigned to any events yet.
+              Contact the event organizer if you need continued access.
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   )

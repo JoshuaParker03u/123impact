@@ -127,6 +127,11 @@ function AddAdminModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
   const [membersLoaded, setMembersLoaded] = useState(false);
+  const [coSponsorOrg, setCoSponsorOrg]       = useState<{ id: string; name: string; logo_url: string | null } | null>(null);
+  const [isCosponsor, setIsCosponsor]         = useState(false);
+  const [orgSearchQuery, setOrgSearchQuery]   = useState('');
+  const [orgSearchResults, setOrgSearchResults] = useState<{ id: string; name: string; logo_url: string | null }[]>([]);
+  const [policyAccepted, setPolicyAccepted]   = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -151,11 +156,31 @@ function AddAdminModal({
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const isExternal   = membersLoaded && !selected && isValidEmail(query) && filtered.length === 0;
 
+  // Debounced org name search — filtered to invitee's orgs when email is known
+  useEffect(() => {
+    if (!isCosponsor || !orgSearchQuery.trim()) { setOrgSearchResults([]); return; }
+    const inviteeEmail = selected ? selected.email : (isExternal ? query.trim() : '');
+    const params = new URLSearchParams({ q: orgSearchQuery, excludeOrgId: orgId });
+    if (inviteeEmail) params.set('email', inviteeEmail);
+    const t = setTimeout(() => {
+      fetch(`/api/organizations/search?${params}`)
+        .then((r) => r.json())
+        .then((results) => setOrgSearchResults(Array.isArray(results) ? results : []))
+        .catch(() => setOrgSearchResults([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [orgSearchQuery, isCosponsor, selected, isExternal, query, orgId]);
+
   async function submit() {
     setError('');
     const email = selected ? selected.email : query.trim();
     if (!email || !isValidEmail(email)) { setError('Enter a valid email'); return; }
     if (!expiresAt) { setError('Set an expiry date'); return; }
+
+    if (isCosponsor && !policyAccepted && !isExternal) {
+      setError('Co-sponsor must accept the data usage policy');
+      return;
+    }
 
     setSubmitting(true);
     const res = await fetch(`/api/events/${eventId}/admins`, {
@@ -163,8 +188,11 @@ function AddAdminModal({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email,
-        expires_at: new Date(expiresAt).toISOString(),
-        user_id: selected?.user_id ?? null,
+        expires_at:           new Date(expiresAt).toISOString(),
+        user_id:              selected?.user_id ?? null,
+        co_sponsor:           isCosponsor && !!coSponsorOrg,
+        co_sponsor_org_id:    isCosponsor && coSponsorOrg ? coSponsorOrg.id : null,
+        data_policy_accepted: policyAccepted,
       }),
     });
 
@@ -266,6 +294,95 @@ function AddAdminModal({
             <p className="mt-1 text-xs text-gray-400">Default: event end date + 5 days</p>
           </div>
 
+          {/* Co-sponsor */}
+          <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-3 space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isCosponsor}
+                onChange={(e) => { setIsCosponsor(e.target.checked); setCoSponsorOrg(null); setOrgSearchQuery(''); setOrgSearchResults([]); setPolicyAccepted(false); }}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-purple-600 flex-shrink-0"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Mark as co-sponsor</span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  The co-sponsoring org's logo will appear on the event page.
+                </p>
+              </div>
+            </label>
+
+            {isCosponsor && (
+              <div className="pl-7 space-y-2">
+                {coSponsorOrg ? (
+                  <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-purple-300 dark:border-purple-700 bg-white dark:bg-gray-800">
+                    {coSponsorOrg.logo_url ? (
+                      <img src={coSponsorOrg.logo_url} alt={coSponsorOrg.name} className="w-5 h-5 rounded object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {coSponsorOrg.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-sm text-gray-900 dark:text-gray-100 flex-1">{coSponsorOrg.name}</span>
+                    <button onClick={() => { setCoSponsorOrg(null); setOrgSearchQuery(''); }} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={orgSearchQuery}
+                      onChange={(e) => setOrgSearchQuery(e.target.value)}
+                      placeholder="Search organization name…"
+                      className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    {orgSearchResults.length > 0 && (
+                      <ul className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                        {orgSearchResults.map((org) => (
+                          <li key={org.id}>
+                            <button
+                              onClick={() => { setCoSponsorOrg(org); setOrgSearchQuery(''); setOrgSearchResults([]); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
+                            >
+                              {org.logo_url ? (
+                                <img src={org.logo_url} alt={org.name} className="w-5 h-5 rounded object-cover flex-shrink-0" />
+                              ) : (
+                                <div className="w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                  {org.name.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <span className="text-sm text-gray-900 dark:text-gray-100">{org.name}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {!isExternal && coSponsorOrg && (
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={policyAccepted}
+                      onChange={(e) => setPolicyAccepted(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-gray-300 text-purple-600 flex-shrink-0"
+                    />
+                    <span className="text-xs text-gray-600 dark:text-gray-400">
+                      I confirm they agree to access registrant data only for coordinating this event.
+                    </span>
+                  </label>
+                )}
+
+                {isExternal && coSponsorOrg && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    The invitee will be asked to accept the data usage policy when they accept.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {error && (
             <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -276,7 +393,10 @@ function AddAdminModal({
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t dark:border-gray-800">
           <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-          <Button onClick={submit} disabled={submitting || (!selected && !isValidEmail(query))}>
+          <Button
+            onClick={submit}
+            disabled={submitting || (!selected && !isValidEmail(query)) || (isCosponsor && (!coSponsorOrg || (!isExternal && !policyAccepted)))}
+          >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             {isExternal ? 'Send Invitation' : 'Add Admin'}
           </Button>
@@ -856,20 +976,13 @@ export default function AdminEventDetailPage() {
       .maybeSingle();
     setOrgPlan((orgData as any)?.plan ?? 'free');
 
-    const shiftIds = (data.shifts ?? []).map((s) => s.id);
-    const { data: regRows } = await supabase
-      .from('volunteer_registrations')
-      .select('shift_id')
-      .in('shift_id', shiftIds);
-
-    const countMap = (regRows ?? []).reduce<Record<string, number>>((acc, r) => {
-      acc[r.shift_id] = (acc[r.shift_id] ?? 0) + 1;
-      return acc;
-    }, {});
+    // Fetch registration counts via API (works for both org admins and event admins)
+    const countsRes = await fetch(`/api/events/${data.id}/registration-counts`);
+    const countMap: Record<string, number> = countsRes.ok ? await countsRes.json() : {};
 
     const sorted = [...(data.shifts ?? [])]
       .map((s) => ({ ...s, filled: countMap[s.id] ?? 0 }))
-      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+      .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
     setEvent({ ...data, shifts: sorted } as Event);
 
@@ -897,18 +1010,15 @@ export default function AdminEventDetailPage() {
     const shift = event?.shifts.find((s) => s.id === shiftId);
     if (shift && !shift.volunteers) {
       setLoadingVolunteers(shiftId);
-      const { data } = await supabase
-        .from('volunteer_registrations')
-        .select('id, name, email, phone, registered_at')
-        .eq('shift_id', shiftId)
-        .order('registered_at', { ascending: true });
+      const res = await fetch(`/api/events/${event!.id}/shifts/${shiftId}/registrations`);
+      const data = res.ok ? await res.json() : [];
 
       setEvent((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
           shifts: prev.shifts.map((s) =>
-            s.id === shiftId ? { ...s, volunteers: data ?? [] } : s
+            s.id === shiftId ? { ...s, volunteers: data, filled: data.length } : s
           ),
         };
       });
@@ -918,27 +1028,37 @@ export default function AdminEventDetailPage() {
     setExpanded(shiftId);
   }
 
-  // Compute default expiry: latest shift end + 5 days, or event date + 5 days
+  // Compute default expiry: latest shift end + 5 days, or event date + 5 days.
+  // Shift end_time is stored as "HH:MM" (time input), so combine with event.date to get full datetime.
   function defaultExpiry(): string {
     try {
       if (!event) throw new Error('no event');
       let base: Date | null = null;
+
       if (event.shifts.length > 0) {
+        // Find the shift with the latest end_time (string compare works for "HH:MM")
         const latest = event.shifts.reduce((max, s) =>
-          new Date(s.end_time) > new Date(max.end_time) ? s : max
+          s.end_time > max.end_time ? s : max
         );
-        const d = new Date(latest.end_time);
+        // Combine event date with shift end time
+        const d = new Date(`${event.date}T${latest.end_time}`);
         if (!isNaN(d.getTime())) base = d;
       }
+
       if (!base) {
         const d = new Date(event.date);
         if (!isNaN(d.getTime())) base = d;
       }
+
       if (!base) throw new Error('invalid date');
       base.setDate(base.getDate() + 5);
+      // If computed expiry is in the past, use 7 days from today
+      if (base < new Date()) {
+        base = new Date();
+        base.setDate(base.getDate() + 7);
+      }
       return base.toISOString().split('T')[0];
     } catch {
-      // Fallback: 7 days from today
       const d = new Date();
       d.setDate(d.getDate() + 7);
       return d.toISOString().split('T')[0];
@@ -1112,8 +1232,8 @@ export default function AdminEventDetailPage() {
                 {event.shifts.map((shift) => {
                   const isOpen   = expanded === shift.id;
                   const isFull   = (shift.filled ?? 0) >= shift.capacity;
-                  const start    = new Date(shift.start_time);
-                  const end      = new Date(shift.end_time);
+                  const start    = new Date(`${event.date}T${shift.start_time}`);
+                  const end      = new Date(`${event.date}T${shift.end_time}`);
 
                   return (
                     <Card key={shift.id} className="overflow-hidden">

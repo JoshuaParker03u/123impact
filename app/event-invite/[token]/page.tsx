@@ -12,10 +12,12 @@ import { createBrowserClient } from '@supabase/ssr';
 // ---------------------------------------------------------------------------
 
 interface InviteData {
-  assignment_id: string;
-  status: string;
-  email: string;
-  expires_at: string;
+  assignment_id:  string;
+  status:         string;
+  email:          string;
+  expires_at:     string;
+  is_co_sponsor:  boolean;
+  co_sponsor_org: { name: string; logo_url: string | null } | null;
   event: { id: string; title: string; date: string; location: string };
   org:   { name: string; logo_url: string | null };
   inviter_name: string;
@@ -57,9 +59,10 @@ export default function EventInvitePage() {
   const [loading, setLoading]     = useState(true);
   const [loadError, setLoadError] = useState('');
   const [user, setUser]           = useState<any>(null);
-  const [acting, setActing]       = useState(false);
-  const [done, setDone]           = useState<'accepted' | 'declined' | null>(null);
+  const [acting, setActing]           = useState(false);
+  const [done, setDone]               = useState<'accepted' | 'declined' | null>(null);
   const [actionError, setActionError] = useState('');
+  const [policyAccepted, setPolicyAccepted] = useState(false);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,19 +71,37 @@ export default function EventInvitePage() {
 
   useEffect(() => {
     async function init() {
-      // Check auth
-      const { data: { user: u } } = await supabase.auth.getUser();
-      setUser(u);
+      // Exchange OAuth code if present (client-side PKCE exchange)
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      if (code) {
+        await supabase.auth.exchangeCodeForSession(code);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
 
-      // Load invite
-      const res = await fetch(`/api/event-invite/${token}`);
+      const [{ data: { user: u } }, res] = await Promise.all([
+        supabase.auth.getUser(),
+        fetch(`/api/event-invite/${token}`),
+      ]);
+
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         setLoadError(d.error || 'Invalid invitation link');
         setLoading(false);
         return;
       }
-      setInvite(await res.json());
+
+      const inviteData = await res.json();
+      setInvite(inviteData);
+
+      // Sign out wrong account so the invitee is forced to authenticate
+      if (u && u.email?.toLowerCase() !== inviteData.email?.toLowerCase()) {
+        await supabase.auth.signOut();
+        setUser(null);
+      } else {
+        setUser(u);
+      }
+
       setLoading(false);
     }
     init();
@@ -92,7 +113,7 @@ export default function EventInvitePage() {
     const res = await fetch(`/api/event-invite/${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, data_policy_accepted: policyAccepted }),
     });
     const data = await res.json();
     setActing(false);
@@ -220,9 +241,10 @@ export default function EventInvitePage() {
             </p>
           </div>
 
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 text-center">
-            Sign in or create an account to accept this invitation.
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 text-center">
+            Sign in with <span className="font-medium text-gray-800 dark:text-gray-200">{invite!.email}</span> to accept.
           </p>
+          <p className="text-xs text-gray-400 mb-4 text-center">This invitation is tied to that email address.</p>
           <Button
             className="w-full"
             onClick={() => router.push(`/login?redirect=/event-invite/${token}`)}
@@ -273,6 +295,37 @@ export default function EventInvitePage() {
           </p>
         </div>
 
+        {invite!.is_co_sponsor && invite!.co_sponsor_org && (
+          <div className="mb-4 space-y-3">
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20">
+              {invite!.co_sponsor_org.logo_url ? (
+                <img src={invite!.co_sponsor_org.logo_url} alt={invite!.co_sponsor_org.name} className="w-6 h-6 rounded object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  {invite!.co_sponsor_org.name.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">Accepting as co-sponsor representing</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{invite!.co_sponsor_org.name}</p>
+              </div>
+            </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={policyAccepted}
+                onChange={(e) => setPolicyAccepted(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 flex-shrink-0"
+              />
+              <span className="text-xs text-gray-600 dark:text-gray-400">
+                As a co-sponsor, I will have access to personally identifiable information about
+                event registrants for the purpose of coordinating this event. I agree not to use
+                this data outside the scope of the event and acknowledge the data usage terms of 123impact.
+              </span>
+            </label>
+          </div>
+        )}
+
         {actionError && (
           <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 mb-4">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -292,7 +345,7 @@ export default function EventInvitePage() {
           <Button
             className="flex-1"
             onClick={() => act('accept')}
-            disabled={acting}
+            disabled={acting || (invite!.is_co_sponsor && !policyAccepted)}
           >
             {acting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Accept

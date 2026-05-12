@@ -64,6 +64,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
   const [event, setEvent]                 = useState<Event | null>(null)
   const [shifts, setShifts]               = useState<Shift[]>([])
+  const [coSponsors, setCoSponsors]       = useState<{ id: string; name: string; logo_url: string | null }[]>([])
   const [loading, setLoading]             = useState(true)
   const [pageError, setPageError]         = useState<string | null>(null)
   const [selectedShift, setSelectedShift] = useState<string | null>(null)
@@ -87,6 +88,12 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
         // GET /api/events/:id/shifts  — public
         const shiftsData = await apiFetch<Shift[]>(`events/${eventData.id}/shifts`)
         setShifts(shiftsData)
+
+        // Fetch co-sponsors (fire-and-forget, non-blocking)
+        fetch(`/api/events/${eventData.id}/co-sponsors`)
+          .then(r => r.ok ? r.json() : [])
+          .then(setCoSponsors)
+          .catch(() => {})
 
         // Record anonymous QR scan if a ref token is present
         if (refToken) {
@@ -296,6 +303,26 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                 </div>
               </div>
               <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
+
+              {coSponsors.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Co-Hosted By</p>
+                  <div className="flex flex-wrap gap-3">
+                    {coSponsors.map((org) => (
+                      <div key={org.id} className="flex items-center gap-2">
+                        {org.logo_url ? (
+                          <img src={org.logo_url} alt={org.name} className="w-7 h-7 rounded-md object-cover" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                            {org.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{org.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 

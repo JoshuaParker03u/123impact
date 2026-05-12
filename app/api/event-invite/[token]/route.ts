@@ -34,7 +34,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: assignment } = await service
     .from('event_admin_assignments')
-    .select('*, events!inner(id, title, date, location, organization_id, organizations!inner(name, logo_url))')
+    .select('*, events!inner(id, title, date, location, organization_id, organizations!inner(name, logo_url)), co_sponsor_organization:organizations!event_admin_assignments_co_sponsor_org_id_fkey(id, name, logo_url)')
     .eq('token', token)
     .single();
 
@@ -55,11 +55,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const event = (assignment as any).events;
   const org = event.organizations;
 
+  const coSponsorOrg = (assignment as any).co_sponsor_organization ?? null;
+
   return NextResponse.json({
-    assignment_id: assignment.id,
-    status:        assignment.status,
-    email:         assignment.email,
-    expires_at:    assignment.expires_at,
+    assignment_id:  assignment.id,
+    status:         assignment.status,
+    email:          assignment.email,
+    expires_at:     assignment.expires_at,
+    is_co_sponsor:  assignment.co_sponsor || false,
+    co_sponsor_org: coSponsorOrg ? { name: coSponsorOrg.name, logo_url: coSponsorOrg.logo_url } : null,
     event: {
       id:       event.id,
       title:    event.title,
@@ -82,14 +86,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { data: { user } } = await session.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { action } = await req.json();
+  const body = await req.json();
+  const { action, data_policy_accepted } = body;
   if (!['accept', 'decline'].includes(action)) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   }
 
   const { data: assignment } = await service
     .from('event_admin_assignments')
-    .select('*, events!inner(id, title, organization_id, organizations!inner(name))')
+    .select('*, events!inner(id, title, organization_id, organizations!inner(name)), co_sponsor_organization:organizations!event_admin_assignments_co_sponsor_org_id_fkey(id, name, logo_url)')
     .eq('token', token)
     .single();
 
@@ -119,6 +124,29 @@ export async function POST(req: NextRequest, { params }: Params) {
   const event = (assignment as any).events;
   const org = event.organizations;
 
+  // Co-sponsor requires data policy acceptance
+  if (assignment.co_sponsor && !data_policy_accepted) {
+    return NextResponse.json({ error: 'You must accept the data usage policy to continue', code: 'POLICY_REQUIRED' }, { status: 400 });
+  }
+
+  // Co-sponsor requires recipient to actually be in the specified org
+  if (assignment.co_sponsor && assignment.co_sponsor_org_id) {
+    const { data: membership } = await service
+      .from('organization_admins')
+      .select('id')
+      .eq('organization_id', assignment.co_sponsor_org_id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!membership) {
+      const coSponsorOrgName = (assignment as any).co_sponsor_organization?.name ?? 'the specified organization';
+      return NextResponse.json(
+        { error: `You are not a member of ${coSponsorOrgName}. Contact the event organizer.`, code: 'NOT_ORG_MEMBER' },
+        { status: 403 }
+      );
+    }
+  }
+
   const expiryFormatted = new Date(assignment.expires_at).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   });
@@ -126,9 +154,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { error } = await service
     .from('event_admin_assignments')
     .update({
-      user_id:    user.id,
-      status:     'active',
-      updated_at: new Date().toISOString(),
+      user_id:                 user.id,
+      status:                  'active',
+      updated_at:              new Date().toISOString(),
+      data_policy_accepted_at: assignment.co_sponsor ? new Date().toISOString() : null,
     })
     .eq('id', assignment.id);
 

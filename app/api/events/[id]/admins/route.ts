@@ -115,7 +115,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const org = event.organizations as any;
 
   // Paid plan gate
-  if (org.plan === 'free') {
+  if (!org.plan || org.plan === 'free') {
     return NextResponse.json(
       { error: 'Event Admin requires a paid plan', code: 'REQUIRES_PAID_PLAN' },
       { status: 403 }
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const body = await req.json();
-  const { email, expires_at, user_id: targetUserId } = body;
+  const { email, expires_at, user_id: targetUserId, co_sponsor, co_sponsor_org_id, data_policy_accepted } = body;
   if (!email || !expires_at) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
@@ -151,12 +151,16 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { data: assignment, error } = await service
     .from('event_admin_assignments')
     .insert({
-      event_id:   eventId,
-      user_id:    targetUserId || null,
-      email:      normalizedEmail,
-      invited_by: user.id,
-      status:     isInternal ? 'active' : 'pending',
+      event_id:                eventId,
+      user_id:                 targetUserId || null,
+      email:                   normalizedEmail,
+      invited_by:              user.id,
+      status:                  isInternal ? 'active' : 'pending',
       expires_at,
+      co_sponsor:              co_sponsor || false,
+      co_sponsor_org_id:       co_sponsor_org_id || null,
+      data_policy_accepted_at: (co_sponsor && isInternal && data_policy_accepted)
+        ? new Date().toISOString() : null,
     })
     .select()
     .single();
