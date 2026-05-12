@@ -96,6 +96,7 @@ function LogoEditor({ currentLogoUrl, onChange }) {
               <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-600 dark:text-gray-400">Drag & drop or <span className="text-blue-600 dark:text-blue-400 font-medium">browse</span></p>
               <p className="text-xs text-gray-500 mt-1">JPG, PNG, SVG, WebP — max 5 MB</p>
+              <p className="text-xs text-gray-400 mt-0.5">Recommended: 256 × 256 px</p>
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/svg+xml,image/webp" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
             </div>
           )}
