@@ -222,5 +222,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     console.error('sendInvitationEmail failed:', emailResult.error);
   }
 
+  // Notify existing user via in-app bell
+  if (existingUser) {
+    await service.from('notifications').insert({
+      user_id: existingUser.id,
+      type:    'org_invitation',
+      title:   `You've been invited to join ${org?.name ?? 'an organization'}`,
+      body:    `${inviterName} invited you to join ${org?.name ?? 'an organization'} as ${role}. Click to view the invitation.`,
+      link:    `/invite/${invitation.token}`,
+    });
+  }
+
   return NextResponse.json({ ...invitation, email_sent: !emailResult || emailResult.success }, { status: 201 });
 }

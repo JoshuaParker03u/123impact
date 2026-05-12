@@ -130,6 +130,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       html,
     }).catch((e) => console.error('Resend event admin invite error:', e));
 
+    // Notify existing user via in-app bell
+    const { data: allInvitees } = await service.auth.admin.listUsers();
+    const searchEmail = (assignment.email ?? '').toLowerCase().trim();
+    const inviteeUser = (allInvitees?.users ?? []).find((u: any) => (u.email ?? '').toLowerCase().trim() === searchEmail);
+    if (inviteeUser) {
+      await service.from('notifications').insert({
+        user_id: inviteeUser.id,
+        type:    'event_admin_invited',
+        title:   `You've been invited to manage "${event.title}"`,
+        body:    `${inviterName} invited you to manage "${event.title}" hosted by ${org.name}. Access expires ${expiryFormatted}.`,
+        link:    `/event-invite/${assignment.token}`,
+      });
+    }
+
     return NextResponse.json({ success: true });
   }
 

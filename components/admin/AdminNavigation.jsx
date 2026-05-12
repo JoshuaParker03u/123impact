@@ -72,6 +72,7 @@ export default function AdminNavigation() {
   const [notifOpen, setNotifOpen]             = useState(false);
   const [notifications, setNotifications]     = useState([]);
   const [notifLoading, setNotifLoading]       = useState(false);
+  const [userName, setUserName]               = useState('');
   const dropdownRef = useRef(null);
   const notifRef    = useRef(null);
   const router = useRouter();
@@ -94,6 +95,15 @@ export default function AdminNavigation() {
   }, []);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const name = user.user_metadata?.full_name;
+      const email = user.email || '';
+      setUserName(name ? `${name} (${email})` : email);
+    });
+  }, []);
 
   const markAllRead = async () => {
     await fetch('/api/notifications', { method: 'PATCH' });
@@ -330,6 +340,11 @@ export default function AdminNavigation() {
               <LogOut className="w-4 h-4" />
               Sign Out
             </Button>
+            {userName && (
+              <span className="text-sm text-gray-600 dark:text-gray-400 font-medium pl-1">
+                {userName}
+              </span>
+            )}
           </div>
 
         </div>

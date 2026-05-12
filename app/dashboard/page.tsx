@@ -264,8 +264,9 @@ function DashboardContent() {
         {hasOrg === false && eventAdminAssignments.length === 0 && !isLoading && (
           <Card className="mt-6 shadow-sm border-gray-200 dark:border-gray-700">
             <CardContent className="pt-6 text-center text-gray-500 text-sm">
-              Your Event Admin access has expired or you haven't been assigned to any events yet.
-              Contact the event organizer if you need continued access.
+              You haven't been assigned as an Event Admin for any external events yet.
+              Invitations come from administrators at other organizations — reach out to
+              them directly if you're expecting access.
             </CardContent>
           </Card>
         )}

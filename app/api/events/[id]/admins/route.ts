@@ -212,6 +212,19 @@ export async function POST(req: NextRequest, { params }: Params) {
       subject: `${inviterName} invited you to manage "${event.title}"`,
       html,
     }).catch((e) => console.error('Event admin invite email error:', e));
+
+    // Notify existing user via in-app bell
+    const { data: allInvitees } = await service.auth.admin.listUsers();
+    const inviteeUser = (allInvitees?.users ?? []).find((u: any) => (u.email ?? '').toLowerCase() === normalizedEmail);
+    if (inviteeUser) {
+      await service.from('notifications').insert({
+        user_id: inviteeUser.id,
+        type:    'event_admin_invited',
+        title:   `You've been invited to manage "${event.title}"`,
+        body:    `${inviterName} invited you to manage "${event.title}" hosted by ${org.name}. Access expires ${expiryFormatted}.`,
+        link:    `/event-invite/${assignment.token}`,
+      });
+    }
   }
 
   return NextResponse.json(assignment, { status: 201 });

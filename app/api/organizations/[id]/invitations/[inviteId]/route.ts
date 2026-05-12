@@ -131,6 +131,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       html,
     }).catch((e) => console.error('resend email error:', e));
 
+    // Notify existing user via in-app bell
+    const inviteeUser = (allUsers.data?.users ?? []).find((u: any) => (u.email ?? '').toLowerCase() === invite.email);
+    if (inviteeUser) {
+      await service.from('notifications').insert({
+        user_id: inviteeUser.id,
+        type:    'org_invitation',
+        title:   `You've been invited to join ${orgRow.data?.name}`,
+        body:    `${inviterName} invited you to join ${orgRow.data?.name} as ${invite.role}. Click to view the invitation.`,
+        link:    `/invite/${invite.token}`,
+      });
+    }
+
     return NextResponse.json(data);
   }
 
