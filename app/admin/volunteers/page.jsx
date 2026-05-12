@@ -289,80 +289,97 @@ export default function AdminVolunteersPage() {
           </Card>
         )}
 
-        {/* Volunteers Table */}
+        {/* Volunteers Table — desktop */}
         {!loading && filteredVolunteers.length > 0 && (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                  <tr>
-                    <th className="text-left p-4 font-semibold">Volunteer</th>
-                    <th className="text-left p-4 font-semibold">Event</th>
-                    <th className="text-left p-4 font-semibold">Shift</th>
-                    <th className="text-left p-4 font-semibold">Registered</th>
-                    <th className="p-4" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredVolunteers.map((volunteer) => (
-                    <tr key={volunteer.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <td className="p-4">
-                        <div>
+          <>
+            <Card className="hidden sm:block overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+                    <tr>
+                      <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Volunteer</th>
+                      <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Event</th>
+                      <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Shift</th>
+                      <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Registered</th>
+                      <th className="p-4" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredVolunteers.map((volunteer) => (
+                      <tr key={volunteer.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="p-4">
                           <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.name}</p>
                           <div className="flex items-center gap-3 mt-1 text-sm text-gray-600 dark:text-gray-400">
-                            <span className="flex items-center gap-1">
-                              <Mail className="w-3 h-3" />
-                              {volunteer.email}
-                            </span>
-                            {volunteer.phone && (
-                              <span className="flex items-center gap-1">
-                                <Phone className="w-3 h-3" />
-                                {volunteer.phone}
-                              </span>
-                            )}
+                            <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{volunteer.email}</span>
+                            {volunteer.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{volunteer.phone}</span>}
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-gray-100">
-                            {volunteer.shifts?.events?.title || 'N/A'}
-                          </p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {volunteer.shifts?.events?.date || ''}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-gray-100">
-                            {volunteer.shifts?.name || 'N/A'}
-                          </p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {volunteer.shifts?.start_time || ''} - {volunteer.shifts?.end_time || ''}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          {new Date(volunteer.registered_at).toLocaleDateString()}
-                        </p>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() => removeVolunteer(volunteer)}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                          title="Remove from shift"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </td>
+                        <td className="p-4">
+                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.shifts?.events?.title || '—'}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.shifts?.events?.date || ''}</p>
+                        </td>
+                        <td className="p-4">
+                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.shifts?.name || '—'}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.shifts?.start_time || ''} - {volunteer.shifts?.end_time || ''}</p>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{new Date(volunteer.registered_at).toLocaleDateString()}</p>
+                        </td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => removeVolunteer(volunteer)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            title="Remove from shift"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* Volunteers Cards — mobile */}
+            <div className="sm:hidden space-y-3">
+              {filteredVolunteers.map((volunteer) => (
+                <Card key={volunteer.id} className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{volunteer.name}</p>
+                      <div className="flex flex-col gap-0.5 mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        <span className="flex items-center gap-1"><Mail className="w-3 h-3 flex-shrink-0" />{volunteer.email}</span>
+                        {volunteer.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3 flex-shrink-0" />{volunteer.phone}</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeVolunteer(volunteer)}
+                      className="ml-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors flex-shrink-0"
+                      title="Remove from shift"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Event</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.shifts?.events?.title || '—'}</p>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.shifts?.events?.date || ''}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Shift</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.shifts?.name || '—'}</p>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.shifts?.start_time || ''} – {volunteer.shifts?.end_time || ''}</p>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                    Registered {new Date(volunteer.registered_at).toLocaleDateString()}
+                  </p>
+                </Card>
+              ))}
             </div>
-          </Card>
+          </>
         )}
 
         {/* No Results After Filter */}

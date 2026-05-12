@@ -273,7 +273,7 @@ export default function AdminEventsPage() {
                 <Card key={event.id} className="overflow-hidden">
                   {/* Event Header */}
                   <div className="p-6">
-                    <div className="flex justify-between items-start mb-4">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <Link href={`/admin/events/${event.event_id}`} className="group">
@@ -305,7 +305,7 @@ export default function AdminEventsPage() {
                           <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
                         )}
                       </div>
-                      <div className="flex gap-2 ml-4">
+                      <div className="flex gap-2 mt-3 sm:mt-0 sm:ml-4">
                         <Button
                           variant="outline"
                           size="sm"
