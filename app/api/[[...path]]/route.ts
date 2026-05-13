@@ -325,7 +325,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           image_url, status, organization_id, created_at, updated_at
         `)
         .eq('event_id', seg[2])
-        .eq('status', 'active')
+        .neq('status', 'deleted')
         .single();
 
       if (error) return fail('Event not found', 404);

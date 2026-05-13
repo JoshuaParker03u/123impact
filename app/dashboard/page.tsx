@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
   Sparkles, CheckCircle2, ShieldCheck, Calendar, Clock, Users,
-  UserPlus, AlertTriangle, TrendingUp, ArrowRight, QrCode, Mail,
+  UserPlus, AlertTriangle, TrendingUp, ArrowRight, QrCode, Mail, Loader2,
 } from 'lucide-react'
 import AdminNavigation from '@/components/admin/AdminNavigation'
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal'
+import { getBrowserClient } from '@/lib/supabase'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 
@@ -50,6 +51,7 @@ function DashboardContent() {
   const [orgId, setOrgId]                       = useState<string | null>(null)
   const [summary, setSummary]                   = useState<any>(null)
   const [showCreateOrg, setShowCreateOrg]       = useState(false)
+  const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
 
   const router      = useRouter()
   const searchParams = useSearchParams()
@@ -132,11 +134,26 @@ function DashboardContent() {
       .then(data => { if (data) setSummary(data) })
   }, [orgId])
 
+  async function resolveStaleEvent(eventId: string, newStatus: 'completed' | 'cancelled') {
+    setResolvingEventId(eventId)
+    await getBrowserClient().from('events').update({ status: newStatus }).eq('id', eventId)
+    setSummary((prev: any) => ({
+      ...prev,
+      actionItems: {
+        ...prev.actionItems,
+        staleEvents: prev.actionItems.staleEvents.filter((e: any) => e.id !== eventId),
+      },
+    }))
+    setResolvingEventId(null)
+  }
+
   const today         = new Date().toISOString().split('T')[0]
   const todayEvent    = summary?.upcomingEvents?.find((e: any) => e.date === today) ?? null
   const upcomingOther = summary?.upcomingEvents?.filter((e: any) => e.date !== today) ?? []
+  const staleEvents   = summary?.actionItems?.staleEvents ?? []
   const actionCount   = (summary?.actionItems?.understaffedShifts ?? 0)
                       + (summary?.actionItems?.pendingInvitations ?? 0)
+                      + staleEvents.length
 
   if (isLoading) {
     return (
@@ -254,6 +271,46 @@ function DashboardContent() {
                     <ArrowRight className="w-3.5 h-3.5 text-blue-500" />
                   </div>
                 </Link>
+              )}
+              {staleEvents.length > 0 && (
+                <div className="w-full space-y-2">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                    Past events still active
+                  </p>
+                  {staleEvents.slice(0, 3).map((e: any) => (
+                    <div key={e.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-amber-900 dark:text-amber-200 truncate">{e.title}</p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400">{e.date}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {resolvingEventId === e.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => resolveStaleEvent(e.id, 'completed')}
+                              className="text-xs px-2 py-1 rounded border border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors"
+                            >
+                              Complete
+                            </button>
+                            <button
+                              onClick={() => resolveStaleEvent(e.id, 'cancelled')}
+                              className="text-xs px-2 py-1 rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {staleEvents.length > 3 && (
+                    <Link href="/admin/events" className="text-xs text-amber-600 dark:text-amber-400 hover:underline">
+                      +{staleEvents.length - 3} more →
+                    </Link>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>

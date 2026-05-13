@@ -23,6 +23,7 @@ type Event = {
   time: string
   location: string
   image_url: string | null
+  status: string
 }
 
 type Shift = {
@@ -72,6 +73,10 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   const [submitted, setSubmitted]         = useState(false)
   const [submitting, setSubmitting]       = useState(false)
   const [errors, setErrors]               = useState<Record<string, string>>({})
+
+  const isPast       = event ? new Date(event.date) < new Date(new Date().toDateString()) : false
+  const isCancelled  = event?.status === 'cancelled'
+  const isClosed     = event ? (event.status !== 'active' || isPast) : false
 
   // ── Fetch event + shifts ─────────────────────────────────────────────────
 
@@ -385,6 +390,21 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
           {/* Registration form */}
           <Card className="p-6">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Your Information</h2>
+            {isCancelled ? (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                <p className="text-red-800 dark:text-red-300 text-sm font-medium">
+                  This event has been cancelled. Registration is closed.
+                </p>
+              </div>
+            ) : isClosed ? (
+              <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <p className="text-amber-800 dark:text-amber-300 text-sm font-medium">
+                  This event has already taken place. Registration is closed.
+                </p>
+              </div>
+            ) : null}
             {errors.submit && (
               <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
                 <p className="text-red-600 dark:text-red-400 text-sm">{errors.submit}</p>
@@ -459,11 +479,11 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:shadow-lg"
                 size="lg"
-                disabled={submitting}
+                disabled={submitting || isClosed}
               >
                 {submitting
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting...</>
-                  : 'Confirm Signup'
+                  : isCancelled ? 'Event Cancelled' : isClosed ? 'Registration Closed' : 'Confirm Signup'
                 }
               </Button>
             </form>

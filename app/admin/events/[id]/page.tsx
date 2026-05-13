@@ -12,6 +12,7 @@ import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
 import ShiftModal from '@/components/admin/ShiftModal';
+import EventModal from '@/components/admin/EventModal';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
@@ -1077,8 +1078,9 @@ export default function AdminEventDetailPage() {
   const canManageAdmins = effectiveRole === 'owner' || effectiveRole === 'admin';
   const canManage       = effectiveRole === 'owner' || effectiveRole === 'admin';
 
-  const [showShiftModal, setShowShiftModal] = useState(false);
-  const [editingShift,   setEditingShift]   = useState<any>(null);
+  const [showShiftModal,  setShowShiftModal]  = useState(false);
+  const [editingShift,    setEditingShift]    = useState<any>(null);
+  const [showEventModal,  setShowEventModal]  = useState(false);
 
   async function handleDeleteShift(shiftId: string, filled: number) {
     const msg = filled > 0
@@ -1200,13 +1202,22 @@ export default function AdminEventDetailPage() {
                 </Button>
               </Link>
               {canManage && (
-                <Button
-                  variant="outline"
-                  onClick={handleDeleteEvent}
-                  className="w-full justify-start gap-2 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20"
-                >
-                  <Trash2 className="w-4 h-4" /> Delete Event
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowEventModal(true)}
+                    className="w-full justify-start gap-2"
+                  >
+                    <Pencil className="w-4 h-4" /> Edit Event
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleDeleteEvent}
+                    className="w-full justify-start gap-2 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20"
+                  >
+                    <Trash2 className="w-4 h-4" /> Delete Event
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -1395,6 +1406,15 @@ export default function AdminEventDetailPage() {
           supabase={supabase}
           onClose={() => { setShowShiftModal(false); setEditingShift(null); }}
           onSave={() => { setShowShiftModal(false); setEditingShift(null); loadEvent(); }}
+        />
+      )}
+      {showEventModal && event && (
+        <EventModal
+          event={event}
+          organizationId={event.organization_id}
+          supabase={supabase}
+          onClose={() => setShowEventModal(false)}
+          onSave={() => { setShowEventModal(false); loadEvent(); }}
         />
       )}
     </>

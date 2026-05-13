@@ -108,12 +108,24 @@ export async function GET(req: NextRequest) {
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString())
 
+  // Stale events: still marked active but date has passed
+  const { data: staleEventsRaw } = await service
+    .from('events')
+    .select('id, event_id, title, date, time, location, description, image_url, status, event_format, online_url, recording_url, organization_id')
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .lt('date', today)
+    .order('date', { ascending: false })
+
+  const staleEvents = staleEventsRaw ?? []
+
   return NextResponse.json({
     upcomingEvents,
     recentSignups,
     actionItems: {
       understaffedShifts,
       pendingInvitations: pendingInvitations ?? 0,
+      staleEvents,
     },
   })
 }
