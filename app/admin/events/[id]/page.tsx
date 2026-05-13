@@ -973,55 +973,33 @@ export default function AdminEventDetailPage() {
   async function loadEvent() {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('events')
-      .select(`
-        id, event_id, title, description, date, end_date, time,
-        location, image_url, status, organization_id,
-        shifts (
-          id, shift_id, name, description,
-          start_time, end_time, capacity, shift_date
-        )
-      `)
-      .eq('event_id', eventId)
-      .single();
-
-    if (error || !data) {
-      console.error('Error loading event:', error);
+    // Use API route so both org admins and event admins from other orgs can load the event
+    const res = await fetch(`/api/events/by-slug/${eventId}`);
+    if (!res.ok) {
       setLoading(false);
       return;
     }
+    const { event: data, userRole: role } = await res.json();
 
-    // Fetch org plan separately — column may not exist until migration runs
+    setUserRole(role);
+
+    // Fetch org plan
     const { data: orgData } = await supabase
       .from('organizations')
       .select('plan')
-      .eq('id', (data as any).organization_id)
+      .eq('id', data.organization_id)
       .maybeSingle();
     setOrgPlan((orgData as any)?.plan ?? 'free');
 
-    // Fetch registration counts via API (works for both org admins and event admins)
+    // Fetch registration counts
     const countsRes = await fetch(`/api/events/${data.id}/registration-counts`);
     const countMap: Record<string, number> = countsRes.ok ? await countsRes.json() : {};
 
     const sorted = [...(data.shifts ?? [])]
-      .map((s) => ({ ...s, filled: countMap[s.id] ?? 0 }))
-      .sort((a, b) => a.start_time.localeCompare(b.start_time));
+      .map((s: any) => ({ ...s, filled: countMap[s.id] ?? 0 }))
+      .sort((a: any, b: any) => a.start_time.localeCompare(b.start_time));
 
     setEvent({ ...data, shifts: sorted } as Event);
-
-    // Load current user's org role as fallback for when org context doesn't match
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: membership } = await supabase
-        .from('organization_admins')
-        .select('role')
-        .eq('organization_id', (data as any).organization_id)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      setUserRole(membership?.role ?? null);
-    }
-
     setLoading(false);
   }
 
