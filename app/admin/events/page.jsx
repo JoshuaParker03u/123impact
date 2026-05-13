@@ -27,6 +27,7 @@ export default function AdminEventsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [copiedEventId, setCopiedEventId] = useState(null);
   const [qrEvent, setQrEvent] = useState(null);
+  const [orgPlan, setOrgPlan] = useState('free');
 
   // Fetch events when organization changes
   useEffect(() => {
@@ -50,7 +51,8 @@ export default function AdminEventsPage() {
           description,
           start_time,
           end_time,
-          capacity
+          capacity,
+          shift_date
         )
       `)
       .eq('organization_id', currentOrganization.id)
@@ -86,6 +88,14 @@ export default function AdminEventsPage() {
 
     setEvents(enriched);
     setLoading(false);
+
+    // Fetch org plan for feature gating
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('plan')
+      .eq('id', currentOrganization.id)
+      .maybeSingle();
+    setOrgPlan(orgData?.plan ?? 'free');
   };
 
   const handleCreateEvent = () => {
@@ -173,14 +183,23 @@ export default function AdminEventsPage() {
     );
   }
 
-  const visibleEvents = events.filter((e) => {
-    const matchesSearch = !searchTerm || e.title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || e.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const STATUS_ORDER = { ongoing: 0, active: 1, completed: 2, cancelled: 3 };
+
+  const visibleEvents = events
+    .filter((e) => {
+      const matchesSearch = !searchTerm || e.title.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || e.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      const orderDiff = (STATUS_ORDER[a.status] ?? 2) - (STATUS_ORDER[b.status] ?? 2);
+      if (orderDiff !== 0) return orderDiff;
+      return a.date.localeCompare(b.date);
+    });
 
   const statusBadgeClass = {
     active:    'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    ongoing:   'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
     cancelled: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
     completed: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
   };
@@ -222,6 +241,7 @@ export default function AdminEventsPage() {
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
+            <option value="ongoing">Ongoing</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
@@ -283,7 +303,9 @@ export default function AdminEventsPage() {
                         <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />
-                            {event.date}
+                            {event.end_date && event.end_date !== event.date
+                              ? `${event.date} – ${event.end_date}`
+                              : event.date}
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
@@ -400,6 +422,7 @@ export default function AdminEventsPage() {
           <EventModal
             event={editingEvent}
             organizationId={currentOrganization.id}
+            isPaid={orgPlan !== 'free'}
             onClose={() => setShowEventModal(false)}
             onSave={() => {
               setShowEventModal(false);

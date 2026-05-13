@@ -41,6 +41,7 @@ interface Shift {
   end_time: string;
   capacity: number;
   filled: number;
+  shift_date?: string | null;
   volunteers?: Volunteer[];
 }
 
@@ -50,6 +51,7 @@ interface Event {
   title: string;
   description: string | null;
   date: string;
+  end_date?: string | null;
   time: string;
   location: string;
   image_url: string | null;
@@ -82,6 +84,18 @@ interface Assignment {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function formatDateRange(start: string, end?: string | null): string {
+  if (!end || end === start) return start;
+  const s = new Date(start + 'T00:00:00');
+  const e = new Date(end   + 'T00:00:00');
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const sStr = s.toLocaleDateString(undefined, opts);
+  const eStr = s.getMonth() === e.getMonth()
+    ? e.getDate().toString()
+    : e.toLocaleDateString(undefined, opts);
+  return `${sStr}–${eStr}`;
+}
 
 function statusBadge(status: Assignment['status']) {
   const map: Record<string, string> = {
@@ -954,11 +968,11 @@ export default function AdminEventDetailPage() {
     const { data, error } = await supabase
       .from('events')
       .select(`
-        id, event_id, title, description, date, time,
+        id, event_id, title, description, date, end_date, time,
         location, image_url, status, organization_id,
         shifts (
           id, shift_id, name, description,
-          start_time, end_time, capacity
+          start_time, end_time, capacity, shift_date
         )
       `)
       .eq('event_id', eventId)
@@ -1032,8 +1046,9 @@ export default function AdminEventDetailPage() {
 
   // Compute default expiry: latest shift end + 5 days, or event date + 5 days.
   // Shift end_time is stored as "HH:MM" (time input), so combine with event.date to get full datetime.
-  function shiftEndDate(s: { start_time: string; end_time: string }): Date {
-    const d = new Date(`${event!.date}T${s.end_time}`);
+  function shiftEndDate(s: { start_time: string; end_time: string; shift_date?: string | null }): Date {
+    const base = s.shift_date ?? event!.date;
+    const d = new Date(`${base}T${s.end_time}`);
     if (s.end_time <= s.start_time) d.setDate(d.getDate() + 1); // overnight rollover
     return d;
   }
@@ -1165,7 +1180,7 @@ export default function AdminEventDetailPage() {
 
               <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mt-2">
                 <span className="flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />{event.date}
+                  <Calendar className="w-4 h-4" />{formatDateRange(event.date, event.end_date)}
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />{event.time}
@@ -1225,7 +1240,8 @@ export default function AdminEventDetailPage() {
 
         {/* Tabs */}
         {(() => {
-          const isToday = event.date === new Date().toISOString().split('T')[0];
+          const todayStr = new Date().toISOString().split('T')[0];
+          const isToday = todayStr >= event.date && todayStr <= (event.end_date ?? event.date);
           const tabClass = (active: boolean) =>
             `flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
               active
@@ -1298,7 +1314,7 @@ export default function AdminEventDetailPage() {
                 {event.shifts.map((shift) => {
                   const isOpen    = expanded === shift.id;
                   const isFull    = (shift.filled ?? 0) >= shift.capacity;
-                  const start     = new Date(`${event.date}T${shift.start_time}`);
+                  const start     = new Date(`${shift.shift_date ?? event.date}T${shift.start_time}`);
                   const end       = shiftEndDate(shift);
                   const overnight = shift.end_time <= shift.start_time;
 
@@ -1314,7 +1330,11 @@ export default function AdminEventDetailPage() {
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
                           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                            {start.toLocaleDateString()} &nbsp;
+                            {event.end_date && shift.shift_date && (
+                              <span className="mr-1 font-medium text-gray-600 dark:text-gray-300">
+                                {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
                             {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             {' – '}
                             {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1413,6 +1433,7 @@ export default function AdminEventDetailPage() {
           event={event}
           organizationId={event.organization_id}
           supabase={supabase}
+          isPaid={orgPlan !== 'free'}
           onClose={() => setShowEventModal(false)}
           onSave={() => { setShowEventModal(false); loadEvent(); }}
         />

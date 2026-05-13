@@ -39,12 +39,12 @@ export async function GET(req: NextRequest) {
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Upcoming events (starting today) with shift fill rates
+  // Upcoming events: still running today or in the future (accounts for multi-day events)
   const { data: eventsRaw } = await service
     .from('events')
-    .select('id, event_id, title, date, time, location, shifts(capacity, filled_count)')
+    .select('id, event_id, title, date, end_date, time, location, shifts(capacity, filled_count)')
     .eq('organization_id', orgId)
-    .gte('date', today)
+    .or(`end_date.gte.${today},and(end_date.is.null,date.gte.${today})`)
     .order('date', { ascending: true })
     .limit(5)
 
@@ -108,16 +108,37 @@ export async function GET(req: NextRequest) {
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString())
 
-  // Stale events: still marked active but date has passed
+  // Stale events: active but fully in the past (end_date < today, or date < today for single-day)
   const { data: staleEventsRaw } = await service
     .from('events')
-    .select('id, event_id, title, date, time, location, description, image_url, status, event_format, online_url, recording_url, organization_id')
+    .select('id, event_id, title, date, end_date, time, location, description, image_url, status, event_format, online_url, recording_url, organization_id')
     .eq('organization_id', orgId)
     .eq('status', 'active')
-    .lt('date', today)
+    .or(`end_date.lt.${today},and(end_date.is.null,date.lt.${today})`)
     .order('date', { ascending: false })
 
   const staleEvents = staleEventsRaw ?? []
+
+  // Org plan — needed for paid-only action items
+  const { data: orgData } = await service
+    .from('organizations')
+    .select('plan')
+    .eq('id', orgId)
+    .single()
+  const isPaid = orgData?.plan && orgData.plan !== 'free'
+
+  // Switch-to-ongoing: paid orgs only — active multi-day events that start today
+  let switchToOngoing: any[] = []
+  if (isPaid) {
+    const { data: ongoingRaw } = await service
+      .from('events')
+      .select('id, title, date, end_date')
+      .eq('organization_id', orgId)
+      .eq('status', 'active')
+      .eq('date', today)
+      .gt('end_date', today)
+    switchToOngoing = ongoingRaw ?? []
+  }
 
   return NextResponse.json({
     upcomingEvents,
@@ -126,6 +147,7 @@ export async function GET(req: NextRequest) {
       understaffedShifts,
       pendingInvitations: pendingInvitations ?? 0,
       staleEvents,
+      switchToOngoing,
     },
   })
 }

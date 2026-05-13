@@ -134,6 +134,19 @@ function DashboardContent() {
       .then(data => { if (data) setSummary(data) })
   }, [orgId])
 
+  async function markOngoing(eventId: string) {
+    setResolvingEventId(eventId)
+    await getBrowserClient().from('events').update({ status: 'ongoing' }).eq('id', eventId)
+    setSummary((prev: any) => ({
+      ...prev,
+      actionItems: {
+        ...prev.actionItems,
+        switchToOngoing: prev.actionItems.switchToOngoing.filter((e: any) => e.id !== eventId),
+      },
+    }))
+    setResolvingEventId(null)
+  }
+
   async function resolveStaleEvent(eventId: string, newStatus: 'completed' | 'cancelled') {
     setResolvingEventId(eventId)
     await getBrowserClient().from('events').update({ status: newStatus }).eq('id', eventId)
@@ -150,10 +163,12 @@ function DashboardContent() {
   const today         = new Date().toISOString().split('T')[0]
   const todayEvent    = summary?.upcomingEvents?.find((e: any) => e.date === today) ?? null
   const upcomingOther = summary?.upcomingEvents?.filter((e: any) => e.date !== today) ?? []
-  const staleEvents   = summary?.actionItems?.staleEvents ?? []
-  const actionCount   = (summary?.actionItems?.understaffedShifts ?? 0)
-                      + (summary?.actionItems?.pendingInvitations ?? 0)
-                      + staleEvents.length
+  const staleEvents      = summary?.actionItems?.staleEvents ?? []
+  const switchToOngoing  = summary?.actionItems?.switchToOngoing ?? []
+  const actionCount      = (summary?.actionItems?.understaffedShifts ?? 0)
+                         + (summary?.actionItems?.pendingInvitations ?? 0)
+                         + staleEvents.length
+                         + switchToOngoing.length
 
   if (isLoading) {
     return (
@@ -271,6 +286,33 @@ function DashboardContent() {
                     <ArrowRight className="w-3.5 h-3.5 text-blue-500" />
                   </div>
                 </Link>
+              )}
+              {switchToOngoing.length > 0 && (
+                <div className="w-full space-y-2">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">
+                    Multi-day events starting today
+                  </p>
+                  {switchToOngoing.map((e: any) => (
+                    <div key={e.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-blue-900 dark:text-blue-200 truncate">{e.title}</p>
+                        <p className="text-xs text-blue-600 dark:text-blue-400">{e.date} – {e.end_date}</p>
+                      </div>
+                      <div className="shrink-0">
+                        {resolvingEventId === e.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                        ) : (
+                          <button
+                            onClick={() => markOngoing(e.id)}
+                            className="text-xs px-2 py-1 rounded border border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors font-medium"
+                          >
+                            Mark as Ongoing
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
               {staleEvents.length > 0 && (
                 <div className="w-full space-y-2">

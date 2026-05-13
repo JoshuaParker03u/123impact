@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import ShiftDatePicker from './ShiftDatePicker';
 
 export default function ShiftModal({ shift, event, onClose, onSave, supabase }) {
   const nextShiftId = shift
@@ -16,6 +17,7 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
     start_time:  shift?.start_time  || '',
     end_time:    shift?.end_time    || '',
     capacity:    shift?.capacity    || 10,
+    shift_date:  shift?.shift_date  || '',
   });
   const [errors, setErrors]       = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -30,6 +32,7 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
     if (formData.start_time === formData.end_time) e.end_time   = 'End time cannot equal start time';
     if (formData.capacity < 1)                     e.capacity   = 'Capacity must be at least 1';
     if (shift && formData.capacity < shift.filled) e.capacity   = `Cannot reduce below ${shift.filled} (current registrations)`;
+    if (event.end_date && !formData.shift_date)    e.shift_date = 'Shift date is required for multi-day events';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -39,11 +42,12 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
     if (!validate()) return;
     setSubmitting(true);
     try {
+      const payload = { ...formData, shift_date: formData.shift_date || null };
       if (shift) {
-        const { error } = await supabase.from('shifts').update(formData).eq('id', shift.id);
+        const { error } = await supabase.from('shifts').update(payload).eq('id', shift.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('shifts').insert({ ...formData, event_id: event.id, filled: 0 });
+        const { error } = await supabase.from('shifts').insert({ ...payload, event_id: event.id, filled: 0 });
         if (error) throw error;
       }
       onSave();
@@ -68,6 +72,19 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
                 placeholder="Morning Team" />
               {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
             </div>
+
+            {event.end_date && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Shift Date</label>
+                <ShiftDatePicker
+                  value={formData.shift_date}
+                  onChange={(d) => setFormData({ ...formData, shift_date: d })}
+                  minDate={event.date}
+                  maxDate={event.end_date}
+                />
+                {errors.shift_date && <p className="text-red-600 text-sm mt-1">{errors.shift_date}</p>}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>

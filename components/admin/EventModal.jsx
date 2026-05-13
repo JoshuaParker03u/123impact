@@ -19,13 +19,14 @@ function randomSuffix() {
   return Math.random().toString(36).slice(2, 6);
 }
 
-export default function EventModal({ event, organizationId, onClose, onSave, supabase }) {
+export default function EventModal({ event, organizationId, onClose, onSave, supabase, isPaid = false }) {
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
   const [formData, setFormData] = useState({
     event_id:      event?.event_id      || '',
     title:         event?.title         || '',
     date:          event?.date          || '',
+    end_date:      event?.end_date      || '',
     time:          event?.time          || '',
     location:      event?.location      || '',
     description:   event?.description   || '',
@@ -35,6 +36,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
     online_url:    event?.online_url    || '',
     recording_url: event?.recording_url || '',
   });
+  const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -58,6 +60,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
     if (!formData.event_id.trim()) newErrors.event_id = 'Event ID is required';
     if (!formData.title.trim()) newErrors.title = 'Title is required';
     if (!formData.date) newErrors.date = 'Date is required';
+    if (formData.end_date && formData.end_date < formData.date) newErrors.end_date = 'End date must be on or after start date';
     if (!formData.location.trim()) newErrors.location = 'Location is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -72,7 +75,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
       if (event) {
         const { error } = await supabase
           .from('events')
-          .update(formData)
+          .update({ ...formData, end_date: formData.end_date || null })
           .eq('id', event.id);
         if (error) throw error;
       } else {
@@ -82,6 +85,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             event_id:      formData.event_id,
             title:         formData.title,
             date:          formData.date,
+            end_date:      formData.end_date || null,
             time:          formData.time.trim() || '9:00 AM - 3:00 PM',
             location:      formData.location,
             description:   formData.description,
@@ -147,6 +151,49 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                   ? <p className="text-xs text-gray-400 mt-1">Date cannot be changed — volunteers are registered</p>
                   : errors.date && <p className="text-red-600 text-sm mt-1">{errors.date}</p>
                 }
+                <div className="mt-2">
+                  {isPaid ? (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-600 dark:text-gray-400">
+                      <input
+                        type="checkbox"
+                        checked={isMultiDay}
+                        disabled={hasVolunteers}
+                        onChange={(e) => {
+                          setIsMultiDay(e.target.checked);
+                          if (e.target.checked && formData.date) {
+                            const next = new Date(formData.date + 'T00:00:00');
+                            next.setDate(next.getDate() + 1);
+                            setFormData(prev => ({ ...prev, end_date: next.toISOString().split('T')[0] }));
+                          } else if (!e.target.checked) {
+                            setFormData(prev => ({
+                              ...prev,
+                              end_date: '',
+                              status: prev.status === 'ongoing' ? 'active' : prev.status,
+                            }));
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      Multi-day event
+                    </label>
+                  ) : (
+                    <p className="text-xs text-gray-400">Multi-day events require a paid plan</p>
+                  )}
+                  {isPaid && isMultiDay && (
+                    <div className="mt-2">
+                      <label className="block text-sm font-medium mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={formData.end_date}
+                        min={formData.date}
+                        disabled={hasVolunteers}
+                        onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                        className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-gray-700"
+                      />
+                      {errors.end_date && <p className="text-red-600 text-sm mt-1">{errors.end_date}</p>}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -246,6 +293,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
               >
                 <option value="active">Active</option>
+                {isMultiDay && <option value="ongoing">Ongoing</option>}
                 <option value="cancelled">Cancelled</option>
                 <option value="completed">Completed</option>
               </select>

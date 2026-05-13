@@ -20,6 +20,7 @@ type Event = {
   title: string
   description: string | null
   date: string
+  end_date?: string | null
   time: string
   location: string
   image_url: string | null
@@ -74,7 +75,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   const [submitting, setSubmitting]       = useState(false)
   const [errors, setErrors]               = useState<Record<string, string>>({})
 
-  const isPast       = event ? new Date(event.date) < new Date(new Date().toDateString()) : false
+  const isPast       = event ? new Date(event.end_date ?? event.date) < new Date(new Date().toDateString()) : false
   const isCancelled  = event?.status === 'cancelled'
   const isClosed     = event ? (event.status !== 'active' || isPast) : false
 
@@ -258,7 +259,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-900 dark:text-blue-200 font-medium">{selectedShiftData?.name}</p>
                 <p className="text-sm text-blue-700 dark:text-blue-300">
-                  {event.date} • {selectedShiftData?.start_time} - {selectedShiftData?.end_time}
+                  {event.end_date && event.end_date !== event.date ? `${event.date} – ${event.end_date}` : event.date} • {selectedShiftData?.start_time} - {selectedShiftData?.end_time}
                 </p>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">A calendar invite has been added to your email.</p>
@@ -298,7 +299,8 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">{event.title}</h1>
               <div className="flex flex-wrap gap-4 text-gray-600 dark:text-gray-400 mb-4">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5" /><span>{event.date}</span>
+                  <Calendar className="w-5 h-5" />
+                  <span>{event.end_date && event.end_date !== event.date ? `${event.date} – ${event.end_date}` : event.date}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5" /><span>{event.time}</span>

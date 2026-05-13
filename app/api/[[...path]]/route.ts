@@ -162,7 +162,7 @@ async function sendRegistrationConfirmation(
       </tr>
       <tr>
         <td style="padding:8px 0;color:#6b7280;">Date</td>
-        <td style="padding:8px 0;">${event.date}</td>
+        <td style="padding:8px 0;">${event.end_date && event.end_date !== event.date ? `${event.date} – ${event.end_date}` : event.date}</td>
       </tr>
       <tr>
         <td style="padding:8px 0;color:#6b7280;">Location</td>
@@ -321,7 +321,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       const { data, error } = await supabase
         .from('events')
         .select(`
-          id, event_id, title, description, date, time, location,
+          id, event_id, title, description, date, end_date, time, location,
           image_url, status, organization_id, created_at, updated_at
         `)
         .eq('event_id', seg[2])
@@ -539,6 +539,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         return fail('title, date, time, and location are required');
       }
 
+      if (body.end_date) {
+        const { data: org } = await buildServiceClient().from('organizations').select('plan').eq('id', orgId).single();
+        if (!org || org.plan === 'free') {
+          return fail('Multi-day events require a paid plan', 403);
+        }
+      }
+
       const { data, error } = await supabase
         .from('events')
         .insert({
@@ -597,6 +604,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     // PATCH /api/events/:id
     if (seg.length === 2 && seg[0] === 'events') {
+      if (body.end_date) {
+        const { data: org } = await buildServiceClient().from('organizations').select('plan').eq('id', orgId).single();
+        if (!org || org.plan === 'free') {
+          return fail('Multi-day events require a paid plan', 403);
+        }
+      }
+
       const { data, error } = await supabase
         .from('events')
         .update({ ...body, updated_at: now })
