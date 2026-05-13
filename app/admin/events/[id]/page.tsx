@@ -13,6 +13,7 @@ import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
 import ShiftModal from '@/components/admin/ShiftModal';
 import EventModal from '@/components/admin/EventModal';
+import ShiftDatePicker from '@/components/admin/ShiftDatePicker';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
@@ -84,6 +85,17 @@ interface Assignment {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function formatEventTime(time: string | undefined): string {
+  if (!time) return '';
+  if (/^\d{2}:\d{2}$/.test(time)) {
+    const [h, m] = time.split(':').map(Number);
+    const p = h < 12 ? 'AM' : 'PM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${m.toString().padStart(2, '0')} ${p}`;
+  }
+  return time;
+}
 
 function formatDateRange(start: string, end?: string | null): string {
   if (!end || end === start) return start;
@@ -301,12 +313,10 @@ function AddAdminModal({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Access expires
             </label>
-            <input
-              type="date"
+            <ShiftDatePicker
               value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={setExpiresAt}
+              minDate={new Date().toISOString().split('T')[0]}
             />
             <p className="mt-1 text-xs text-gray-400">Default: event end date + 5 days</p>
           </div>
@@ -465,11 +475,9 @@ function EditExpiryModal({
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
             Updating expiry for <strong>{assignment.user_name || assignment.email}</strong>
           </p>
-          <input
-            type="date"
+          <ShiftDatePicker
             value={expiresAt}
-            onChange={(e) => setExpiresAt(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={setExpiresAt}
           />
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t dark:border-gray-800">
@@ -1183,7 +1191,7 @@ export default function AdminEventDetailPage() {
                   <Calendar className="w-4 h-4" />{formatDateRange(event.date, event.end_date)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />{event.time}
+                  <Clock className="w-4 h-4" />{formatEventTime(event.time)}
                 </span>
                 <span className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />{event.location}

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import ShiftDatePicker from './ShiftDatePicker';
 
 function generateSlug(title, suffix) {
   const base = title
@@ -86,7 +87,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             title:         formData.title,
             date:          formData.date,
             end_date:      formData.end_date || null,
-            time:          formData.time.trim() || '9:00 AM - 3:00 PM',
+            time:          formData.time || '',
             location:      formData.location,
             description:   formData.description,
             image_url:     formData.image_url,
@@ -140,12 +141,10 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Date</label>
-                <input
-                  type="date"
+                <ShiftDatePicker
                   value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  onChange={(d) => setFormData({ ...formData, date: d })}
                   disabled={hasVolunteers}
-                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-gray-700"
                 />
                 {hasVolunteers
                   ? <p className="text-xs text-gray-400 mt-1">Date cannot be changed — volunteers are registered</p>
@@ -182,13 +181,11 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                   {isPaid && isMultiDay && (
                     <div className="mt-2">
                       <label className="block text-sm font-medium mb-1">End Date</label>
-                      <input
-                        type="date"
+                      <ShiftDatePicker
                         value={formData.end_date}
-                        min={formData.date}
+                        onChange={(d) => setFormData({ ...formData, end_date: d })}
+                        minDate={formData.date || undefined}
                         disabled={hasVolunteers}
-                        onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                        className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-gray-700"
                       />
                       {errors.end_date && <p className="text-red-600 text-sm mt-1">{errors.end_date}</p>}
                     </div>
@@ -197,13 +194,12 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Time</label>
+                <label className="block text-sm font-medium mb-1">Start Time</label>
                 <input
-                  type="text"
+                  type="time"
                   value={formData.time}
                   onChange={(e) => setFormData({ ...formData, time: e.target.value })}
                   className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-                  placeholder="9:00 AM - 3:00 PM"
                 />
                 {errors.time && <p className="text-red-600 text-sm mt-1">{errors.time}</p>}
               </div>
@@ -285,19 +281,21 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-              >
-                <option value="active">Active</option>
-                {isMultiDay && <option value="ongoing">Ongoing</option>}
-                <option value="cancelled">Cancelled</option>
-                <option value="completed">Completed</option>
-              </select>
-            </div>
+            {event && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                >
+                  <option value="active">Active</option>
+                  {isMultiDay && <option value="ongoing">Ongoing</option>}
+                  <option value="cancelled">Cancelled</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+            )}
 
             <div className="flex gap-3 pt-4">
               <Button type="button" variant="outline" onClick={onClose} className="flex-1">

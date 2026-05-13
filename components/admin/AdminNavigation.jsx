@@ -306,11 +306,21 @@ export default function AdminNavigation() {
               )}
             </div>
 
-            {/* Settings + Sign out — desktop only */}
-            <Link href="/admin/settings" className="hidden md:block p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" aria-label="Settings">
-              <Settings className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            {/* Settings + username combined — desktop only */}
+            <Link
+              href="/admin/settings"
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Settings"
+            >
+              <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
+              {userName && (
+                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium max-w-[200px] break-all leading-tight">
+                  {userName}
+                </span>
+              )}
             </Link>
 
+            {/* Sign Out — rightmost desktop element */}
             <Button
               variant="outline"
               onClick={handleLogout}
@@ -319,12 +329,6 @@ export default function AdminNavigation() {
               <LogOut className="w-4 h-4" />
               Sign Out
             </Button>
-
-            {userName && (
-              <span className="hidden md:block text-sm text-gray-600 dark:text-gray-400 font-medium pl-1">
-                {userName}
-              </span>
-            )}
 
             {/* Hamburger — mobile only */}
             <button

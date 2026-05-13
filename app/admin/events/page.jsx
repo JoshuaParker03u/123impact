@@ -13,6 +13,18 @@ import Link from 'next/link';
 
 const supabase = getBrowserClient();
 
+// Display event.time: handles both legacy "9:00 AM - 3:00 PM" strings and new "HH:MM" format
+function formatEventTime(time) {
+  if (!time) return '';
+  if (/^\d{2}:\d{2}$/.test(time)) {
+    const [h, m] = time.split(':').map(Number);
+    const p = h < 12 ? 'AM' : 'PM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${m.toString().padStart(2, '0')} ${p}`;
+  }
+  return time;
+}
+
 export default function AdminEventsPage() {
   const { currentOrganization, loading: orgLoading, isAdmin } = useOrganization();
   const [events, setEvents] = useState([]);
@@ -309,7 +321,7 @@ export default function AdminEventsPage() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
-                            {event.time}
+                            {formatEventTime(event.time)}
                           </span>
                           <span className="flex items-center gap-1">
                             <MapPin className="w-4 h-4" />

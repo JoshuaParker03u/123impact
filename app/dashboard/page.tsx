@@ -12,6 +12,7 @@ import {
 import AdminNavigation from '@/components/admin/AdminNavigation'
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal'
 import { getBrowserClient } from '@/lib/supabase'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 
@@ -41,6 +42,7 @@ function FillBar({ filled, capacity }: { filled: number; capacity: number }) {
 }
 
 function DashboardContent() {
+  const { refreshOrganization } = useOrganization() as any
   const [user, setUser]                         = useState<User | null>(null)
   const [isLoading, setIsLoading]               = useState(true)
   const [isFirstLogin, setIsFirstLogin]         = useState(false)
@@ -163,12 +165,15 @@ function DashboardContent() {
   const today         = new Date().toISOString().split('T')[0]
   const todayEvent    = summary?.upcomingEvents?.find((e: any) => e.date === today) ?? null
   const upcomingOther = summary?.upcomingEvents?.filter((e: any) => e.date !== today) ?? []
-  const staleEvents      = summary?.actionItems?.staleEvents ?? []
-  const switchToOngoing  = summary?.actionItems?.switchToOngoing ?? []
-  const actionCount      = (summary?.actionItems?.understaffedShifts ?? 0)
-                         + (summary?.actionItems?.pendingInvitations ?? 0)
-                         + staleEvents.length
-                         + switchToOngoing.length
+  const ongoingEvents    = summary?.ongoingEvents ?? []
+  const staleEvents        = summary?.actionItems?.staleEvents ?? []
+  const switchToOngoing    = summary?.actionItems?.switchToOngoing ?? []
+  const eventsWithNoShifts = summary?.actionItems?.eventsWithNoShifts ?? []
+  const actionCount        = (summary?.actionItems?.understaffedShifts ?? 0)
+                           + (summary?.actionItems?.pendingInvitations ?? 0)
+                           + staleEvents.length
+                           + switchToOngoing.length
+                           + eventsWithNoShifts.length
 
   if (isLoading) {
     return (
@@ -225,24 +230,14 @@ function DashboardContent() {
           </Card>
         )}
 
-        {/* Welcome card */}
-        <Card className="shadow-sm border-gray-200 dark:border-gray-700">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-2xl text-gray-800 dark:text-gray-200">
-              {isFirstLogin ? 'Getting Started' : `Welcome back, ${user?.user_metadata?.full_name || user?.email?.split('@')[0]}!`}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-gray-600 dark:text-gray-400">You're successfully logged in to the 123impact coordinator dashboard.</p>
-            {!hasOrg && eventAdminAssignments.length === 0 && (
-              <p className="text-sm text-gray-500 mt-2">You don't belong to any organization yet — see below to get started.</p>
-            )}
-          </CardContent>
-        </Card>
+        {/* No-org hint */}
+        {!hasOrg && eventAdminAssignments.length === 0 && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 px-1">You don't belong to any organization yet — see below to get started.</p>
+        )}
 
-        {/* Quick Actions */}
+        {/* Quick Actions — mobile only */}
         {hasOrg && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 md:hidden">
             {[
               { href: '/admin/events',        icon: <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />,   label: 'Events',     bg: 'bg-blue-50 dark:bg-blue-900/30'   },
               { href: '/admin/organizations?tab=members', icon: <UserPlus className="w-5 h-5 text-purple-600 dark:text-purple-400" />, label: 'Invite to Org', bg: 'bg-purple-50 dark:bg-purple-900/30' },
@@ -272,8 +267,12 @@ function DashboardContent() {
               {summary.actionItems.understaffedShifts > 0 && (
                 <Link href="/admin/events">
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors">
-                    <span className="text-sm font-semibold text-orange-700 dark:text-orange-400">{summary.actionItems.understaffedShifts}</span>
-                    <span className="text-sm text-orange-600 dark:text-orange-400">shift{summary.actionItems.understaffedShifts !== 1 ? 's' : ''} under 50% filled</span>
+                    <span className="text-sm text-orange-600 dark:text-orange-400">
+                      <span className="font-semibold text-orange-700 dark:text-orange-400">{summary.actionItems.understaffedShifts}</span>
+                      {' '}shift{summary.actionItems.understaffedShifts !== 1 ? 's' : ''} across{' '}
+                      <span className="font-semibold text-orange-700 dark:text-orange-400">{summary.actionItems.understaffedEventCount}</span>
+                      {' '}event{summary.actionItems.understaffedEventCount !== 1 ? 's' : ''} under 50% filled
+                    </span>
                     <ArrowRight className="w-3.5 h-3.5 text-orange-500" />
                   </div>
                 </Link>
@@ -286,6 +285,24 @@ function DashboardContent() {
                     <ArrowRight className="w-3.5 h-3.5 text-blue-500" />
                   </div>
                 </Link>
+              )}
+              {eventsWithNoShifts.length > 0 && (
+                <div className="w-full space-y-2">
+                  <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">
+                    Events with no shifts
+                  </p>
+                  {eventsWithNoShifts.map((e: any) => (
+                    <Link key={e.id} href={`/admin/events/${e.event_id}`} className="block">
+                      <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-orange-900 dark:text-orange-200 truncate">{e.title}</p>
+                          <p className="text-xs text-orange-600 dark:text-orange-400">{e.date}{e.end_date ? ` – ${e.end_date}` : ''}</p>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               )}
               {switchToOngoing.length > 0 && (
                 <div className="w-full space-y-2">
@@ -358,6 +375,40 @@ function DashboardContent() {
           </Card>
         )}
 
+        {/* Ongoing Events */}
+        {ongoingEvents.length > 0 && (
+          <Card className="shadow-sm border-purple-200 dark:border-purple-800">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                  <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                  Ongoing Events
+                </CardTitle>
+                <Link href="/admin/events" className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1">
+                  View all <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {ongoingEvents.map((e: any) => (
+                <Link key={e.id} href={`/admin/events/${e.event_id}`} className="block">
+                  <div className="p-3 rounded-lg border border-purple-100 dark:border-purple-900/50 bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">{e.title}</p>
+                      <span className="text-xs text-purple-600 dark:text-purple-400 flex-shrink-0">
+                        {new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {e.end_date && ` – ${new Date(e.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                      </span>
+                    </div>
+                    {e.location && <p className="text-xs text-gray-500 dark:text-gray-400">{e.location}</p>}
+                    {e.capacity > 0 && <FillBar filled={e.filled} capacity={e.capacity} />}
+                  </div>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Today's Event */}
         {todayEvent && (
           <Card className="shadow-sm border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20">
@@ -375,9 +426,11 @@ function DashboardContent() {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
-              <p className="font-semibold text-gray-900 dark:text-gray-100 text-lg leading-snug">{todayEvent.title}</p>
-              {todayEvent.location && <p className="text-sm text-gray-500 dark:text-gray-400">{todayEvent.location}</p>}
-              {todayEvent.capacity > 0 && <FillBar filled={todayEvent.filled} capacity={todayEvent.capacity} />}
+              <Link href={`/admin/events/${todayEvent.event_id}`} className="block">
+                <p className="font-semibold text-gray-900 dark:text-gray-100 text-lg leading-snug hover:text-blue-700 dark:hover:text-blue-300 transition-colors">{todayEvent.title}</p>
+                {todayEvent.location && <p className="text-sm text-gray-500 dark:text-gray-400">{todayEvent.location}</p>}
+                {todayEvent.capacity > 0 && <FillBar filled={todayEvent.filled} capacity={todayEvent.capacity} />}
+              </Link>
             </CardContent>
           </Card>
         )}
@@ -543,6 +596,7 @@ function DashboardContent() {
             localStorage.setItem('123impact_current_org_id', newOrg.id)
             setHasOrg(true)
             setOrgId(newOrg.id)
+            refreshOrganization()
           }}
         />
       )}

@@ -449,6 +449,26 @@ export default function SettingsPage() {
               >
                 Delete Account
               </Button>
+            ) : orgs.some((o: any) => o.role === 'owner') ? (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 space-y-1">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Ownership transfer required</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    You are the owner of the following organization{orgs.filter((o: any) => o.role === 'owner').length !== 1 ? 's' : ''}:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-amber-700 dark:text-amber-400">
+                    {orgs.filter((o: any) => o.role === 'owner').map((o: any) => (
+                      <li key={o.id}>{o.name}</li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    Transfer ownership to another member before deleting your account.
+                  </p>
+                </div>
+                <Button variant="outline" onClick={() => { setShowDelete(false); setDeleteInput(''); setDeleteError(null) }}>
+                  Cancel
+                </Button>
+              </div>
             ) : (
               <div className="space-y-3">
                 <p className="text-sm text-gray-700 dark:text-gray-300">

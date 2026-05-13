@@ -39,25 +39,18 @@ export async function GET(req: NextRequest) {
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Upcoming events: still running today or in the future (accounts for multi-day events)
+  // Upcoming events: fetch all active/ongoing, filter by date in JS to avoid or() interference
   const { data: eventsRaw } = await service
     .from('events')
-    .select('id, event_id, title, date, end_date, time, location, shifts(capacity, filled_count)')
+    .select('id, event_id, title, date, end_date, time, location, shifts(id, capacity)')
     .eq('organization_id', orgId)
-    .or(`end_date.gte.${today},and(end_date.is.null,date.gte.${today})`)
+    .in('status', ['active', 'ongoing'])
     .order('date', { ascending: true })
-    .limit(5)
 
-  const upcomingEvents = (eventsRaw ?? []).map((e: any) => ({
-    id:       e.id,
-    event_id: e.event_id,
-    title:    e.title,
-    date:     e.date,
-    time:     e.time,
-    location: e.location,
-    filled:   (e.shifts ?? []).reduce((s: number, sh: any) => s + (sh.filled_count || 0), 0),
-    capacity: (e.shifts ?? []).reduce((s: number, sh: any) => s + (sh.capacity || 0), 0),
-  }))
+  // Include events where end_date >= today (multi-day) OR date >= today (single-day / not started yet)
+  const upcomingEventsRaw = (eventsRaw ?? []).filter((e: any) =>
+    (e.end_date ?? e.date) >= today
+  )
 
   // Recent signups (last 5 across all org events)
   const { data: allOrgEvents } = await service
@@ -90,17 +83,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Action items
-  const futureEventIds = upcomingEvents.map((e: any) => e.id)
-  let understaffedShifts = 0
-  if (futureEventIds.length > 0) {
-    const { data: futureShifts } = await service
-      .from('shifts').select('capacity, filled_count').in('event_id', futureEventIds).gt('capacity', 0)
-    understaffedShifts = (futureShifts ?? []).filter(
-      (s: any) => (s.filled_count / s.capacity) < 0.5
-    ).length
-  }
-
   const { count: pendingInvitations } = await service
     .from('organization_invitations')
     .select('*', { count: 'exact', head: true })
@@ -108,16 +90,17 @@ export async function GET(req: NextRequest) {
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString())
 
-  // Stale events: active but fully in the past (end_date < today, or date < today for single-day)
+  // Stale events: active events where the effective end date is in the past
   const { data: staleEventsRaw } = await service
     .from('events')
     .select('id, event_id, title, date, end_date, time, location, description, image_url, status, event_format, online_url, recording_url, organization_id')
     .eq('organization_id', orgId)
     .eq('status', 'active')
-    .or(`end_date.lt.${today},and(end_date.is.null,date.lt.${today})`)
     .order('date', { ascending: false })
 
-  const staleEvents = staleEventsRaw ?? []
+  const staleEvents = (staleEventsRaw ?? []).filter((e: any) =>
+    (e.end_date ?? e.date) < today
+  )
 
   // Org plan — needed for paid-only action items
   const { data: orgData } = await service
@@ -140,14 +123,82 @@ export async function GET(req: NextRequest) {
     switchToOngoing = ongoingRaw ?? []
   }
 
+  // Ongoing events: two separate queries to avoid nested and() syntax
+  const selectOngoing = 'id, event_id, title, date, end_date, time, location, shifts(id, capacity)'
+  const [{ data: explicitOngoing }, { data: implicitOngoing }] = await Promise.all([
+    service.from('events').select(selectOngoing)
+      .eq('organization_id', orgId).eq('status', 'ongoing'),
+    service.from('events').select(selectOngoing)
+      .eq('organization_id', orgId).eq('status', 'active')
+      .lte('date', today).gte('end_date', today),
+  ])
+  const seenIds = new Set<string>()
+  const ongoingEventsRaw = [...(explicitOngoing ?? []), ...(implicitOngoing ?? [])].filter((e: any) => {
+    if (seenIds.has(e.id)) return false
+    seenIds.add(e.id)
+    return true
+  })
+
+  // Count volunteer registrations for upcoming + ongoing events in one query
+  const allDashboardShiftIds = [
+    ...(eventsRaw ?? []).flatMap((e: any) => (e.shifts ?? []).map((s: any) => s.id)),
+    ...ongoingEventsRaw.flatMap((e: any) => (e.shifts ?? []).map((s: any) => s.id)),
+  ]
+  const regCountMap: Record<string, number> = {}
+  if (allDashboardShiftIds.length > 0) {
+    const { data: regRows } = await service
+      .from('volunteer_registrations')
+      .select('shift_id')
+      .in('shift_id', allDashboardShiftIds)
+    for (const r of regRows ?? []) {
+      regCountMap[r.shift_id] = (regCountMap[r.shift_id] ?? 0) + 1
+    }
+  }
+
+  const mapEvent = (e: any) => ({
+    id:       e.id,
+    event_id: e.event_id,
+    title:    e.title,
+    date:     e.date,
+    end_date: e.end_date ?? null,
+    time:     e.time,
+    location: e.location,
+    filled:   (e.shifts ?? []).reduce((s: number, sh: any) => s + (regCountMap[sh.id] ?? 0), 0),
+    capacity: (e.shifts ?? []).reduce((s: number, sh: any) => s + (sh.capacity || 0), 0),
+  })
+
+  const upcomingEvents = upcomingEventsRaw.map(mapEvent).slice(0, 5)
+  const ongoingEvents  = ongoingEventsRaw.map(mapEvent)
+
+  // Understaffed shifts — computed after regCountMap is available
+  const understaffedEventIds = new Set<string>()
+  let understaffedShifts = 0
+  for (const e of upcomingEventsRaw) {
+    for (const s of (e as any).shifts ?? []) {
+      if (s.capacity > 0 && (regCountMap[s.id] ?? 0) / s.capacity < 0.5) {
+        understaffedShifts++
+        understaffedEventIds.add((e as any).id)
+      }
+    }
+  }
+  const understaffedEventCount = understaffedEventIds.size
+
+  // Events with no shifts — upcoming active/ongoing events that have no shifts yet
+  const eventsWithNoShifts = upcomingEventsRaw
+    .filter((e: any) => (e.shifts ?? []).length === 0)
+    .map((e: any) => ({ id: e.id, event_id: e.event_id, title: e.title, date: e.date, end_date: e.end_date }))
+
   return NextResponse.json({
     upcomingEvents,
     recentSignups,
+    ongoingEvents,
     actionItems: {
       understaffedShifts,
+      understaffedEventCount,
       pendingInvitations: pendingInvitations ?? 0,
       staleEvents,
       switchToOngoing,
+      eventsWithNoShifts,
     },
   })
 }
