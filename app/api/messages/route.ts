@@ -40,6 +40,12 @@ export async function GET(request: Request) {
   const scheduled = searchParams.get('scheduled') === 'true';
   const orgId     = searchParams.get('org_id');
 
+  if (orgId) {
+    const { data: membership } = await service.from('organization_admins')
+      .select('role').eq('organization_id', orgId).eq('user_id', user.id).single();
+    if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   let query = service
     .from('messages')
     .select('*, events(title), shifts(name, start_time)')
@@ -89,13 +95,18 @@ export async function DELETE(request: Request) {
   // Verify the message is still scheduled (not already sent)
   const { data: msg } = await service
     .from('messages')
-    .select('delivery_status')
+    .select('delivery_status, organization_id')
     .eq('id', id)
     .single();
 
   if (!msg) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 });
   }
+
+  const { data: membership } = await service.from('organization_admins')
+    .select('role').eq('organization_id', msg.organization_id).eq('user_id', user.id).single();
+  if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   if (msg.delivery_status !== 'scheduled') {
     return NextResponse.json({ error: 'Only scheduled messages can be cancelled' }, { status: 400 });
   }

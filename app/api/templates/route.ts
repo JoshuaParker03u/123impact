@@ -55,11 +55,26 @@ export async function GET(request: Request) {
   return NextResponse.json(data);
 }
 
-export async function POST(request: Request) {
-  const supabase = createServiceRoleClient();
-  const body = await request.json();
+async function verifyTemplateAccess(userId: string, eventId: string, service: ReturnType<typeof createServiceRoleClient>) {
+  const { data: event } = await service.from('events').select('organization_id').eq('id', eventId).single();
+  if (!event) return 'event_not_found';
+  const { data: membership } = await service.from('organization_admins')
+    .select('role').eq('organization_id', event.organization_id).eq('user_id', userId).single();
+  return membership ? null : 'forbidden';
+}
 
-  const { data, error } = await supabase
+export async function POST(request: Request) {
+  const session = await createSessionClient();
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const service = createServiceRoleClient();
+  const body = await request.json();
+  const accessError = await verifyTemplateAccess(user.id, body.event_id, service);
+  if (accessError === 'event_not_found') return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  if (accessError === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { data, error } = await service
     .from('automated_email_templates')
     .insert(body)
     .select()
@@ -70,11 +85,22 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const supabase = createServiceRoleClient();
+  const session = await createSessionClient();
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const service = createServiceRoleClient();
   const body = await request.json();
   const { id, ...updates } = body;
 
-  const { data, error } = await supabase
+  const { data: template } = await service.from('automated_email_templates').select('event_id').eq('id', id).single();
+  if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+
+  const accessError = await verifyTemplateAccess(user.id, template.event_id, service);
+  if (accessError === 'event_not_found') return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  if (accessError === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { data, error } = await service
     .from('automated_email_templates')
     .update(updates)
     .eq('id', id)
@@ -86,11 +112,23 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const supabase = createServiceRoleClient();
+  const session = await createSessionClient();
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const service = createServiceRoleClient();
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-  const { error } = await supabase
+  const { data: template } = await service.from('automated_email_templates').select('event_id').eq('id', id).single();
+  if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+
+  const accessError = await verifyTemplateAccess(user.id, template.event_id, service);
+  if (accessError === 'event_not_found') return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  if (accessError === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { error } = await service
     .from('automated_email_templates')
     .delete()
     .eq('id', id);
