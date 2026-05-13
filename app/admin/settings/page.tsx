@@ -216,14 +216,14 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="min-h-screen flex items-center justify-center bg-background dark:bg-gray-950">
         <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-background dark:bg-gray-950">
       <AdminNavigation />
       <main className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Account Settings</h1>

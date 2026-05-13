@@ -76,6 +76,77 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json(enriched);
 }
 
+// PATCH /api/organizations/[id]/members
+// Body: { user_id, role } — owner only, cannot change another owner's role
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { id: orgId } = await params;
+  const { session, service } = await buildClients();
+
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { data: membership } = await service
+    .from('organization_admins')
+    .select('role')
+    .eq('organization_id', orgId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (!membership || membership.role !== 'owner') {
+    return NextResponse.json({ error: 'Only owners can change member roles' }, { status: 403 });
+  }
+
+  const { user_id: targetUserId, role: newRole } = await req.json();
+  if (!targetUserId || !['admin', 'member', 'owner'].includes(newRole)) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+  if (targetUserId === user.id) {
+    return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 });
+  }
+
+  const { data: targetMembership } = await service
+    .from('organization_admins')
+    .select('role')
+    .eq('organization_id', orgId)
+    .eq('user_id', targetUserId)
+    .single();
+
+  if (!targetMembership) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+  if (targetMembership.role === 'owner') {
+    return NextResponse.json({ error: 'Cannot change an owner\'s role' }, { status: 400 });
+  }
+
+  // Ownership transfer: promote target to owner, demote caller to admin atomically
+  if (newRole === 'owner') {
+    const [promoteRes, demoteRes] = await Promise.all([
+      service
+        .from('organization_admins')
+        .update({ role: 'owner' })
+        .eq('organization_id', orgId)
+        .eq('user_id', targetUserId),
+      service
+        .from('organization_admins')
+        .update({ role: 'admin' })
+        .eq('organization_id', orgId)
+        .eq('user_id', user.id),
+    ]);
+    if (promoteRes.error) return NextResponse.json({ error: promoteRes.error.message }, { status: 500 });
+    if (demoteRes.error)  return NextResponse.json({ error: demoteRes.error.message },  { status: 500 });
+    return NextResponse.json({ transferred: true });
+  }
+
+  const { data, error } = await service
+    .from('organization_admins')
+    .update({ role: newRole })
+    .eq('organization_id', orgId)
+    .eq('user_id', targetUserId)
+    .select('user_id, role')
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
+}
+
 // DELETE /api/organizations/[id]/members?user_id=...
 // Owners only — remove a member from the org.
 export async function DELETE(req: NextRequest, { params }: Params) {

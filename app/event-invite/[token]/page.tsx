@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Loader2, ShieldCheck, Calendar, MapPin, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { createBrowserClient } from '@supabase/ssr';
+import { getBrowserClient } from '@/lib/supabase';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,10 +64,7 @@ export default function EventInvitePage() {
   const [actionError, setActionError] = useState('');
   const [policyAccepted, setPolicyAccepted] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = getBrowserClient();
 
   useEffect(() => {
     async function init() {

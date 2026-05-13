@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createBrowserClient } from '@supabase/ssr';
+import { getBrowserClient } from '@/lib/supabase';
 
 type CheckInData = {
   registration_id: string;
@@ -44,10 +44,7 @@ export default function CheckInPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [justCheckedIn, setJustCheckedIn] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = getBrowserClient();
 
   const load = useCallback(async () => {
     setLoading(true);

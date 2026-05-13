@@ -20,14 +20,16 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
   const [errors, setErrors]       = useState({});
   const [submitting, setSubmitting] = useState(false);
 
+  const isOvernight = formData.start_time && formData.end_time && formData.end_time <= formData.start_time;
+
   const validate = () => {
     const e = {};
-    if (!formData.name.trim())                         e.name       = 'Name is required';
-    if (!formData.start_time)                          e.start_time = 'Start time is required';
-    if (!formData.end_time)                            e.end_time   = 'End time is required';
-    if (formData.end_time <= formData.start_time)      e.end_time   = 'End time must be after start time';
-    if (formData.capacity < 1)                         e.capacity   = 'Capacity must be at least 1';
-    if (shift && formData.capacity < shift.filled)     e.capacity   = `Cannot reduce below ${shift.filled} (current registrations)`;
+    if (!formData.name.trim())                     e.name       = 'Name is required';
+    if (!formData.start_time)                      e.start_time = 'Start time is required';
+    if (!formData.end_time)                        e.end_time   = 'End time is required';
+    if (formData.start_time === formData.end_time) e.end_time   = 'End time cannot equal start time';
+    if (formData.capacity < 1)                     e.capacity   = 'Capacity must be at least 1';
+    if (shift && formData.capacity < shift.filled) e.capacity   = `Cannot reduce below ${shift.filled} (current registrations)`;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -80,6 +82,11 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
                 <input type="time" value={formData.end_time}
                   onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
                   className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600" />
+                {isOvernight && (
+                  <p className="text-amber-600 dark:text-amber-400 text-xs mt-1 flex items-center gap-1">
+                    <span>⚠</span> Ends next day (+1)
+                  </p>
+                )}
                 {errors.end_time && <p className="text-red-600 text-sm mt-1">{errors.end_time}</p>}
               </div>
             </div>

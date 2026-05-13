@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { createBrowserClient } from '@supabase/ssr';
+import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, Link2, Check, QrCode, Download, X, ArrowRight } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Link from 'next/link';
+
+const supabase = getBrowserClient();
 
 export default function AdminEventsPage() {
   const { currentOrganization, loading: orgLoading, isAdmin } = useOrganization();
@@ -24,18 +26,13 @@ export default function AdminEventsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [copiedEventId, setCopiedEventId] = useState(null);
   const [qrEvent, setQrEvent] = useState(null);
-  
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
 
   // Fetch events when organization changes
   useEffect(() => {
-    if (currentOrganization) {
+    if (currentOrganization?.id) {
       fetchEvents();
     }
-  }, [currentOrganization]);
+  }, [currentOrganization?.id]);
 
   const fetchEvents = async () => {
     if (!currentOrganization) return;
@@ -535,7 +532,6 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
     if (!formData.event_id.trim()) newErrors.event_id = 'Event ID is required';
     if (!formData.title.trim()) newErrors.title = 'Title is required';
     if (!formData.date) newErrors.date = 'Date is required';
-    if (!formData.time.trim()) newErrors.time = 'Time is required';
     if (!formData.location.trim()) newErrors.location = 'Location is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -562,7 +558,7 @@ function EventModal({ event, organizationId, onClose, onSave, supabase }) {
             event_id:      formData.event_id,
             title:         formData.title,
             date:          formData.date,
-            time:          formData.time,
+            time:          formData.time.trim() || '9:00 AM - 3:00 PM',
             location:      formData.location,
             description:   formData.description,
             image_url:     formData.image_url,

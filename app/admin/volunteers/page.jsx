@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { createBrowserClient } from '@supabase/ssr';
+import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,8 @@ function VolunteerAvatar({ name }) {
   );
 }
 
+const supabase = getBrowserClient();
+
 export default function AdminVolunteersPage() {
   const { currentOrganization, loading: orgLoading } = useOrganization();
   const [volunteers, setVolunteers] = useState([]);
@@ -35,17 +37,12 @@ export default function AdminVolunteersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [eventFilter, setEventFilter] = useState('all');
   const [events, setEvents] = useState([]);
-  
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
 
   useEffect(() => {
-    if (currentOrganization) {
+    if (currentOrganization?.id) {
       fetchData();
     }
-  }, [currentOrganization]);
+  }, [currentOrganization?.id]);
 
   useEffect(() => {
     filterVolunteers();

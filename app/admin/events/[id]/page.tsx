@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import Link from 'next/link';
-import { createBrowserClient } from '@supabase/ssr';
+import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -928,6 +928,8 @@ function QRCodesTab({ eventId }: { eventId: string }) {
 // Page
 // ---------------------------------------------------------------------------
 
+const supabase = getBrowserClient();
+
 export default function AdminEventDetailPage() {
   const params  = useParams();
   const router  = useRouter();
@@ -942,11 +944,6 @@ export default function AdminEventDetailPage() {
   const [orgPlan, setOrgPlan]     = useState<string>('free');
 
   const { currentOrganization } = useOrganization() as any;
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => { loadEvent(); }, []);
 
@@ -1034,18 +1031,23 @@ export default function AdminEventDetailPage() {
 
   // Compute default expiry: latest shift end + 5 days, or event date + 5 days.
   // Shift end_time is stored as "HH:MM" (time input), so combine with event.date to get full datetime.
+  function shiftEndDate(s: { start_time: string; end_time: string }): Date {
+    const d = new Date(`${event!.date}T${s.end_time}`);
+    if (s.end_time <= s.start_time) d.setDate(d.getDate() + 1); // overnight rollover
+    return d;
+  }
+
   function defaultExpiry(): string {
     try {
       if (!event) throw new Error('no event');
       let base: Date | null = null;
 
       if (event.shifts.length > 0) {
-        // Find the shift with the latest end_time (string compare works for "HH:MM")
+        // Find the shift with the latest absolute end datetime (accounts for overnight)
         const latest = event.shifts.reduce((max, s) =>
-          s.end_time > max.end_time ? s : max
+          shiftEndDate(s) > shiftEndDate(max) ? s : max
         );
-        // Combine event date with shift end time
-        const d = new Date(`${event.date}T${latest.end_time}`);
+        const d = shiftEndDate(latest);
         if (!isNaN(d.getTime())) base = d;
       }
 
@@ -1283,16 +1285,20 @@ export default function AdminEventDetailPage() {
             ) : (
               <div className="space-y-3">
                 {event.shifts.map((shift) => {
-                  const isOpen   = expanded === shift.id;
-                  const isFull   = (shift.filled ?? 0) >= shift.capacity;
-                  const start    = new Date(`${event.date}T${shift.start_time}`);
-                  const end      = new Date(`${event.date}T${shift.end_time}`);
+                  const isOpen    = expanded === shift.id;
+                  const isFull    = (shift.filled ?? 0) >= shift.capacity;
+                  const start     = new Date(`${event.date}T${shift.start_time}`);
+                  const end       = shiftEndDate(shift);
+                  const overnight = shift.end_time <= shift.start_time;
 
                   return (
                     <Card key={shift.id} className="overflow-hidden">
-                      <button
-                        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
                         onClick={() => toggleShift(shift.id)}
+                        onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? toggleShift(shift.id) : undefined}
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
@@ -1301,6 +1307,7 @@ export default function AdminEventDetailPage() {
                             {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             {' – '}
                             {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {overnight && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400 font-medium">+1</span>}
                           </p>
                           {shift.description && (
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
@@ -1340,7 +1347,7 @@ export default function AdminEventDetailPage() {
                               : <ChevronDown className="w-4 h-4 text-gray-400" />
                           }
                         </div>
-                      </button>
+                      </div>
 
                       {isOpen && (
                         <div className="border-t dark:border-gray-700 px-5 py-4 bg-gray-50 dark:bg-gray-800/50">

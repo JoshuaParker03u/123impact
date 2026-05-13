@@ -140,6 +140,53 @@ function RoleBadge({ role }) {
   );
 }
 
+function TransferOwnershipModal({ member, orgName, onConfirm, onClose, transferring }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+            <Crown className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Transfer Ownership</h2>
+        </div>
+
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          You are about to transfer ownership of <span className="font-semibold text-gray-900 dark:text-gray-100">{orgName}</span> to{' '}
+          <span className="font-semibold text-gray-900 dark:text-gray-100">{member.name || member.email}</span>.
+        </p>
+
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-1">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">What happens:</p>
+          <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5 list-disc list-inside">
+            <li>They become the new owner with full control</li>
+            <li>You are demoted to Admin</li>
+            <li>Only the new owner can reverse this</li>
+          </ul>
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={onClose}
+            disabled={transferring}
+            className="flex-1 px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={transferring}
+            className="flex-1 px-4 py-2 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {transferring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}
+            Transfer Ownership
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Invite Modal ───────────────────────────────────────────────────────────────
 
 function InviteModal({ orgId, onClose, onSent, userRole }) {
@@ -265,6 +312,9 @@ function MembersTab({ org, currentUserId, userRole }) {
   const [showExpired, setShowExpired] = useState(false);
   const [removingId, setRemovingId]   = useState(null);
   const [editRoleId, setEditRoleId]   = useState(null);
+  const [changingRoleId, setChangingRoleId] = useState(null);
+  const [transferTarget, setTransferTarget] = useState(null);
+  const [transferring, setTransferring]     = useState(false);
 
   const canManage = ['owner', 'admin'].includes(userRole);
   const isOwner   = userRole === 'owner';
@@ -294,6 +344,40 @@ function MembersTab({ org, currentUserId, userRole }) {
       alert(data.error ?? 'Failed to remove member');
     }
     setRemovingId(null);
+  }
+
+  async function confirmTransfer() {
+    if (!transferTarget) return;
+    setTransferring(true);
+    const res = await fetch(`/api/organizations/${org.id}/members`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: transferTarget.user_id, role: 'owner' }),
+    });
+    setTransferring(false);
+    if (res.ok) {
+      setTransferTarget(null);
+      await load();
+    } else {
+      const data = await res.json();
+      alert(data.error ?? 'Failed to transfer ownership');
+    }
+  }
+
+  async function updateMemberRole(userId, newRole) {
+    setChangingRoleId(userId);
+    const res = await fetch(`/api/organizations/${org.id}/members`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, role: newRole }),
+    });
+    if (res.ok) {
+      setMembers((prev) => prev.map((m) => m.user_id === userId ? { ...m, role: newRole } : m));
+    } else {
+      const data = await res.json();
+      alert(data.error ?? 'Failed to update role');
+    }
+    setChangingRoleId(null);
   }
 
   async function updateInviteRole(inviteId, newRole) {
@@ -358,7 +442,8 @@ function MembersTab({ org, currentUserId, userRole }) {
         <div className="divide-y dark:divide-gray-700">
           {members.map((m) => {
             const isCurrentUser = m.user_id === currentUserId;
-            const canRemove = isOwner && !isCurrentUser && m.role !== 'owner';
+            const canEditRole = isOwner && !isCurrentUser && m.role !== 'owner';
+            const canRemove   = canEditRole;
             return (
               <div key={m.user_id} className="flex items-center gap-3 px-6 py-3">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
@@ -371,12 +456,36 @@ function MembersTab({ org, currentUserId, userRole }) {
                   </p>
                   {m.name && m.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{m.email}</p>}
                 </div>
-                <RoleBadge role={m.role} />
+                {canEditRole ? (
+                  changingRoleId === m.user_id ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                  ) : (
+                    <select
+                      value={m.role}
+                      onChange={(e) => updateMemberRole(m.user_id, e.target.value)}
+                      className="text-xs border border-gray-200 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-pointer hover:border-gray-400 transition-colors"
+                    >
+                      <option value="member">Member</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  )
+                ) : (
+                  <RoleBadge role={m.role} />
+                )}
+                {canEditRole && (
+                  <button
+                    onClick={() => setTransferTarget(m)}
+                    title="Transfer ownership to this member"
+                    className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded transition-colors"
+                  >
+                    <Crown className="w-4 h-4" />
+                  </button>
+                )}
                 {canRemove && (
                   <button
                     onClick={() => removeMember(m.user_id, m.name || m.email)}
                     disabled={removingId === m.user_id}
-                    className="ml-2 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
                     title="Remove member"
                   >
                     {removingId === m.user_id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -483,6 +592,16 @@ function MembersTab({ org, currentUserId, userRole }) {
 
       {showInviteModal && (
         <InviteModal orgId={org.id} onClose={() => setShowInviteModal(false)} onSent={load} userRole={userRole ?? currentOrganization.role} />
+      )}
+
+      {transferTarget && (
+        <TransferOwnershipModal
+          member={transferTarget}
+          orgName={org.name}
+          onConfirm={confirmTransfer}
+          onClose={() => setTransferTarget(null)}
+          transferring={transferring}
+        />
       )}
     </div>
   );

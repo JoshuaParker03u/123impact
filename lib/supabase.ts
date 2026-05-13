@@ -1,15 +1,22 @@
 import { createClient } from '@supabase/supabase-js'
 import { Database } from './database.types'
-
 import { createBrowserClient } from '@supabase/ssr'
 
-// For client-side auth
-export function getSupabaseClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+// Singleton browser client — one instance for the entire browser session.
+// Never call createBrowserClient() inside a component; import this instead.
+let _browser: ReturnType<typeof createBrowserClient> | null = null;
+export function getBrowserClient() {
+  if (!_browser) {
+    _browser = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+  }
+  return _browser;
 }
+
+/** @deprecated use getBrowserClient() */
+export const getSupabaseClient = getBrowserClient;
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

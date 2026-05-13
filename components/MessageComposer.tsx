@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { getBrowserClient } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
 interface MessageComposerProps {
@@ -32,10 +32,7 @@ export default function MessageComposer({
 
   const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = getBrowserClient();
 
   useEffect(() => {
     if (isOpen) {
@@ -91,7 +88,7 @@ export default function MessageComposer({
           .select('id')
           .eq('event_id', selectedEvent);
         
-        const shiftIds = shifts?.map(s => s.id) || [];
+        const shiftIds = shifts?.map((s: { id: string }) => s.id) || [];
         
         if (shiftIds.length > 0) {
           const { data } = await supabase
@@ -99,7 +96,7 @@ export default function MessageComposer({
             .select('email')
             .in('shift_id', shiftIds);
           
-          const uniqueEmails = new Set(data?.map(r => r.email) || []);
+          const uniqueEmails = new Set(data?.map((r: { email: string }) => r.email) || []);
           count = uniqueEmails.size;
         }
       } else if (recipientType === 'shift' && selectedShift) {

@@ -5,7 +5,7 @@ import { useOrganizationSwitch } from '@/hooks/useOrganizationSwitch';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { Heart, LogOut, ChevronDown, Check, Plus, Bell, Settings, Menu, X } from 'lucide-react';
 import Link from 'next/link';
-import { createBrowserClient } from '@supabase/ssr';
+import { getBrowserClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -78,10 +78,7 @@ export default function AdminNavigation() {
   const notifRef    = useRef(null);
   const router = useRouter();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
+  const supabase = getBrowserClient();
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
@@ -140,6 +137,7 @@ export default function AdminNavigation() {
   const handleSwitch = (orgId) => {
     switchOrganization(orgId);
     setDropdownOpen(false);
+    router.push('/dashboard');
   };
 
   const handleCreateSuccess = async (newOrg) => {
@@ -153,7 +151,7 @@ export default function AdminNavigation() {
 
   return (
     <>
-    <nav className="sticky top-0 z-50 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm dark:bg-gray-950 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex justify-between h-16">
 

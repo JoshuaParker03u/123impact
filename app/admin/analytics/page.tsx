@@ -56,7 +56,7 @@ export default function AnalyticsPage() {
   const [error, setError]     = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!organization?.id) return;
+    if (!organization?.id) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
@@ -103,6 +103,12 @@ export default function AnalyticsPage() {
           <div className="flex justify-center py-24">
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
           </div>
+        ) : !organization?.id ? (
+          <Card className="p-12 text-center text-gray-500 dark:text-gray-400">
+            <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-lg font-medium">No organization selected</p>
+            <p className="text-sm mt-1">Select or create an organization to view analytics.</p>
+          </Card>
         ) : error ? (
           <Card className="p-8 text-center text-red-500">{error}</Card>
         ) : !data || total === 0 ? (
