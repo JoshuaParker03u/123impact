@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { getBrowserClient } from '@/lib/supabase';
 
 const OrganizationContext = createContext(undefined);
@@ -13,16 +13,18 @@ export function OrganizationProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const hasLoadedRef = useRef(false);
+
   const loadOrganizations = useCallback(async () => {
+    const firstLoad = !hasLoadedRef.current;
     try {
-      setLoading(true);
+      if (firstLoad) setLoading(true);
       setError(null);
 
       const response = await fetch('/api/organizations/user');
 
       if (!response.ok) {
         if (response.status === 401) {
-          // Not logged in — clear state silently
           setOrganizations([]);
           setCurrentOrganization(null);
           return;
@@ -32,9 +34,9 @@ export function OrganizationProvider({ children }) {
 
       const { data } = await response.json();
       const orgs = data ?? [];
+      hasLoadedRef.current = true;
       setOrganizations(orgs);
 
-      // Restore last selected org from localStorage
       const savedOrgId =
         typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
       const savedOrg = savedOrgId ? orgs.find((o) => o.id === savedOrgId) : null;
@@ -49,7 +51,7 @@ export function OrganizationProvider({ children }) {
       console.error('Error loading organizations:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (firstLoad) setLoading(false);
     }
   }, []);
 
@@ -57,6 +59,9 @@ export function OrganizationProvider({ children }) {
     loadOrganizations();
 
     const { data: { subscription } } = getBrowserClient().auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') {
+        loadOrganizations();
+      }
       if (event === 'SIGNED_OUT') {
         setOrganizations([]);
         setCurrentOrganization(null);
