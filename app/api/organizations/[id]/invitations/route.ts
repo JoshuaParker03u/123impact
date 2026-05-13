@@ -150,6 +150,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Role must be admin or member' }, { status: 400 });
   }
 
+  // Only owners can invite as admin
+  const { membership } = auth as any;
+  if (role === 'admin' && membership.role !== 'owner') {
+    return NextResponse.json({ error: 'Only owners can invite members as admin.' }, { status: 403 });
+  }
+
   // Check if already a member
   const { data: existingUsers } = await service.auth.admin.listUsers();
   const existingUser = (existingUsers?.users ?? []).find((u: any) => u.email === email);

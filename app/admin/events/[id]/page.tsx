@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
 import AdminNavigation from '@/components/admin/AdminNavigation';
@@ -10,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
+import ShiftModal from '@/components/admin/ShiftModal';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
@@ -939,6 +941,8 @@ export default function AdminEventDetailPage() {
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
 
+  const { currentOrganization } = useOrganization() as any;
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -986,7 +990,7 @@ export default function AdminEventDetailPage() {
 
     setEvent({ ...data, shifts: sorted } as Event);
 
-    // Load current user's org role
+    // Load current user's org role as fallback for when org context doesn't match
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: membership } = await supabase
@@ -994,7 +998,7 @@ export default function AdminEventDetailPage() {
         .select('role')
         .eq('organization_id', (data as any).organization_id)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       setUserRole(membership?.role ?? null);
     }
 
@@ -1065,7 +1069,32 @@ export default function AdminEventDetailPage() {
     }
   }
 
-  const canManageAdmins = userRole === 'owner' || userRole === 'admin';
+  const effectiveRole   = (currentOrganization?.id === event?.organization_id
+    ? currentOrganization?.role
+    : null) ?? userRole;
+  const canManageAdmins = effectiveRole === 'owner' || effectiveRole === 'admin';
+  const canManage       = effectiveRole === 'owner' || effectiveRole === 'admin';
+
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [editingShift,   setEditingShift]   = useState<any>(null);
+
+  async function handleDeleteShift(shiftId: string, filled: number) {
+    const msg = filled > 0
+      ? `This shift has ${filled} volunteer${filled !== 1 ? 's' : ''} registered. Deleting it will remove their registrations. Continue?`
+      : 'Delete this shift?';
+    if (!confirm(msg)) return;
+    const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
+    if (error) alert('Error deleting shift: ' + error.message);
+    else loadEvent();
+  }
+
+  async function handleDeleteEvent() {
+    if (!event) return;
+    if (!confirm('This will delete the event, all its shifts, and all volunteer registrations. Continue?')) return;
+    const { error } = await supabase.from('events').delete().eq('id', event.id);
+    if (error) alert('Error deleting event: ' + error.message);
+    else router.push('/admin/events');
+  }
 
   // ---------------------------------------------------------------------------
   // Render
@@ -1168,6 +1197,15 @@ export default function AdminEventDetailPage() {
                   <Mail className="w-4 h-4" /> Message Volunteers
                 </Button>
               </Link>
+              {canManage && (
+                <Button
+                  variant="outline"
+                  onClick={handleDeleteEvent}
+                  className="w-full justify-start gap-2 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete Event
+                </Button>
+              )}
             </div>
           </div>
         </Card>
@@ -1222,15 +1260,25 @@ export default function AdminEventDetailPage() {
           <QRCodesTab eventId={event.id} />
         ) : (
           <>
-            {!canManageAdmins && (
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                Shifts ({event.shifts.length})
-              </h2>
-            )}
+            <div className="flex items-center justify-between mb-3">
+              {!canManageAdmins && (
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                  Shifts ({event.shifts.length})
+                </h2>
+              )}
+              {canManage && (
+                <Button
+                  onClick={() => { setEditingShift(null); setShowShiftModal(true); }}
+                  className="gap-2 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90 ml-auto"
+                >
+                  <Plus className="w-4 h-4" /> Add Shift
+                </Button>
+              )}
+            </div>
 
             {event.shifts.length === 0 ? (
               <Card className="p-8 text-center text-gray-500">
-                No shifts added yet.
+                No shifts added yet.{canManage && ' Use the button above to add one.'}
               </Card>
             ) : (
               <div className="space-y-3">
@@ -1259,7 +1307,7 @@ export default function AdminEventDetailPage() {
                           )}
                         </div>
 
-                        <div className="flex items-center gap-3 ml-4">
+                        <div className="flex items-center gap-2 ml-4">
                           <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${
                             isFull
                               ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
@@ -1267,6 +1315,24 @@ export default function AdminEventDetailPage() {
                           }`}>
                             {shift.filled ?? 0}/{shift.capacity}
                           </span>
+                          {canManage && (
+                            <>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingShift(shift); setShowShiftModal(true); }}
+                                className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                title="Edit shift"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-gray-500" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteShift(shift.id, shift.filled ?? 0); }}
+                                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                title="Delete shift"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                              </button>
+                            </>
+                          )}
                           {loadingVolunteers === shift.id
                             ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
                             : isOpen
@@ -1314,6 +1380,16 @@ export default function AdminEventDetailPage() {
           </>
         )}
       </div>
+
+      {showShiftModal && event && (
+        <ShiftModal
+          shift={editingShift}
+          event={event}
+          supabase={supabase}
+          onClose={() => { setShowShiftModal(false); setEditingShift(null); }}
+          onSave={() => { setShowShiftModal(false); setEditingShift(null); loadEvent(); }}
+        />
+      )}
     </>
   );
 }

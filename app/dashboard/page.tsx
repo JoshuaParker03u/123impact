@@ -10,6 +10,7 @@ import {
   UserPlus, AlertTriangle, TrendingUp, ArrowRight, QrCode, Mail,
 } from 'lucide-react'
 import AdminNavigation from '@/components/admin/AdminNavigation'
+import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 
@@ -48,6 +49,7 @@ function DashboardContent() {
   const [hasOrg, setHasOrg]                     = useState<boolean | null>(null)
   const [orgId, setOrgId]                       = useState<string | null>(null)
   const [summary, setSummary]                   = useState<any>(null)
+  const [showCreateOrg, setShowCreateOrg]       = useState(false)
 
   const router      = useRouter()
   const searchParams = useSearchParams()
@@ -415,11 +417,9 @@ function DashboardContent() {
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Create an organization</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Set up your nonprofit and start managing volunteer events.</p>
                 </div>
-                <Link href="/admin/organizations">
-                  <Button size="sm" className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
-                    Create
-                  </Button>
-                </Link>
+                <Button size="sm" onClick={() => setShowCreateOrg(true)} className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                  Create
+                </Button>
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
                 <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
@@ -435,6 +435,18 @@ function DashboardContent() {
         )}
 
       </main>
+
+      {showCreateOrg && (
+        <CreateOrganizationModal
+          onClose={() => setShowCreateOrg(false)}
+          onSuccess={(newOrg: any) => {
+            setShowCreateOrg(false)
+            localStorage.setItem('123impact_current_org_id', newOrg.id)
+            setHasOrg(true)
+            setOrgId(newOrg.id)
+          }}
+        />
+      )}
     </div>
   )
 }

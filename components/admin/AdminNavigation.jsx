@@ -272,7 +272,7 @@ export default function AdminNavigation() {
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] md:w-96 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
+                <div className="fixed top-16 left-2 right-2 md:absolute md:top-full md:left-auto md:right-0 md:mt-2 md:w-96 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</p>
                     {unreadCount > 0 && (

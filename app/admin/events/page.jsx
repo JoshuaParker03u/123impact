@@ -6,7 +6,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, Link2, Check, QrCode, Download, X } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, Link2, Check, QrCode, Download, X, ArrowRight } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Link from 'next/link';
 
@@ -133,9 +133,10 @@ export default function AdminEventsPage() {
   };
 
   const handleDeleteShift = async (shiftId, filled) => {
-    if (filled > 0) {
-      if (!confirm(`${filled} volunteers are registered. Continue?`)) return;
-    }
+    const msg = filled > 0
+      ? `This shift has ${filled} volunteer${filled !== 1 ? 's' : ''} registered. Deleting it will remove their registrations. Continue?`
+      : 'Delete this shift?';
+    if (!confirm(msg)) return;
 
     const { error } = await supabase
       .from('shifts')
@@ -276,9 +277,7 @@ export default function AdminEventsPage() {
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <Link href={`/admin/events/${event.event_id}`} className="group">
-                            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{event.title}</h2>
-                          </Link>
+                          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{event.title}</h2>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusBadgeClass[event.status] ?? statusBadgeClass.completed}`}>
                             {event.status}
                           </span>
@@ -325,23 +324,13 @@ export default function AdminEventsPage() {
                           <QrCode className="w-4 h-4" />
                         </Button>
                         {isAdmin && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditEvent(event)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteEvent(event.id)}
-                              className="text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditEvent(event)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -355,16 +344,12 @@ export default function AdminEventsPage() {
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         {event.shifts?.length || 0} Shifts
                       </button>
-                      {isAdmin && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleAddShift(event)}
-                          className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90"
-                        >
-                          <Plus className="w-4 h-4 mr-1" />
-                          Add Shift
-                        </Button>
-                      )}
+                      <Link
+                        href={`/admin/events/${event.event_id}`}
+                        className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        Manage <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
                   </div>
 
@@ -399,25 +384,6 @@ export default function AdminEventsPage() {
                                     </span>
                                   </div>
                                 </div>
-                                {isAdmin && (
-                                  <div className="flex gap-2 ml-4">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => handleEditShift(shift, event)}
-                                    >
-                                      <Edit className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => handleDeleteShift(shift.id, shift.filled)}
-                                      className="text-red-600 hover:bg-red-50"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                )}
                               </div>
                             );
                           })}

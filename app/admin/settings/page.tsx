@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import AdminNavigation from '@/components/admin/AdminNavigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -46,6 +47,7 @@ function SectionResult({ success, error }: { success: string | null; error: stri
 export default function SettingsPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { refreshOrganizations } = useOrganization() as any
 
   const [user, setUser]       = useState<SupabaseUser | null>(null)
   const [loading, setLoading] = useState(true)
@@ -187,6 +189,7 @@ export default function SettingsPage() {
     if (res.ok) {
       setOrgs(prev => prev.filter(o => o.id !== orgId))
       setLeaveResult({ ok: 'You have left the organization.' })
+      await refreshOrganizations()
     } else {
       const { error } = await res.json()
       setLeaveResult({ err: error })

@@ -142,7 +142,7 @@ function RoleBadge({ role }) {
 
 // ── Invite Modal ───────────────────────────────────────────────────────────────
 
-function InviteModal({ orgId, onClose, onSent }) {
+function InviteModal({ orgId, onClose, onSent, userRole }) {
   const [email, setEmail]     = useState('');
   const [role, setRole]       = useState('member');
   const [sending, setSending] = useState(false);
@@ -219,7 +219,7 @@ function InviteModal({ orgId, onClose, onSent }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Role</label>
             <div className="flex gap-2">
-              {['member', 'admin'].map((r) => (
+              {(userRole === 'owner' ? ['member', 'admin'] : ['member']).map((r) => (
                 <button key={r} type="button" onClick={() => setRole(r)}
                   className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors capitalize ${
                     role === r
@@ -482,7 +482,7 @@ function MembersTab({ org, currentUserId, userRole }) {
       )}
 
       {showInviteModal && (
-        <InviteModal orgId={org.id} onClose={() => setShowInviteModal(false)} onSent={load} />
+        <InviteModal orgId={org.id} onClose={() => setShowInviteModal(false)} onSent={load} userRole={userRole ?? currentOrganization.role} />
       )}
     </div>
   );
