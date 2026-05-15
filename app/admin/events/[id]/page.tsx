@@ -872,14 +872,14 @@ function QRCodesTab({ eventId }: { eventId: string }) {
                       </div>
                       {previewId === inst.id ? (
                         <div className="cursor-pointer" onClick={() => setPreviewId(null)} title="Click to hide">
-                          <QRCodeSVG value={url} size={120} level="M" />
+                          <QRCodeSVG value={url} size={200} level="M" />
                         </div>
                       ) : (
                         <button
                           onClick={() => setPreviewId(inst.id)}
-                          className="w-[120px] h-[120px] border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                          className="w-[200px] h-[200px] border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
                         >
-                          <QrCode className="w-10 h-10" />
+                          <QrCode className="w-14 h-14" />
                         </button>
                       )}
                       <span className="text-xs text-gray-400">

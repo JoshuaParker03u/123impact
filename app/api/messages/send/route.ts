@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { sendBulkEmail } from '@/lib/email';
+import { sendBulkEmail, filterOptedOut } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
 
 export async function POST(request: Request) {
@@ -154,12 +154,10 @@ export async function POST(request: Request) {
     // ── Immediate send ──────────────────────────────────────────────────────
     const htmlContent = wrapEmailHtml(message.replace(/\n/g, '<br>'));
 
-    const result = await sendBulkEmail({
-      to:      emails[0],
-      bcc:     emails.slice(1),
-      subject,
-      html:    htmlContent,
-    });
+    const allowedEmails = await filterOptedOut(serviceSupabase, emails);
+    const result = await sendBulkEmail(
+      allowedEmails.map(to => ({ to, subject, html: htmlContent }))
+    );
 
     const deliveryStatus = result.success ? 'delivered' : 'failed';
 
