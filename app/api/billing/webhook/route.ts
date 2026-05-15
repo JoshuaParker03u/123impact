@@ -13,6 +13,12 @@ function makeService() {
   );
 }
 
+function getPeriodEnd(sub: any): string | null {
+  // In Stripe API v2026+, current_period_end moved to items.data[0].current_period_end
+  const ts = sub.current_period_end ?? sub.items?.data?.[0]?.current_period_end;
+  return ts ? new Date(ts * 1000).toISOString() : null;
+}
+
 async function syncSubscription(
   service: ReturnType<typeof makeService>,
   orgId: string,
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
         stripe_subscription_id: sub.id,
         subscription_status:    sub.status,
         billing_interval:       sub.items.data[0]?.plan.interval ?? null,
-        current_period_end:     new Date((sub as any).current_period_end * 1000).toISOString(),
+        current_period_end:     getPeriodEnd(sub),
         grace_period_end:       null,
         plan:                   'pro',
       });
@@ -74,7 +80,7 @@ export async function POST(req: NextRequest) {
         const sub = await stripe.subscriptions.retrieve(subIdStr);
         await syncSubscription(service, orgId, {
           subscription_status: 'active',
-          current_period_end:  new Date((sub as any).current_period_end * 1000).toISOString(),
+          current_period_end:  getPeriodEnd(sub),
           grace_period_end:    null,
         });
       }
@@ -106,7 +112,7 @@ export async function POST(req: NextRequest) {
       await syncSubscription(service, orgId, {
         subscription_status: sub.status,
         billing_interval:    sub.items.data[0]?.plan.interval ?? null,
-        current_period_end:  new Date((sub as any).current_period_end * 1000).toISOString(),
+        current_period_end:  getPeriodEnd(sub),
       });
       break;
     }

@@ -611,7 +611,16 @@ function BillingTab({ orgId }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(null); // 'month' | 'year'
   const searchParams = useSearchParams();
+  const router = useRouter();
   const justUpgraded = searchParams.get('success') === '1';
+
+  useEffect(() => {
+    if (justUpgraded) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('success');
+      router.replace(url.pathname + (url.search || ''));
+    }
+  }, []);
 
   useEffect(() => {
     if (!orgId) return;
