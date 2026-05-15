@@ -1,7 +1,7 @@
 'use client'
 import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { getBrowserClient } from '@/lib/supabase'
 import { Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,7 +23,7 @@ function LoginContent() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
+  const supabase = getBrowserClient()
 
   useEffect(() => {
     const errorParam = searchParams.get('error')

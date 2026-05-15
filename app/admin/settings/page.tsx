@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { getBrowserClient } from '@/lib/supabase'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import AdminNavigation from '@/components/admin/AdminNavigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -46,7 +46,7 @@ function SectionResult({ success, error }: { success: string | null; error: stri
 
 export default function SettingsPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = getBrowserClient()
   const { refreshOrganizations } = useOrganization() as any
 
   const [user, setUser]       = useState<SupabaseUser | null>(null)
@@ -88,7 +88,7 @@ export default function SettingsPage() {
   const [deleteError, setDeleteError]   = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then((res: any) => { const user = res.data?.user;
       if (!user) { router.push('/login'); return }
       setUser(user)
       setDisplayName(user.user_metadata?.full_name ?? '')

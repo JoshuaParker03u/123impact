@@ -58,8 +58,11 @@ export function OrganizationProvider({ children }) {
   useEffect(() => {
     loadOrganizations();
 
-    const { data: { subscription } } = getBrowserClient().auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+    const { data: { subscription } } = getBrowserClient().auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        loadOrganizations();
+      }
+      if (event === 'INITIAL_SESSION' && session) {
         loadOrganizations();
       }
       if (event === 'SIGNED_OUT') {
