@@ -3,8 +3,8 @@ const EB_BASE = 'https://www.eventbriteapi.com/v3';
 export interface EBEvent {
   id: string;
   name: { text: string };
-  start: { utc: string };
-  end: { utc: string };
+  start: { utc: string; local: string };
+  end: { utc: string; local: string };
   venue?: { address?: { localized_address_display?: string } };
   description?: { text: string };
   url?: string;
@@ -69,17 +69,17 @@ export async function eventbriteGetEvent(token: string, eventId: string): Promis
 }
 
 export function mapEventbriteEvent(e: EBEvent): MappedEvent {
-  const start = new Date(e.start.utc);
-  const end   = new Date(e.end.utc);
-  const startDate = start.toISOString().split('T')[0];
-  const endDate   = end.toISOString().split('T')[0];
+  // Use .local (event's own timezone) so times aren't shifted by server TZ
+  const startDate = e.start.local.split('T')[0];
+  const startTime = e.start.local.split('T')[1]?.slice(0, 5) ?? '';
+  const endDate   = e.end.local.split('T')[0];
 
   return {
     external_id:             e.id,
     title:                   e.name.text,
     date:                    startDate,
     end_date:                endDate !== startDate ? endDate : null,
-    time:                    start.toTimeString().slice(0, 5),
+    time:                    startTime,
     location:                e.venue?.address?.localized_address_display ?? '',
     description:             e.description?.text ?? null,
     online_url:              e.url ?? null,
