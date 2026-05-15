@@ -551,13 +551,13 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
                       isSelected
                         ? isWaitlistable
                           ? 'ring-2 ring-amber-500 bg-amber-50 dark:bg-amber-900/20'
-                          : 'ring-2 bg-blue-50 dark:bg-blue-900/30'
+                          : 'bg-blue-50 dark:bg-blue-900/30'
                         : isDisabled
                         ? 'opacity-50 cursor-not-allowed'
                         : 'hover:shadow-lg cursor-pointer'
                     }`}
-                    style={isSelected && !isWaitlistable && accentColor
-                      ? { outline: `2px solid ${accentColor}`, outlineOffset: '-2px' }
+                    style={isSelected && !isWaitlistable
+                      ? { outline: `2px solid ${accentColor ?? '#2563eb'}`, outlineOffset: '-2px' }
                       : undefined}
                     onClick={() => !isDisabled && toggleShift(shift)}
                   >
