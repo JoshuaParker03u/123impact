@@ -159,7 +159,11 @@ export default function AdminNavigation() {
   const handleSwitch = (orgId) => {
     switchOrganization(orgId);
     setDropdownOpen(false);
-    router.refresh();
+    // Navigate to the section root so detail pages from the old org don't persist
+    const path = window.location.pathname;
+    if (path.startsWith('/admin/events/')) router.push('/admin/events');
+    else if (path.startsWith('/admin/volunteers/')) router.push('/admin/volunteers');
+    else router.refresh();
   };
 
   const handleCreateSuccess = async (newOrg) => {
