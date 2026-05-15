@@ -68,13 +68,9 @@ export function OrganizationProvider({ children }) {
       if (event === 'SIGNED_OUT') {
         setOrganizations([]);
         setCurrentOrganization(null);
-        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-          const intentional = sessionStorage.getItem('intentionalSignOut') === 'true';
-          sessionStorage.removeItem('intentionalSignOut');
-          if (!intentional) {
-            window.location.href = '/login?reason=session_expired';
-          }
-        }
+        // Don't redirect here — the middleware handles protecting routes on next navigation.
+        // Redirecting here causes spurious "session expired" messages during OAuth sign-in
+        // when Supabase fires SIGNED_OUT to replace the old session with the new one.
       }
     });
 
