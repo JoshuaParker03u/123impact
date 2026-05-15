@@ -41,7 +41,7 @@ function FillBar({ filled, capacity }: { filled: number; capacity: number }) {
 }
 
 function DashboardContent() {
-  const { refreshOrganization } = useOrganization() as any
+  const { refreshOrganization, currentOrganization } = useOrganization() as any
   const [user, setUser]                         = useState<User | null>(null)
   const [isLoading, setIsLoading]               = useState(true)
   const [isFirstLogin, setIsFirstLogin]         = useState(false)
@@ -137,12 +137,13 @@ function DashboardContent() {
     handleAuthCallback()
   }, [supabase, router, searchParams])
 
+  const summaryOrgId = currentOrganization?.id ?? orgId
   useEffect(() => {
-    if (!orgId) return
-    fetch(`/api/dashboard/summary?org_id=${orgId}`)
+    if (!summaryOrgId) return
+    fetch(`/api/dashboard/summary?org_id=${summaryOrgId}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setSummary(data) })
-  }, [orgId])
+  }, [summaryOrgId])
 
   async function markOngoing(eventId: string) {
     setResolvingEventId(eventId)
@@ -177,11 +178,13 @@ function DashboardContent() {
   const staleEvents        = summary?.actionItems?.staleEvents ?? []
   const switchToOngoing    = summary?.actionItems?.switchToOngoing ?? []
   const eventsWithNoShifts = summary?.actionItems?.eventsWithNoShifts ?? []
+  const hasNoEvents        = summary?.actionItems?.hasNoEvents ?? false
   const actionCount        = (summary?.actionItems?.understaffedShifts ?? 0)
                            + (summary?.actionItems?.pendingInvitations ?? 0)
                            + staleEvents.length
                            + switchToOngoing.length
                            + eventsWithNoShifts.length
+                           + (hasNoEvents ? 1 : 0)
 
   if (isLoading) {
     return (
@@ -272,6 +275,14 @@ function DashboardContent() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
+              {hasNoEvents && (
+                <Link href="/admin/events">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
+                    <span className="text-sm text-blue-600 dark:text-blue-400">Create your first event to get started</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-blue-500" />
+                  </div>
+                </Link>
+              )}
               {summary.actionItems.understaffedShifts > 0 && (
                 <Link href="/admin/events">
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors">

@@ -188,6 +188,13 @@ export async function GET(req: NextRequest) {
     .filter((e: any) => (e.shifts ?? []).length === 0)
     .map((e: any) => ({ id: e.id, event_id: e.event_id, title: e.title, date: e.date, end_date: e.end_date }))
 
+  // No events at all — prompt the user to create their first event
+  const { count: totalEventCount } = await service
+    .from('events')
+    .select('*', { count: 'exact', head: true })
+    .eq('organization_id', orgId)
+  const hasNoEvents = (totalEventCount ?? 0) === 0
+
   return NextResponse.json({
     upcomingEvents,
     recentSignups,
@@ -199,6 +206,7 @@ export async function GET(req: NextRequest) {
       staleEvents,
       switchToOngoing,
       eventsWithNoShifts,
+      hasNoEvents,
     },
   })
 }

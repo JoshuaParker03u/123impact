@@ -73,6 +73,7 @@ export default function AdminNavigation() {
   const [notifications, setNotifications]     = useState([]);
   const [notifLoading, setNotifLoading]       = useState(false);
   const [userName, setUserName]               = useState('');
+  const [userEmail, setUserEmail]             = useState('');
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
   const dropdownRef = useRef(null);
   const notifRef    = useRef(null);
@@ -99,7 +100,8 @@ export default function AdminNavigation() {
       if (!user) return;
       const name = user.user_metadata?.full_name;
       const email = user.email || '';
-      setUserName(name ? `${name} (${email})` : email);
+      setUserName(name || '');
+      setUserEmail(email);
     };
 
     supabase.auth.getUser().then(({ data: { user } }) => setName(user));
@@ -110,6 +112,7 @@ export default function AdminNavigation() {
       }
       if (event === 'SIGNED_OUT') {
         setUserName('');
+        setUserEmail('');
       }
     });
 
@@ -156,7 +159,7 @@ export default function AdminNavigation() {
   const handleSwitch = (orgId) => {
     switchOrganization(orgId);
     setDropdownOpen(false);
-    router.push('/dashboard');
+    router.refresh();
   };
 
   const handleCreateSuccess = async (newOrg) => {
@@ -339,11 +342,10 @@ export default function AdminNavigation() {
               aria-label="Settings"
             >
               <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
-              {userName && (
-                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium max-w-[200px] break-all leading-tight">
-                  {userName}
-                </span>
-              )}
+              <div className="flex flex-col leading-tight max-w-[200px]">
+                {userName && <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{userName}</span>}
+                {userEmail && <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{userEmail}</span>}
+              </div>
             </Link>
 
             {/* Sign Out — rightmost desktop element */}

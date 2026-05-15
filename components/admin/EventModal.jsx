@@ -113,19 +113,17 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
         <div className="p-6">
           <h2 className="text-2xl font-bold mb-6">{event ? 'Edit Event' : 'Create Event'}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Event ID (URL slug)</label>
-              <input
-                type="text"
-                value={formData.event_id}
-                onChange={(e) => handleSlugChange(e.target.value)}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-                placeholder="spring-cleanup-2025"
-                disabled={!!event}
-              />
-              {!event && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">Auto-generated from title — you can edit it</p>}
-              {errors.event_id && <p className="text-red-600 text-sm mt-1">{errors.event_id}</p>}
-            </div>
+            {event && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Event ID (URL slug)</label>
+                <input
+                  type="text"
+                  value={formData.event_id}
+                  className="w-full border rounded-md px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 cursor-not-allowed"
+                  disabled
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Title</label>
