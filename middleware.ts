@@ -6,9 +6,10 @@ const KNOWN_HOSTS = ['123impact.org', 'www.123impact.org', 'localhost', '127.0.0
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Skip auth callback, Next.js internals, and static files
+  // Skip auth callback, Next.js internals, static files, and API routes
   if (
     pathname.startsWith('/auth/') ||
+    pathname.startsWith('/api/') ||
     pathname.startsWith('/_next') ||
     pathname.includes('.')
   ) {
