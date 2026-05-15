@@ -25,6 +25,12 @@ function formatEventTime(time: string | undefined): string {
   return time;
 }
 
+type DayHours = {
+  event_date: string
+  start_time: string
+  end_time: string
+}
+
 type Event = {
   id: string
   event_id: string
@@ -36,6 +42,44 @@ type Event = {
   location: string
   image_url: string | null
   status: string
+  event_day_hours?: DayHours[]
+}
+
+function EventScheduleDisplay({ event }: { event: Event }) {
+  const hours = [...(event.event_day_hours ?? [])].sort((a, b) => a.event_date.localeCompare(b.event_date))
+  if (!hours.length) {
+    return (
+      <div className="flex items-center gap-2">
+        <Clock className="w-5 h-5" />
+        <span>{formatEventTime(event.time)}</span>
+      </div>
+    )
+  }
+  if (hours.length === 1) {
+    return (
+      <div className="flex items-center gap-2">
+        <Clock className="w-5 h-5" />
+        <span>{formatEventTime(hours[0].start_time)} – {formatEventTime(hours[0].end_time)}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-start gap-2">
+      <Clock className="w-5 h-5 mt-0.5 shrink-0" />
+      <div className="space-y-0.5">
+        {hours.map(h => (
+          <div key={h.event_date} className="text-sm">
+            <span className="font-medium w-24 inline-block">
+              {new Date(h.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+            </span>
+            <span className="text-gray-500 dark:text-gray-400">
+              {formatEventTime(h.start_time)} – {formatEventTime(h.end_time)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 type Shift = {
@@ -313,9 +357,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                   <Calendar className="w-5 h-5" />
                   <span>{event.end_date && event.end_date !== event.date ? `${event.date} – ${event.end_date}` : event.date}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-5 h-5" /><span>{formatEventTime(event.time)}</span>
-                </div>
+                <EventScheduleDisplay event={event} />
                 <div className="flex items-center gap-2">
                   <MapPin className="w-5 h-5" /><span>{event.location}</span>
                 </div>

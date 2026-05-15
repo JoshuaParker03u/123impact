@@ -20,6 +20,21 @@ function randomSuffix() {
   return Math.random().toString(36).slice(2, 6);
 }
 
+function getEventDays(start, end) {
+  if (!start) return [];
+  const days = [];
+  const cur = new Date(start + 'T00:00:00');
+  const last = new Date((end || start) + 'T00:00:00');
+  while (cur <= last) {
+    days.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+const inputCls = 'w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600';
+const timeInputCls = 'border rounded-md px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600';
+
 export default function EventModal({ event, organizationId, onClose, onSave, supabase, isPaid = false }) {
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
@@ -38,6 +53,12 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
     recording_url: event?.recording_url || '',
   });
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
+  const [dayHours, setDayHours] = useState(() =>
+    (event?.event_day_hours ?? []).reduce((acc, r) => {
+      acc[r.event_date] = { start_time: r.start_time, end_time: r.end_time };
+      return acc;
+    }, {})
+  );
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -51,20 +72,32 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
     setFormData(prev => ({ ...prev, ...updates }));
   };
 
-  const handleSlugChange = (value) => {
-    setSlugEdited(true);
-    setFormData(prev => ({ ...prev, event_id: value }));
-  };
-
   const validate = () => {
     const newErrors = {};
-    if (!formData.event_id.trim()) newErrors.event_id = 'Event ID is required';
     if (!formData.title.trim()) newErrors.title = 'Title is required';
     if (!formData.date) newErrors.date = 'Date is required';
     if (formData.end_date && formData.end_date < formData.date) newErrors.end_date = 'End date must be on or after start date';
     if (!formData.location.trim()) newErrors.location = 'Location is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const saveDayHours = async (eventId) => {
+    const days = getEventDays(formData.date, formData.end_date || formData.date);
+    const rows = days
+      .filter(d => dayHours[d]?.start_time && dayHours[d]?.end_time)
+      .map(d => ({ event_id: eventId, event_date: d, start_time: dayHours[d].start_time, end_time: dayHours[d].end_time }));
+
+    if (rows.length > 0) {
+      await supabase.from('event_day_hours').upsert(rows, { onConflict: 'event_id,event_date' });
+    }
+    // Remove rows for days no longer in range
+    if (days.length > 0) {
+      await supabase.from('event_day_hours').delete().eq('event_id', eventId)
+        .not('event_date', 'in', `(${days.map(d => `"${d}"`).join(',')})`);
+    } else {
+      await supabase.from('event_day_hours').delete().eq('event_id', eventId);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -79,8 +112,9 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
           .update({ ...formData, end_date: formData.end_date || null })
           .eq('id', event.id);
         if (error) throw error;
+        await saveDayHours(event.id);
       } else {
-        const { error } = await supabase
+        const { data: newEvent, error } = await supabase
           .from('events')
           .insert({
             event_id:      formData.event_id,
@@ -96,8 +130,11 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             online_url:    formData.online_url || null,
             recording_url: formData.recording_url || null,
             organization_id: organizationId,
-          });
+          })
+          .select('id')
+          .single();
         if (error) throw error;
+        await saveDayHours(newEvent.id);
       }
       onSave();
     } catch (error) {
@@ -106,6 +143,8 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
       setSubmitting(false);
     }
   };
+
+  const scheduleDays = getEventDays(formData.date, isMultiDay ? formData.end_date : formData.date);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -131,12 +170,12 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 type="text"
                 value={formData.title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                className={inputCls}
               />
               {errors.title && <p className="text-red-600 text-sm mt-1">{errors.title}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div>
               <div>
                 <label className="block text-sm font-medium mb-1">Date</label>
                 <ShiftDatePicker
@@ -182,7 +221,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                       <ShiftDatePicker
                         value={formData.end_date}
                         onChange={(d) => setFormData({ ...formData, end_date: d })}
-                        minDate={formData.date || undefined}
+                        minDate={formData.date ? (() => { const d = new Date(formData.date + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })() : undefined}
                         disabled={hasVolunteers}
                       />
                       {errors.end_date && <p className="text-red-600 text-sm mt-1">{errors.end_date}</p>}
@@ -191,17 +230,52 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Start Time</label>
-                <input
-                  type="time"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-                />
-                {errors.time && <p className="text-red-600 text-sm mt-1">{errors.time}</p>}
-              </div>
             </div>
+
+            {/* Event Hours / Daily Schedule */}
+            {scheduleDays.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  {isMultiDay ? 'Daily Schedule (optional)' : 'Event Hours (optional)'}
+                </label>
+                <div className="space-y-2">
+                  {scheduleDays.map(day => {
+                    const d = new Date(day + 'T00:00:00');
+                    const label = isMultiDay
+                      ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                      : null;
+                    return (
+                      <div key={day} className="flex items-center gap-3">
+                        {label && (
+                          <span className="text-sm text-gray-600 dark:text-gray-400 w-28 shrink-0">{label}</span>
+                        )}
+                        <div className="flex items-center gap-2 flex-1">
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Opens</label>
+                            <input
+                              type="time"
+                              value={dayHours[day]?.start_time || ''}
+                              onChange={(e) => setDayHours(prev => ({ ...prev, [day]: { ...prev[day], start_time: e.target.value } }))}
+                              className={timeInputCls + ' w-full'}
+                            />
+                          </div>
+                          <span className="text-gray-400 mt-4">–</span>
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Closes</label>
+                            <input
+                              type="time"
+                              value={dayHours[day]?.end_time || ''}
+                              onChange={(e) => setDayHours(prev => ({ ...prev, [day]: { ...prev[day], end_time: e.target.value } }))}
+                              className={timeInputCls + ' w-full'}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Location</label>
@@ -209,7 +283,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 type="text"
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                className={inputCls}
               />
               {errors.location && <p className="text-red-600 text-sm mt-1">{errors.location}</p>}
             </div>
@@ -241,7 +315,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                   type="url"
                   value={formData.online_url}
                   onChange={(e) => setFormData({ ...formData, online_url: e.target.value })}
-                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                  className={inputCls}
                   placeholder="https://zoom.us/j/..."
                 />
               </div>
@@ -252,7 +326,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                className={inputCls}
                 rows={3}
               />
             </div>
@@ -263,7 +337,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 type="text"
                 value={formData.image_url}
                 onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                className={inputCls}
                 placeholder="https://..."
               />
             </div>
@@ -274,7 +348,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 type="url"
                 value={formData.recording_url}
                 onChange={(e) => setFormData({ ...formData, recording_url: e.target.value })}
-                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                className={inputCls}
                 placeholder="https://youtube.com/watch?v=..."
               />
             </div>
@@ -285,7 +359,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                  className={inputCls}
                 >
                   <option value="active">Active</option>
                   {isMultiDay && <option value="ongoing">Ongoing</option>}

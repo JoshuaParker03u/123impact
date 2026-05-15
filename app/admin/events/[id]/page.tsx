@@ -59,6 +59,7 @@ interface Event {
   status: string;
   organization_id: string;
   shifts: Shift[];
+  event_day_hours?: { id: string; event_date: string; start_time: string; end_time: string }[];
 }
 
 interface OrgMember {
@@ -95,6 +96,14 @@ function formatEventTime(time: string | undefined): string {
     return `${h12}:${m.toString().padStart(2, '0')} ${p}`;
   }
   return time;
+}
+
+function formatScheduleSummary(event: { time: string; event_day_hours?: { start_time: string; end_time: string }[] }): string {
+  const h = event.event_day_hours ?? [];
+  if (!h.length) return formatEventTime(event.time);
+  if (h.length === 1) return `${formatEventTime(h[0].start_time)} – ${formatEventTime(h[0].end_time)}`;
+  const allSame = h.every(r => r.start_time === h[0].start_time && r.end_time === h[0].end_time);
+  return allSame ? `${formatEventTime(h[0].start_time)} – ${formatEventTime(h[0].end_time)} daily` : 'Varied hours';
 }
 
 function formatDateRange(start: string, end?: string | null): string {
@@ -1170,10 +1179,11 @@ export default function AdminEventDetailPage() {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{event.title}</h1>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  event.status === 'active'
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                  event.status === 'active'    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' :
+                  event.status === 'ongoing'   ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' :
+                  event.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                  'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}>
                   {event.status}
                 </span>
@@ -1184,7 +1194,7 @@ export default function AdminEventDetailPage() {
                   <Calendar className="w-4 h-4" />{formatDateRange(event.date, event.end_date)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />{formatEventTime(event.time)}
+                  <Clock className="w-4 h-4" />{formatScheduleSummary(event)}
                 </span>
                 <span className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />{event.location}

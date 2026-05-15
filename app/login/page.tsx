@@ -29,18 +29,22 @@ function LoginContent() {
     const errorParam = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
     const verified = searchParams.get('verified')
-    
+
     if (errorParam) {
       console.error('OAuth Error:', errorParam, errorDescription)
       setError(errorDescription || errorParam)
     }
-    
+
     if (verified === 'true') {
       setSuccess('Email verified successfully! You can now sign in.')
     }
 
     if (searchParams.get('reason') === 'session_expired') {
       setError('Your session expired. Please sign in again.')
+    }
+
+    if (searchParams.get('mode') === 'signup') {
+      setMode('signup')
     }
   }, [searchParams])
 

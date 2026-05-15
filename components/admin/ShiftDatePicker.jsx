@@ -21,6 +21,12 @@ export default function ShiftDatePicker({ value, onChange, minDate, maxDate, dis
   const max = maxDate ? parseISO(maxDate) : null;
   const hasRange = !!(min && max);
 
+  function isSelectable(day) {
+    if (min && day < min) return false;
+    if (max && day > max) return false;
+    return true;
+  }
+
   const [open, setOpen]           = useState(false);
   const [viewMonth, setViewMonth] = useState(() => {
     if (value) return startOfMonth(parseISO(value));
@@ -102,7 +108,7 @@ export default function ShiftDatePicker({ value, onChange, minDate, maxDate, dis
 
           <div className="grid grid-cols-7">
             {days.map((day) => {
-              const inRange      = hasRange ? isWithinInterval(day, { start: min, end: max }) : true;
+              const inRange      = hasRange ? isWithinInterval(day, { start: min, end: max }) : isSelectable(day);
               const isSelected   = selected && isSameDay(day, selected);
               const outsideMonth = day.getMonth() !== viewMonth.getMonth();
               const base         = 'w-7 h-7 flex items-center justify-center text-xs mx-auto';

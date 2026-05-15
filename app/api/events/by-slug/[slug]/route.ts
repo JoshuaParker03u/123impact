@@ -36,7 +36,8 @@ export async function GET(
     .select(`
       id, event_id, title, description, date, end_date, time,
       location, image_url, status, organization_id,
-      shifts (id, shift_id, name, description, start_time, end_time, capacity, shift_date)
+      shifts (id, shift_id, name, description, start_time, end_time, capacity, shift_date),
+      event_day_hours (id, event_date, start_time, end_time)
     `)
     .eq('event_id', slug)
     .single();

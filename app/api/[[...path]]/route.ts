@@ -322,7 +322,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .from('events')
         .select(`
           id, event_id, title, description, date, end_date, time, location,
-          image_url, status, organization_id, created_at, updated_at
+          image_url, status, organization_id, created_at, updated_at,
+          event_day_hours (event_date, start_time, end_time)
         `)
         .eq('event_id', seg[2])
         .neq('status', 'deleted')
