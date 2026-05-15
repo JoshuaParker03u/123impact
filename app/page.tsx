@@ -69,7 +69,7 @@ export default async function Home() {
     {
       number: '2',
       title: 'Volunteers sign up',
-      description: 'Share the link. Volunteers register for the shifts that work for them, from any device.',
+      description: 'Share the link. Volunteers register with just a name and email — no account, no app, no friction.',
     },
     {
       number: '3',
@@ -114,6 +114,9 @@ export default async function Home() {
                 <ArrowDown className="w-4 h-4" />
               </a>
             </div>
+            <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">
+              Volunteers register with just a name and email — no account required.
+            </p>
           </div>
         </section>
 

@@ -83,10 +83,12 @@ export default function AdminEventsPage() {
     if (allShiftIds.length > 0) {
       const { data: regRows } = await supabase
         .from('volunteer_registrations')
-        .select('shift_id')
+        .select('shift_id, is_waitlisted')
         .in('shift_id', allShiftIds);
       countMap = (regRows || []).reduce((acc, r) => {
-        acc[r.shift_id] = (acc[r.shift_id] ?? 0) + 1;
+        if (!acc[r.shift_id]) acc[r.shift_id] = { filled: 0, waitlisted: 0 };
+        if (r.is_waitlisted) acc[r.shift_id].waitlisted++;
+        else acc[r.shift_id].filled++;
         return acc;
       }, {});
     }
@@ -95,7 +97,8 @@ export default function AdminEventsPage() {
       ...event,
       shifts: (event.shifts || []).map(shift => ({
         ...shift,
-        filled: countMap[shift.id] ?? 0,
+        filled:    countMap[shift.id]?.filled    ?? 0,
+        waitlisted: countMap[shift.id]?.waitlisted ?? 0,
       })),
     }));
 
@@ -299,7 +302,8 @@ export default function AdminEventsPage() {
             {visibleEvents.map((event) => {
               const isExpanded = expandedEvent === event.id;
               const totalVolunteers = event.shifts?.reduce((sum, shift) => sum + (shift.filled || 0), 0) || 0;
-              const totalCapacity = event.shifts?.reduce((sum, shift) => sum + shift.capacity, 0) || 0;
+              const totalCapacity   = event.shifts?.reduce((sum, shift) => sum + shift.capacity, 0) || 0;
+              const totalWaitlisted = event.shifts?.reduce((sum, shift) => sum + (shift.waitlisted || 0), 0) || 0;
 
               return (
                 <Card key={event.id} className="overflow-hidden">
@@ -331,6 +335,11 @@ export default function AdminEventsPage() {
                           <span className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
                             {totalVolunteers}/{totalCapacity} volunteers
+                            {totalWaitlisted > 0 && (
+                              <span className="ml-1 text-amber-600 dark:text-amber-400">
+                                · {totalWaitlisted} waitlisted
+                              </span>
+                            )}
                           </span>
                         </div>
                         {event.description && (

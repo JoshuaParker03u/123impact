@@ -31,6 +31,7 @@ interface Volunteer {
   email: string;
   phone: string | null;
   registered_at: string;
+  is_waitlisted?: boolean;
 }
 
 interface Shift {
@@ -42,6 +43,8 @@ interface Shift {
   end_time: string;
   capacity: number;
   filled: number;
+  waitlisted?: number;
+  allow_waitlist?: boolean;
   shift_date?: string | null;
   volunteers?: Volunteer[];
 }
@@ -1002,10 +1005,14 @@ export default function AdminEventDetailPage() {
 
     // Fetch registration counts
     const countsRes = await fetch(`/api/events/${data.id}/registration-counts`);
-    const countMap: Record<string, number> = countsRes.ok ? await countsRes.json() : {};
+    const countMap: Record<string, { filled: number; waitlisted: number }> = countsRes.ok ? await countsRes.json() : {};
 
     const sorted = [...(data.shifts ?? [])]
-      .map((s: any) => ({ ...s, filled: countMap[s.id] ?? 0 }))
+      .map((s: any) => ({
+        ...s,
+        filled:    countMap[s.id]?.filled    ?? 0,
+        waitlisted: countMap[s.id]?.waitlisted ?? 0,
+      }))
       .sort((a: any, b: any) => a.start_time.localeCompare(b.start_time));
 
     setEvent({ ...data, shifts: sorted } as Event);
@@ -1029,7 +1036,12 @@ export default function AdminEventDetailPage() {
         return {
           ...prev,
           shifts: prev.shifts.map((s) =>
-            s.id === shiftId ? { ...s, volunteers: data, filled: data.length } : s
+            s.id === shiftId ? {
+              ...s,
+              volunteers: data,
+              filled:     data.filter((v: any) => !v.is_waitlisted).length,
+              waitlisted: data.filter((v: any) => v.is_waitlisted).length,
+            } : s
           ),
         };
       });
@@ -1115,6 +1127,33 @@ export default function AdminEventDetailPage() {
     });
     if (error) alert('Error copying shift: ' + error.message);
     else loadEvent();
+  }
+
+  async function promoteVolunteer(registrationId: string, shiftId: string) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_waitlisted: false }),
+    });
+    if (!res.ok) { alert('Failed to promote volunteer.'); return; }
+
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        shifts: prev.shifts.map((s) => {
+          if (s.id !== shiftId) return s;
+          return {
+            ...s,
+            filled:    (s.filled ?? 0) + 1,
+            waitlisted: Math.max(0, (s.waitlisted ?? 0) - 1),
+            volunteers: (s.volunteers ?? []).map((v) =>
+              v.id === registrationId ? { ...v, is_waitlisted: false } : v
+            ),
+          };
+        }),
+      };
+    });
   }
 
   async function handleDeleteEvent() {
@@ -1323,8 +1362,10 @@ export default function AdminEventDetailPage() {
             ) : (
               <div className="space-y-3">
                 {event.shifts.map((shift) => {
-                  const isOpen    = expanded === shift.id;
-                  const isFull    = (shift.filled ?? 0) >= shift.capacity;
+                  const isOpen     = expanded === shift.id;
+                  const filled     = shift.filled ?? 0;
+                  const waitlisted = shift.waitlisted ?? 0;
+                  const isFull     = filled >= shift.capacity;
                   const start     = new Date(`${shift.shift_date ?? event.date}T${shift.start_time}`);
                   const end       = shiftEndDate(shift);
                   const overnight = shift.end_time <= shift.start_time;
@@ -1362,8 +1403,13 @@ export default function AdminEventDetailPage() {
                               ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                               : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                           }`}>
-                            {shift.filled ?? 0}/{shift.capacity}
+                            {filled}/{shift.capacity}
                           </span>
+                          {waitlisted > 0 && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                              +{waitlisted} waitlisted
+                            </span>
+                          )}
                           {canManage && (
                             <>
                               <button
@@ -1381,7 +1427,7 @@ export default function AdminEventDetailPage() {
                                 <Copy className="w-3.5 h-3.5 text-gray-500" />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleDeleteShift(shift.id, shift.filled ?? 0); }}
+                                onClick={(e) => { e.stopPropagation(); handleDeleteShift(shift.id, (shift.filled ?? 0) + (shift.waitlisted ?? 0)); }}
                                 className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
                                 title="Delete shift"
                               >
@@ -1399,33 +1445,84 @@ export default function AdminEventDetailPage() {
                       </div>
 
                       {isOpen && (
-                        <div className="border-t dark:border-gray-700 px-5 py-4 bg-gray-50 dark:bg-gray-800/50">
-                          {!shift.volunteers || shift.volunteers.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-gray-400">No volunteers registered yet.</p>
-                          ) : (
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                                  <th className="pb-2 font-medium">Name</th>
-                                  <th className="pb-2 font-medium">Email</th>
-                                  <th className="pb-2 font-medium">Phone</th>
-                                  <th className="pb-2 font-medium">Registered</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                {shift.volunteers.map((v) => (
-                                  <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                    <td className="py-2 pr-4 font-medium">{v.name}</td>
-                                    <td className="py-2 pr-4">{v.email}</td>
-                                    <td className="py-2 pr-4">{v.phone ?? '—'}</td>
-                                    <td className="py-2 text-gray-400 dark:text-gray-500">
-                                      {new Date(v.registered_at).toLocaleDateString()}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
+                        <div className="border-t dark:border-gray-700 px-5 py-4 bg-gray-50 dark:bg-gray-800/50 space-y-4">
+                          {/* Confirmed volunteers */}
+                          {(() => {
+                            const confirmed = (shift.volunteers ?? []).filter(v => !v.is_waitlisted);
+                            const waitlisting = (shift.volunteers ?? []).filter(v => v.is_waitlisted);
+                            return (
+                              <>
+                                {confirmed.length === 0 && waitlisting.length === 0 ? (
+                                  <p className="text-sm text-gray-500 dark:text-gray-400">No volunteers registered yet.</p>
+                                ) : (
+                                  <>
+                                    {confirmed.length > 0 && (
+                                      <table className="w-full text-sm">
+                                        <thead>
+                                          <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                                            <th className="pb-2 font-medium">Name</th>
+                                            <th className="pb-2 font-medium">Email</th>
+                                            <th className="pb-2 font-medium">Phone</th>
+                                            <th className="pb-2 font-medium">Registered</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                          {confirmed.map((v) => (
+                                            <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                                              <td className="py-2 pr-4 font-medium">{v.name}</td>
+                                              <td className="py-2 pr-4">{v.email}</td>
+                                              <td className="py-2 pr-4">{v.phone ?? '—'}</td>
+                                              <td className="py-2 text-gray-400 dark:text-gray-500">
+                                                {new Date(v.registered_at).toLocaleDateString()}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    )}
+                                    {waitlisting.length > 0 && (
+                                      <div>
+                                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-2">
+                                          Waitlist ({waitlisting.length})
+                                        </p>
+                                        <table className="w-full text-sm">
+                                          <thead>
+                                            <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                                              <th className="pb-2 font-medium">Name</th>
+                                              <th className="pb-2 font-medium">Email</th>
+                                              <th className="pb-2 font-medium">Phone</th>
+                                              <th className="pb-2 font-medium">Registered</th>
+                                              <th className="pb-2 font-medium"></th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                            {waitlisting.map((v) => (
+                                              <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                                                <td className="py-2 pr-4 font-medium">{v.name}</td>
+                                                <td className="py-2 pr-4">{v.email}</td>
+                                                <td className="py-2 pr-4">{v.phone ?? '—'}</td>
+                                                <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
+                                                  {new Date(v.registered_at).toLocaleDateString()}
+                                                </td>
+                                                <td className="py-2">
+                                                  <button
+                                                    onClick={() => promoteVolunteer(v.id, shift.id)}
+                                                    className="text-xs px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                                  >
+                                                    Promote
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       )}
                     </Card>

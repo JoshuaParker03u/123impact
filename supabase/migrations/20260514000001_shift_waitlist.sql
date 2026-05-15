@@ -1,0 +1,5 @@
+ALTER TABLE public.shifts
+  ADD COLUMN IF NOT EXISTS allow_waitlist BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE public.volunteer_registrations
+  ADD COLUMN IF NOT EXISTS is_waitlisted BOOLEAN NOT NULL DEFAULT FALSE;

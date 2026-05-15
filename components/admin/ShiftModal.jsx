@@ -11,13 +11,14 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
     : (Math.max(0, ...((event.shifts ?? []).map((s) => s.shift_id ?? 0))) + 1);
 
   const [formData, setFormData] = useState({
-    shift_id:    nextShiftId,
-    name:        shift?.name        || '',
-    description: shift?.description || '',
-    start_time:  shift?.start_time  || '',
-    end_time:    shift?.end_time    || '',
-    capacity:    shift?.capacity    || 10,
-    shift_date:  shift?.shift_date  || '',
+    shift_id:       nextShiftId,
+    name:           shift?.name           || '',
+    description:    shift?.description    || '',
+    start_time:     shift?.start_time     || '',
+    end_time:       shift?.end_time       || '',
+    capacity:       shift?.capacity       || 10,
+    shift_date:     shift?.shift_date     || '',
+    allow_waitlist: shift?.allow_waitlist ?? false,
   });
   const [errors, setErrors]       = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -117,6 +118,16 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
               {shift && <p className="text-sm text-gray-500 mt-1">Currently {shift.filled} volunteers registered</p>}
               {errors.capacity && <p className="text-red-600 text-sm mt-1">{errors.capacity}</p>}
             </div>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-600 dark:text-gray-400">
+              <input
+                type="checkbox"
+                checked={formData.allow_waitlist}
+                onChange={(e) => setFormData({ ...formData, allow_waitlist: e.target.checked })}
+                className="rounded"
+              />
+              Enable waitlist for this shift
+            </label>
 
             <div>
               <label className="block text-sm font-medium mb-1">Description (optional)</label>

@@ -72,12 +72,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: regs } = await service
     .from('volunteer_registrations')
-    .select('shift_id')
+    .select('shift_id, is_waitlisted')
     .in('shift_id', shiftIds);
 
-  const counts: Record<string, number> = {};
+  const counts: Record<string, { filled: number; waitlisted: number }> = {};
   (regs ?? []).forEach((r: any) => {
-    counts[r.shift_id] = (counts[r.shift_id] ?? 0) + 1;
+    if (!counts[r.shift_id]) counts[r.shift_id] = { filled: 0, waitlisted: 0 };
+    if (r.is_waitlisted) counts[r.shift_id].waitlisted++;
+    else counts[r.shift_id].filled++;
   });
 
   return NextResponse.json(counts);

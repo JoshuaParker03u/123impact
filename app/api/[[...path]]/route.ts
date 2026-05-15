@@ -139,7 +139,8 @@ async function sendRegistrationConfirmation(
   supabase: SupabaseClient,
   volunteerName: string,
   volunteerEmail: string,
-  shiftId: string
+  shiftId: string,
+  isWaitlisted = false
 ) {
   const { data: shift } = await supabase
     .from('shifts')
@@ -151,41 +152,48 @@ async function sendRegistrationConfirmation(
 
   const event = shift.events as any;
 
-  const html = wrapEmailHtml(`
-    <h2>Registration Confirmed</h2>
-    <p>Hi ${volunteerName},</p>
-    <p>Thank you for signing up to volunteer at <strong>${event.title}</strong>. We look forward to seeing you!</p>
+  const dateDisplay = event.end_date && event.end_date !== event.date
+    ? `${event.date} – ${event.end_date}`
+    : event.date;
+
+  const detailTable = `
     <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-      <tr>
-        <td style="padding:8px 0;color:#6b7280;width:120px;">Event</td>
-        <td style="padding:8px 0;font-weight:600;">${event.title}</td>
-      </tr>
-      <tr>
-        <td style="padding:8px 0;color:#6b7280;">Date</td>
-        <td style="padding:8px 0;">${event.end_date && event.end_date !== event.date ? `${event.date} – ${event.end_date}` : event.date}</td>
-      </tr>
-      <tr>
-        <td style="padding:8px 0;color:#6b7280;">Location</td>
-        <td style="padding:8px 0;">${event.location}</td>
-      </tr>
-      <tr>
-        <td style="padding:8px 0;color:#6b7280;">Shift</td>
-        <td style="padding:8px 0;">${shift.name}</td>
-      </tr>
-      <tr>
-        <td style="padding:8px 0;color:#6b7280;">Time</td>
-        <td style="padding:8px 0;">${shift.start_time} &ndash; ${shift.end_time}</td>
-      </tr>
-    </table>
-    <p>See you there!</p>
-  `);
+      <tr><td style="padding:8px 0;color:#6b7280;width:120px;">Event</td><td style="padding:8px 0;font-weight:600;">${event.title}</td></tr>
+      <tr><td style="padding:8px 0;color:#6b7280;">Date</td><td style="padding:8px 0;">${dateDisplay}</td></tr>
+      <tr><td style="padding:8px 0;color:#6b7280;">Location</td><td style="padding:8px 0;">${event.location}</td></tr>
+      <tr><td style="padding:8px 0;color:#6b7280;">Shift</td><td style="padding:8px 0;">${shift.name}</td></tr>
+      <tr><td style="padding:8px 0;color:#6b7280;">Time</td><td style="padding:8px 0;">${shift.start_time} – ${shift.end_time}</td></tr>
+    </table>`;
+
+  const html = isWaitlisted
+    ? wrapEmailHtml(`
+        <h2>You're on the Waitlist</h2>
+        <p>Hi ${volunteerName},</p>
+        <p>You've been added to the waitlist for the <strong>${shift.name}</strong> shift at <strong>${event.title}</strong>. The coordinator will reach out if a spot becomes available.</p>
+        ${detailTable}
+        <p>We'll be in touch!</p>
+      `)
+    : wrapEmailHtml(`
+        <h2>Registration Confirmed</h2>
+        <p>Hi ${volunteerName},</p>
+        <p>Thank you for signing up to volunteer at <strong>${event.title}</strong>. We look forward to seeing you!</p>
+        ${detailTable}
+        <p>See you there!</p>
+      `);
 
   await sendEmail({
     to: volunteerEmail,
-    subject: `Confirmed: ${event.title} \u2013 ${shift.name}`,
+    subject: isWaitlisted
+      ? `Waitlist: ${event.title} – ${shift.name}`
+      : `Confirmed: ${event.title} – ${shift.name}`,
     html,
   });
 }
+
+// ---------------------------------------------------------------------------
+// scheduleAutomatedEmails
+// Called after a successful public volunteer registration to queue any
+// automated emails defined for the shift's event.
 
 // ---------------------------------------------------------------------------
 // scheduleAutomatedEmails
@@ -323,7 +331,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .select(`
           id, event_id, title, description, date, end_date, time, location,
           image_url, status, organization_id, created_at, updated_at,
-          event_day_hours (event_date, start_time, end_time)
+          event_day_hours (event_date, start_time, end_time),
+          organizations (id, name, logo_url)
         `)
         .eq('event_id', seg[2])
         .neq('status', 'deleted')
@@ -340,7 +349,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .from('shifts')
         .select(`
           id, shift_id, name, description,
-          start_time, end_time, capacity,
+          start_time, end_time, capacity, allow_waitlist,
           event_id, created_at, updated_at
         `)
         .eq('event_id', seg[1])
@@ -351,19 +360,22 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       const shiftIds = (data ?? []).map((s) => s.id);
       const { data: regRows } = await supabase
         .from('volunteer_registrations')
-        .select('shift_id')
+        .select('shift_id, is_waitlisted')
         .in('shift_id', shiftIds);
 
-      const countMap = (regRows ?? []).reduce<Record<string, number>>((acc, r) => {
-        acc[r.shift_id] = (acc[r.shift_id] ?? 0) + 1;
+      const countMap = (regRows ?? []).reduce<Record<string, { filled: number; waitlisted: number }>>((acc, r) => {
+        if (!acc[r.shift_id]) acc[r.shift_id] = { filled: 0, waitlisted: 0 };
+        if (r.is_waitlisted) acc[r.shift_id].waitlisted++;
+        else acc[r.shift_id].filled++;
         return acc;
       }, {});
 
       const enriched = (data ?? []).map((shift) => {
-        const filled = countMap[shift.id] ?? 0;
+        const { filled = 0, waitlisted = 0 } = countMap[shift.id] ?? {};
         return {
           ...shift,
           filled,
+          waitlisted,
           available: shift.capacity - filled,
           is_full:   filled >= shift.capacity,
         };
@@ -509,16 +521,38 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
       const supabase = buildServiceClient();
 
+      // Enforce capacity server-side
+      const { data: shift } = await supabase
+        .from('shifts')
+        .select('id, capacity, allow_waitlist')
+        .eq('id', shift_id)
+        .single();
+
+      if (!shift) return fail('Shift not found', 404);
+
+      const { count: confirmedCount } = await supabase
+        .from('volunteer_registrations')
+        .select('*', { count: 'exact', head: true })
+        .eq('shift_id', shift_id)
+        .eq('is_waitlisted', false);
+
+      const confirmed = confirmedCount ?? 0;
+      const isWaitlisted = confirmed >= shift.capacity;
+
+      if (isWaitlisted && !shift.allow_waitlist) {
+        return fail('This shift is full', 409);
+      }
+
       const { data: registration, error: regError } = await supabase
         .from('volunteer_registrations')
-        .insert({ shift_id, name, email, phone: phone ?? null, attendee_type: resolvedType })
+        .insert({ shift_id, name, email, phone: phone ?? null, attendee_type: resolvedType, is_waitlisted: isWaitlisted })
         .select()
         .single();
 
       if (regError) throw regError;
 
       // Fire-and-forget: send confirmation + queue automated emails (errors are non-fatal)
-      sendRegistrationConfirmation(supabase, name, email, shift_id)
+      sendRegistrationConfirmation(supabase, name, email, shift_id, isWaitlisted)
         .catch((e) => console.error('sendRegistrationConfirmation error:', e));
       scheduleAutomatedEmails(supabase, registration.id, name, email, shift_id)
         .catch((e) => console.error('scheduleAutomatedEmails error:', e));

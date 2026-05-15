@@ -43,6 +43,7 @@ type Event = {
   image_url: string | null
   status: string
   event_day_hours?: DayHours[]
+  organizations?: { id: string; name: string; logo_url: string | null } | null
 }
 
 function EventScheduleDisplay({ event }: { event: Event }) {
@@ -92,8 +93,10 @@ type Shift = {
   end_time: string
   capacity: number
   filled: number
-  available: number  // computed by API
-  is_full: boolean   // computed by API
+  waitlisted: number
+  available: number    // computed by API
+  is_full: boolean     // computed by API
+  allow_waitlist: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +130,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   const [selectedShift, setSelectedShift] = useState<string | null>(null)
   const [formData, setFormData]           = useState({ name: '', email: '', phone: '', attendee_type: 'volunteer' })
   const [submitted, setSubmitted]         = useState(false)
+  const [submittedWaitlisted, setSubmittedWaitlisted] = useState(false)
   const [submitting, setSubmitting]       = useState(false)
   const [errors, setErrors]               = useState<Record<string, string>>({})
 
@@ -178,7 +182,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
   useEffect(() => {
     if (shifts.length > 0 && selectedShift === null) {
-      const first = shifts.find(s => !s.is_full)
+      const first = shifts.find(s => !s.is_full) ?? shifts.find(s => s.allow_waitlist)
       if (first) setSelectedShift(first.id)
     }
   }, [shifts])
@@ -219,6 +223,9 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
       // POST /api/volunteer-registrations  — public
       // The API handles: inserting the row, incrementing shift.filled,
       // and scheduling automated emails.
+      const selectedShiftData = shifts.find(s => s.id === selectedShift)
+      const joiningWaitlist = !!(selectedShiftData?.is_full && selectedShiftData?.allow_waitlist)
+
       await apiFetch('volunteer-registrations', {
         method: 'POST',
         body: JSON.stringify({
@@ -230,6 +237,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
         }),
       })
 
+      setSubmittedWaitlisted(joiningWaitlist)
       setSubmitted(true)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to submit registration.'
@@ -285,7 +293,6 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               <p className="text-gray-600 dark:text-gray-400 mb-6">
                 {pageError ?? "The event you're looking for doesn't exist or has been removed."}
               </p>
-              <Button onClick={() => window.location.href = '/'}>Return Home</Button>
             </Card>
           </div>
         </main>
@@ -297,34 +304,51 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
   if (submitted) {
     const selectedShiftData = shifts.find(s => s.id === selectedShift)
+    const dateDisplay = event.end_date && event.end_date !== event.date
+      ? `${event.date} – ${event.end_date}`
+      : event.date
+
     return (
       <>
         <Header />
         <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
           <div className="max-w-2xl mx-auto">
             <Card className="p-8 text-center">
-              <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Check className="w-12 h-12 text-green-600 dark:text-green-400" />
-              </div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">You're All Set!</h1>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Thank you for signing up, {formData.name}! We've sent a confirmation
-                email to {formData.email} with all the details.
-              </p>
-              <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
-                <p className="text-sm text-blue-900 dark:text-blue-200 font-medium">{selectedShiftData?.name}</p>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  {event.end_date && event.end_date !== event.date ? `${event.date} – ${event.end_date}` : event.date} • {selectedShiftData?.start_time} - {selectedShiftData?.end_time}
-                </p>
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">A calendar invite has been added to your email.</p>
-              <Button
-                variant="outline"
-                onClick={() => window.location.href = '/'}
-                className="w-full sm:w-auto"
-              >
-                Return to Home
-              </Button>
+              {submittedWaitlisted ? (
+                <>
+                  <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Clock className="w-12 h-12 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">You're on the Waitlist!</h1>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    We've added you to the waitlist for the <strong>{selectedShiftData?.name}</strong> shift, {formData.name}. The coordinator will reach out if a spot becomes available.
+                  </p>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-amber-900 dark:text-amber-200 font-medium">{selectedShiftData?.name}</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                      {dateDisplay} • {selectedShiftData?.start_time} – {selectedShiftData?.end_time}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Check className="w-12 h-12 text-green-600 dark:text-green-400" />
+                  </div>
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">You're All Set!</h1>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    Thank you for signing up, {formData.name}! We've sent a confirmation
+                    email to {formData.email} with all the details.
+                  </p>
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-blue-900 dark:text-blue-200 font-medium">{selectedShiftData?.name}</p>
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      {dateDisplay} • {selectedShiftData?.start_time} – {selectedShiftData?.end_time}
+                    </p>
+                  </div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">A calendar invite has been added to your email.</p>
+                </>
+              )}
             </Card>
           </div>
         </main>
@@ -364,23 +388,42 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               </div>
               <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
 
-              {coSponsors.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Co-Hosted By</p>
-                  <div className="flex flex-wrap gap-3">
-                    {coSponsors.map((org) => (
-                      <div key={org.id} className="flex items-center gap-2">
-                        {org.logo_url ? (
-                          <img src={org.logo_url} alt={org.name} className="w-7 h-7 rounded-md object-cover" />
+              {(event.organizations || coSponsors.length > 0) && (
+                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                  {event.organizations && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Hosted By</p>
+                      <div className="flex items-center gap-2">
+                        {event.organizations.logo_url ? (
+                          <img src={event.organizations.logo_url} alt={event.organizations.name} className="w-7 h-7 rounded-md object-cover" />
                         ) : (
-                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
-                            {org.name.slice(0, 2).toUpperCase()}
+                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {event.organizations.name.slice(0, 2).toUpperCase()}
                           </div>
                         )}
-                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{org.name}</span>
+                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{event.organizations.name}</span>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+                  {coSponsors.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Co-Hosted By</p>
+                      <div className="flex flex-wrap gap-3">
+                        {coSponsors.map((org) => (
+                          <div key={org.id} className="flex items-center gap-2">
+                            {org.logo_url ? (
+                              <img src={org.logo_url} alt={org.name} className="w-7 h-7 rounded-md object-cover" />
+                            ) : (
+                              <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                                {org.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{org.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -400,20 +443,26 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
             <div className="grid gap-4">
               {shifts.map((shift) => {
                 const isSelected = selectedShift === shift.id
+                const isWaitlistable = shift.is_full && shift.allow_waitlist
+                const isBlocked = shift.is_full && !shift.allow_waitlist
                 return (
                   <Card
                     key={shift.id}
-                    className={`p-6 cursor-pointer transition-all ${
-                      isSelected ? 'ring-2 ring-blue-600 bg-blue-50 dark:bg-blue-900/30' : 'hover:shadow-lg'
-                    } ${shift.is_full ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    onClick={() => !shift.is_full && setSelectedShift(shift.id)}
+                    className={`p-6 transition-all ${
+                      isSelected
+                        ? isWaitlistable
+                          ? 'ring-2 ring-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                          : 'ring-2 ring-blue-600 bg-blue-50 dark:bg-blue-900/30'
+                        : 'hover:shadow-lg'
+                    } ${isBlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    onClick={() => !isBlocked && setSelectedShift(shift.id)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{shift.name}</h3>
                           {isSelected && (
-                            <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isWaitlistable ? 'bg-amber-500' : 'bg-blue-600'}`}>
                               <Check className="w-4 h-4 text-white" />
                             </div>
                           )}
@@ -422,17 +471,22 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
-                            {shift.start_time} - {shift.end_time}
+                            {shift.start_time} – {shift.end_time}
                           </span>
                           <span className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
-                            {shift.available} {shift.available === 1 ? 'spot' : 'spots'} left
+                            {isWaitlistable ? 'Waitlist open' : `${shift.available} ${shift.available === 1 ? 'spot' : 'spots'} left`}
                           </span>
                         </div>
                       </div>
-                      {shift.is_full && (
-                        <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm font-medium rounded-full">
+                      {isBlocked && (
+                        <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-full">
                           Full
+                        </span>
+                      )}
+                      {isWaitlistable && (
+                        <span className="px-3 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-sm font-medium rounded-full">
+                          Waitlist
                         </span>
                       )}
                     </div>
