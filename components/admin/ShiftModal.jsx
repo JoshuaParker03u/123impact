@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import ShiftDatePicker from './ShiftDatePicker';
+import { X } from 'lucide-react';
 
 export default function ShiftModal({ shift, event, onClose, onSave, supabase }) {
   const nextShiftId = shift
@@ -63,7 +64,12 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <Card className="max-w-lg w-full">
         <div className="p-6">
-          <h2 className="text-2xl font-bold mb-6">{shift ? 'Edit Shift' : 'Create Shift'}</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold">{shift ? 'Edit Shift' : 'Create Shift'}</h2>
+            <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Shift Name</label>

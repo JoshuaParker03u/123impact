@@ -323,20 +323,20 @@ export default function CreateOrganizationModal({ onClose, onSuccess }) {
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={submitting}
+              className="flex-1 border-gray-300 dark:border-gray-600"
+            >
+              Cancel
+            </Button>
+            <Button
               type="submit"
               disabled={submitting}
               className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? 'Creating...' : 'Create Organization'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={submitting}
-              className="px-6 border-gray-300 dark:border-gray-600"
-            >
-              Cancel
             </Button>
           </div>
         </form>
