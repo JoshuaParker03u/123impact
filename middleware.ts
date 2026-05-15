@@ -48,12 +48,13 @@ export async function middleware(req: NextRequest) {
   
   console.log(`[MIDDLEWARE] User: ${user ? user.email : 'NONE'}`)
 
-  // Protect dashboard routes (without code parameter)
-  if (pathname.startsWith('/dashboard')) {
-    if (!user) {
-      console.log('[MIDDLEWARE] Redirecting to login')
-      return NextResponse.redirect(new URL('/login', req.url))
-    }
+  // Protect all app routes
+  const isProtected = pathname.startsWith('/dashboard') || pathname.startsWith('/admin')
+  if (isProtected && !user) {
+    console.log('[MIDDLEWARE] Redirecting to login')
+    const loginUrl = new URL('/login', req.url)
+    loginUrl.searchParams.set('reason', 'session_expired')
+    return NextResponse.redirect(loginUrl)
   }
 
   return response

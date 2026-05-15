@@ -95,12 +95,25 @@ export default function AdminNavigation() {
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    const setName = (user) => {
       if (!user) return;
       const name = user.user_metadata?.full_name;
       const email = user.email || '';
       setUserName(name ? `${name} (${email})` : email);
+    };
+
+    supabase.auth.getUser().then(({ data: { user } }) => setName(user));
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setName(session?.user ?? null);
+      }
+      if (event === 'SIGNED_OUT') {
+        setUserName('');
+      }
     });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const markAllRead = async () => {
@@ -113,6 +126,12 @@ export default function AdminNavigation() {
     await fetch(`/api/notifications/${id}`, { method: 'PATCH' });
     setNotifOpen(false);
     if (link) router.push(link);
+  };
+
+  const dismissNotification = async (e, id) => {
+    e.stopPropagation();
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
   };
 
   // Close dropdowns on outside click
@@ -285,10 +304,10 @@ export default function AdminNavigation() {
                     ) : notifications.length === 0 ? (
                       <li className="px-4 py-6 text-center text-sm text-gray-400">No notifications yet</li>
                     ) : notifications.map((n) => (
-                      <li key={n.id}>
+                      <li key={n.id} className={`flex items-start ${!n.read_at ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}>
                         <button
                           onClick={() => markRead(n.id, n.link)}
-                          className={`w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${!n.read_at ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}
+                          className="flex-1 text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                         >
                           <div className="flex items-start gap-2.5">
                             {!n.read_at && <span className="mt-1.5 w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
@@ -298,6 +317,13 @@ export default function AdminNavigation() {
                               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{timeAgo(n.created_at)}</p>
                             </div>
                           </div>
+                        </button>
+                        <button
+                          onClick={(e) => dismissNotification(e, n.id)}
+                          className="p-2 mt-1 mr-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+                          title="Dismiss"
+                        >
+                          <X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" />
                         </button>
                       </li>
                     ))}

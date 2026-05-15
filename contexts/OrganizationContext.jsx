@@ -59,12 +59,16 @@ export function OrganizationProvider({ children }) {
     loadOrganizations();
 
     const { data: { subscription } } = getBrowserClient().auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         loadOrganizations();
       }
       if (event === 'SIGNED_OUT') {
         setOrganizations([]);
         setCurrentOrganization(null);
+        // Redirect to login instead of leaving the user in a broken "no org" state
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login?reason=session_expired';
+        }
       }
     });
 

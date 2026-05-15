@@ -94,7 +94,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: assignment } = await service
     .from('event_admin_assignments')
-    .select('*, events!inner(id, title, organization_id, organizations!inner(name)), co_sponsor_organization:organizations!event_admin_assignments_co_sponsor_org_id_fkey(id, name, logo_url)')
+    .select('*, events!inner(id, event_id, title, organization_id, organizations!inner(name)), co_sponsor_organization:organizations!event_admin_assignments_co_sponsor_org_id_fkey(id, name, logo_url)')
     .eq('token', token)
     .single();
 
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     type:    'event_admin_added',
     title:   "You've been added as Event Admin",
     body:    `You've been added as Event Admin for "${event.title}" hosted by ${org.name}. Your access expires on ${expiryFormatted}.`,
-    link:    `/admin/events/${event.id}`,
+    link:    `/admin/events/${event.event_id}`,
   });
 
   return NextResponse.json({ success: true, action: 'accepted', event_id: event.id });

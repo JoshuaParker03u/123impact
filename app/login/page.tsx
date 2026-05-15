@@ -38,6 +38,10 @@ function LoginContent() {
     if (verified === 'true') {
       setSuccess('Email verified successfully! You can now sign in.')
     }
+
+    if (searchParams.get('reason') === 'session_expired') {
+      setError('Your session expired. Please sign in again.')
+    }
   }, [searchParams])
 
   useEffect(() => {

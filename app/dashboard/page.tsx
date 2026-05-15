@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -57,7 +56,7 @@ function DashboardContent() {
 
   const router      = useRouter()
   const searchParams = useSearchParams()
-  const supabase    = useMemo(() => createClient(), [])
+  const supabase    = useMemo(() => getBrowserClient(), [])
 
   useEffect(() => {
     async function handleAuthCallback() {
@@ -72,6 +71,7 @@ function DashboardContent() {
       if (code) {
         try {
           await supabase.auth.exchangeCodeForSession(code)
+          await refreshOrganization()
           router.replace('/dashboard')
         } catch {}
       }

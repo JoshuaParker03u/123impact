@@ -32,7 +32,7 @@ async function buildClients() {
 async function requireOrgAdmin(service: any, eventId: string, userId: string) {
   const { data: event } = await service
     .from('events')
-    .select('organization_id, title, date, organizations!inner(plan, name)')
+    .select('event_id, organization_id, title, date, organizations!inner(plan, name)')
     .eq('id', eventId)
     .single();
   if (!event) return { error: 'Event not found', status: 404 };
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       type:    'event_admin_added',
       title:   "You've been added as Event Admin",
       body:    `You've been added as Event Admin for "${event.title}" hosted by ${org.name}. Your access expires on ${expiryFormatted}.`,
-      link:    `/admin/events/${eventId}`,
+      link:    `/admin/events/${check.event.event_id}`,
     });
   } else {
     // Send invitation email

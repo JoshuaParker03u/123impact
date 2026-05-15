@@ -18,7 +18,7 @@ import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
-  AlertTriangle, QrCode, Download, BarChart2, Radio, Link2,
+  AlertTriangle, QrCode, Download, BarChart2, Radio, Link2, Copy,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -1093,6 +1093,21 @@ export default function AdminEventDetailPage() {
     else loadEvent();
   }
 
+  async function handleCopyShift(shift: any) {
+    const { error } = await supabase.from('shifts').insert({
+      event_id:    shift.event_id,
+      shift_id:    `${shift.shift_id}-copy-${Math.random().toString(36).slice(2, 6)}`,
+      name:        `${shift.name} (copy)`,
+      description: shift.description,
+      start_time:  shift.start_time,
+      end_time:    shift.end_time,
+      capacity:    shift.capacity,
+      shift_date:  shift.shift_date ?? null,
+    });
+    if (error) alert('Error copying shift: ' + error.message);
+    else loadEvent();
+  }
+
   async function handleDeleteEvent() {
     if (!event) return;
     if (!confirm('This will delete the event, all its shifts, and all volunteer registrations. Continue?')) return;
@@ -1347,6 +1362,13 @@ export default function AdminEventDetailPage() {
                                 title="Edit shift"
                               >
                                 <Pencil className="w-3.5 h-3.5 text-gray-500" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleCopyShift(shift); }}
+                                className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                title="Copy shift"
+                              >
+                                <Copy className="w-3.5 h-3.5 text-gray-500" />
                               </button>
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDeleteShift(shift.id, shift.filled ?? 0); }}
