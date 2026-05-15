@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import {
   Upload, Link as LinkIcon, X, Loader2, Check, AlertTriangle,
   UserPlus, Users, Mail, RefreshCw, Trash2, Crown, Shield, User,
   Send, ChevronDown, ChevronUp, Plug, CheckCircle2, XCircle, ExternalLink,
+  Globe, Copy, Zap, CreditCard,
 } from 'lucide-react';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
@@ -298,6 +300,461 @@ function InviteModal({ orgId, onClose, onSent, userRole }) {
           </div>
         </form>
       </Card>
+    </div>
+  );
+}
+
+// ── Custom Domain Tab ──────────────────────────────────────────────────────────
+
+const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 text-sm';
+
+function StatusBadge({ status }) {
+  const map = {
+    setup_initiated:      { label: 'Not configured', cls: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400' },
+    email_sent:           { label: 'Email sent', cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' },
+    pending_verification: { label: 'Pending verification', cls: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' },
+    active:               { label: 'Active', cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' },
+    verification_failed:  { label: 'Verification failed', cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
+    ssl_error:            { label: 'SSL error', cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+    disconnected:         { label: 'Disconnected', cls: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400' },
+  };
+  const { label, cls } = map[status] ?? map.setup_initiated;
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{label}</span>;
+}
+
+function DnsRecord({ type, name, value }) {
+  const [copied, setCopied] = useState('');
+  function copy(text, key) {
+    navigator.clipboard.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 2000); });
+  }
+  return (
+    <div className="border dark:border-gray-700 rounded-lg p-3 font-mono text-xs space-y-1">
+      <p className="text-gray-500 dark:text-gray-400 font-sans font-medium text-xs">{type} Record</p>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-500 dark:text-gray-400">Name:</span>
+        <span className="flex-1 text-right truncate text-gray-900 dark:text-gray-100">{name}</span>
+        <button onClick={() => copy(name, `name-${type}`)} className="shrink-0 text-blue-500 hover:text-blue-700">
+          {copied === `name-${type}` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-500 dark:text-gray-400">Value:</span>
+        <span className="flex-1 text-right truncate text-gray-900 dark:text-gray-100">{value}</span>
+        <button onClick={() => copy(value, `val-${type}`)} className="shrink-0 text-blue-500 hover:text-blue-700">
+          {copied === `val-${type}` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CustomDomainTab({ orgId }) {
+  const [isPaid, setIsPaid]         = useState(null); // null = loading
+  const [domain, setDomain]         = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [subdomain, setSubdomain]   = useState('');
+  const [dnsEmail, setDnsEmail]     = useState('');
+  const [saving, setSaving]         = useState(false);
+  const [sending, setSending]       = useState(false);
+  const [verifying, setVerifying]   = useState(false);
+  const [removing, setRemoving]     = useState(false);
+  const [error, setError]           = useState('');
+  const [verifyErrors, setVerifyErrors] = useState([]);
+  const [primaryColor, setPrimaryColor] = useState('#2563EB');
+  const [bannerUrl, setBannerUrl]   = useState('');
+  const [headerLinks, setHeaderLinks] = useState([]);
+  const [savingBranding, setSavingBranding] = useState(false);
+
+  function load() {
+    setLoading(true);
+    const sb = getBrowserClient();
+    Promise.all([
+      fetch(`/api/organizations/${orgId}/custom-domain`).then(r => r.json()).catch(() => null),
+      sb.from('organizations').select('plan').eq('id', orgId).single(),
+    ]).then(([domainData, { data: orgRow }]) => {
+      const plan = orgRow?.plan ?? 'free';
+      setIsPaid(plan !== 'free');
+      if (domainData && !domainData.error) {
+        setDomain(domainData);
+        setSubdomain(domainData.subdomain ?? '');
+        setDnsEmail(domainData.dns_admin_email ?? '');
+        setPrimaryColor(domainData.primary_color ?? '#2563EB');
+        setBannerUrl(domainData.banner_image_url ?? '');
+        setHeaderLinks(domainData.header_links ?? []);
+      }
+    }).catch(() => { setIsPaid(false); }).finally(() => setLoading(false));
+  }
+
+  useEffect(() => { if (orgId) load(); }, [orgId]);
+
+  async function handleSave() {
+    setSaving(true); setError('');
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/custom-domain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subdomain, dns_admin_email: dnsEmail || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      load();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  async function handleSendEmail() {
+    setSending(true); setError('');
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/custom-domain/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dns_admin_email: dnsEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      load();
+    } catch (e) { setError(e.message); }
+    finally { setSending(false); }
+  }
+
+  async function handleVerify() {
+    setVerifying(true); setError(''); setVerifyErrors([]);
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/custom-domain/verify`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { setVerifyErrors(data.errors ?? [data.error]); }
+      load();
+    } catch (e) { setError(e.message); }
+    finally { setVerifying(false); }
+  }
+
+  async function handleRemove() {
+    if (!confirm('Remove this custom domain? Event pages will revert to 123impact.org URLs.')) return;
+    setRemoving(true);
+    await fetch(`/api/organizations/${orgId}/custom-domain`, { method: 'DELETE' });
+    setDomain(null); setSubdomain(''); setDnsEmail('');
+    setRemoving(false);
+    load();
+  }
+
+  async function saveBranding() {
+    setSavingBranding(true);
+    await fetch(`/api/organizations/${orgId}/custom-domain`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ primary_color: primaryColor, banner_image_url: bannerUrl || null, header_links: headerLinks }),
+    });
+    setSavingBranding(false);
+    load();
+  }
+
+  if (isPaid === null || loading) return <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>;
+
+  if (!isPaid) {
+    return (
+      <div className="border dark:border-gray-700 rounded-xl p-8 text-center bg-white dark:bg-gray-900">
+        <Globe className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Custom Domain</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Custom domains are available on paid plans. Serve your event pages under your own subdomain.</p>
+      </div>
+    );
+  }
+
+  const status = domain?.status ?? 'setup_initiated';
+  const isActive = status === 'active';
+
+  const showDnsRecords = domain && ['setup_initiated', 'email_sent', 'pending_verification', 'verification_failed'].includes(status);
+
+  return (
+    <div className="space-y-4">
+      {/* Status card */}
+      <div className="border dark:border-gray-700 rounded-xl p-5 bg-white dark:bg-gray-900">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <Globe className="w-4 h-4 text-gray-500" /> Custom Domain
+          </h3>
+          {domain && <StatusBadge status={status} />}
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+            {error}
+          </div>
+        )}
+        {verifyErrors.length > 0 && (
+          <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-400 space-y-1">
+            {verifyErrors.map((e, i) => <p key={i}>{e}</p>)}
+          </div>
+        )}
+
+        {/* Setup form — shown only when no domain saved yet */}
+        {(!domain || status === 'disconnected') && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subdomain</label>
+              <input type="text" value={subdomain} onChange={e => setSubdomain(e.target.value)}
+                placeholder="events.yourorg.com" className={inputCls} />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Must include at least one dot (subdomain only, not root domain)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">DNS Admin Email <span className="text-gray-400 font-normal">(optional — who manages your DNS)</span></label>
+              <input type="email" value={dnsEmail} onChange={e => setDnsEmail(e.target.value)}
+                placeholder="dns-admin@yourorg.com" className={inputCls} />
+            </div>
+            <Button onClick={handleSave} disabled={saving || !subdomain.trim()}>
+              {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : 'Save & Continue'}
+            </Button>
+          </div>
+        )}
+
+        {/* DNS records + send email */}
+        {showDnsRecords && !isActive && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              Add these DNS records to your domain registrar for <strong>{domain.subdomain}</strong>:
+            </p>
+            <DnsRecord type="CNAME" name={domain.subdomain} value="cname.vercel-dns.com" />
+            <DnsRecord type="TXT" name={`_123impact-verify.${domain.subdomain}`} value={domain.verification_token} />
+            <p className="text-xs text-gray-400 dark:text-gray-500">DNS changes can take up to 48 hours to propagate.</p>
+
+            <div className="flex gap-2 flex-wrap">
+              {dnsEmail && (
+                <Button variant="outline" size="sm" onClick={handleSendEmail} disabled={sending}>
+                  {sending ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Sending…</> : 'Send Instructions to DNS Admin'}
+                </Button>
+              )}
+              <Button size="sm" onClick={handleVerify} disabled={verifying}>
+                {verifying ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Verifying…</> : 'Verify Now'}
+              </Button>
+            </div>
+            {status === 'email_sent' && domain.dns_admin_email && (
+              <p className="text-xs text-green-600 dark:text-green-400">
+                Instructions sent to {domain.dns_admin_email}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Active state */}
+        {isActive && (
+          <div className="space-y-3">
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <p className="text-sm font-medium text-green-800 dark:text-green-300">{domain.subdomain}</p>
+              {domain.ssl_expires_at && (
+                <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                  SSL expires {new Date(domain.ssl_expires_at).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRemove} disabled={removing}
+              className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20">
+              {removing ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Removing…</> : 'Remove Custom Domain'}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Branding — only when active */}
+      {isActive && (
+        <div className="border dark:border-gray-700 rounded-xl p-5 bg-white dark:bg-gray-900 space-y-4">
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100">Branding</h3>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Primary Color</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
+                className="w-10 h-10 rounded cursor-pointer border border-gray-300 dark:border-gray-600" />
+              <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
+                className={inputCls + ' flex-1'} placeholder="#2563EB" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Banner Image URL <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input type="url" value={bannerUrl} onChange={e => setBannerUrl(e.target.value)}
+              className={inputCls} placeholder="https://yourorg.com/banner.jpg" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Header Links <span className="text-gray-400 font-normal">(optional)</span></label>
+            <div className="space-y-2">
+              {headerLinks.map((link, i) => (
+                <div key={i} className="flex gap-2">
+                  <input type="text" value={link.label} onChange={e => setHeaderLinks(prev => prev.map((l, j) => j === i ? { ...l, label: e.target.value } : l))}
+                    className={inputCls + ' flex-1'} placeholder="Label" />
+                  <input type="url" value={link.url} onChange={e => setHeaderLinks(prev => prev.map((l, j) => j === i ? { ...l, url: e.target.value } : l))}
+                    className={inputCls + ' flex-1'} placeholder="https://..." />
+                  <button onClick={() => setHeaderLinks(prev => prev.filter((_, j) => j !== i))}
+                    className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button onClick={() => setHeaderLinks(prev => [...prev, { label: '', url: '' }])}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                + Add link
+              </button>
+            </div>
+          </div>
+          <Button onClick={saveBranding} disabled={savingBranding}>
+            {savingBranding ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : 'Save Branding'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Billing Tab ────────────────────────────────────────────────────────────────
+
+function BillingTab({ orgId }) {
+  const [status, setStatus]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(null); // 'month' | 'year'
+  const searchParams = useSearchParams();
+  const justUpgraded = searchParams.get('success') === '1';
+
+  useEffect(() => {
+    if (!orgId) return;
+    fetch(`/api/billing/status?orgId=${orgId}`)
+      .then((r) => r.json())
+      .then((d) => { setStatus(d); setLoading(false); })
+      .catch(() => { setError('Failed to load billing info'); setLoading(false); });
+  }, [orgId]);
+
+  async function openPortal() {
+    setPortalLoading(true);
+    try {
+      const res = await fetch('/api/billing/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else { alert(data.error ?? 'Could not open billing portal'); setPortalLoading(false); }
+    } catch { alert('Network error'); setPortalLoading(false); }
+  }
+
+  async function startCheckout(interval) {
+    setCheckoutLoading(interval);
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval, orgId }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else { alert(data.error ?? 'Could not start checkout'); setCheckoutLoading(null); }
+    } catch { alert('Network error'); setCheckoutLoading(null); }
+  }
+
+  if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
+  if (error) return <div className="p-4 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm">{error}</div>;
+
+  const isPro = status?.plan === 'pro';
+  const periodEnd = status?.current_period_end ? new Date(status.current_period_end).toLocaleDateString() : null;
+  const graceEnd  = status?.grace_period_end  ? new Date(status.grace_period_end).toLocaleDateString()  : null;
+  const eventPct  = Math.min(100, Math.round(((status?.events_this_year ?? 0) / 35) * 100));
+
+  return (
+    <div className="space-y-4">
+      {justUpgraded && (
+        <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg flex items-center gap-2 text-green-700 dark:text-green-400">
+          <Check className="w-4 h-4 flex-shrink-0" />
+          <span className="text-sm font-medium">Your plan has been upgraded to Pro. Welcome!</span>
+        </div>
+      )}
+
+      {status?.is_in_grace_period && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-sm text-amber-700 dark:text-amber-400">
+          <p className="font-semibold mb-1">Pro access ending {graceEnd}</p>
+          <p className="mb-3">Your subscription was canceled or payment failed. Re-subscribe to keep Pro features.</p>
+          <div className="flex gap-2">
+            <button onClick={() => startCheckout('month')} disabled={checkoutLoading !== null}
+              className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg font-medium disabled:opacity-60">
+              {checkoutLoading === 'month' ? 'Redirecting…' : 'Re-subscribe Monthly ($20/mo)'}
+            </button>
+            <button onClick={() => startCheckout('year')} disabled={checkoutLoading !== null}
+              className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg font-medium disabled:opacity-60">
+              {checkoutLoading === 'year' ? 'Redirecting…' : 'Annual ($192/yr)'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Current Plan</h2>
+            <div className="flex items-center gap-2 mt-1">
+              {isPro ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                  <Zap className="w-3 h-3" /> Pro
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                  Free
+                </span>
+              )}
+              {isPro && status?.billing_interval && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  · {status.billing_interval === 'month' ? 'Monthly' : 'Annual'}
+                  {periodEnd && ` · renews ${periodEnd}`}
+                </span>
+              )}
+            </div>
+          </div>
+          {isPro && status?.has_stripe_customer && !status?.is_in_grace_period && (
+            <button onClick={openPortal} disabled={portalLoading}
+              className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60">
+              <CreditCard className="w-4 h-4" />
+              {portalLoading ? 'Opening…' : 'Manage Billing'}
+            </button>
+          )}
+        </div>
+
+        {!isPro && (
+          <>
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-gray-600 dark:text-gray-400">Events this year</span>
+                <span className="font-medium text-gray-900 dark:text-white">{status?.events_this_year ?? 0} / 35</span>
+              </div>
+              <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all ${eventPct >= 80 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                  style={{ width: `${eventPct}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+              <p className="text-sm font-medium text-gray-900 dark:text-white mb-3">Upgrade to Pro for unlimited events and more</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => startCheckout('month')} disabled={checkoutLoading !== null}
+                  className="flex flex-col items-center border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:border-blue-500 dark:hover:border-blue-400 transition-colors disabled:opacity-60">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monthly</span>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">$20</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">per month</span>
+                  {checkoutLoading === 'month' && <span className="text-xs text-blue-500 mt-2">Redirecting…</span>}
+                </button>
+                <button onClick={() => startCheckout('year')} disabled={checkoutLoading !== null}
+                  className="flex flex-col items-center border-2 border-blue-500 dark:border-blue-400 rounded-xl p-4 hover:border-blue-600 transition-colors disabled:opacity-60 relative">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
+                    Save 20%
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mb-1">Annual</span>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">$16</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">per month</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">$192/yr</span>
+                  {checkoutLoading === 'year' && <span className="text-xs text-blue-500 mt-2">Redirecting…</span>}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -921,7 +1378,7 @@ function OrganizationsPageContent() {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t === 'members' || t === 'integrations') setActiveTab(t);
+    if (t === 'members' || t === 'integrations' || t === 'custom-domain' || t === 'billing') setActiveTab(t);
   }, [searchParams]);
 
   useEffect(() => {
@@ -1038,14 +1495,18 @@ function OrganizationsPageContent() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-6 border-b dark:border-gray-700">
-          {['settings', 'members', 'integrations'].map((tab) => (
+          {['settings', 'members', 'integrations', 'custom-domain', 'billing'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
               }`}>
-              {tab === 'settings' ? 'Settings' : tab === 'members' ? 'Members' : 'Integrations'}
+              {tab === 'settings' ? 'Settings'
+                : tab === 'members' ? 'Members'
+                : tab === 'integrations' ? 'Integrations'
+                : tab === 'custom-domain' ? 'Custom Domain'
+                : 'Billing'}
             </button>
           ))}
         </div>
@@ -1147,6 +1608,16 @@ function OrganizationsPageContent() {
         {/* Integrations tab */}
         {activeTab === 'integrations' && currentOrganization && (
           <IntegrationsTab orgId={currentOrganization.id} />
+        )}
+
+        {/* Custom Domain tab */}
+        {activeTab === 'custom-domain' && currentOrganization && (
+          <CustomDomainTab orgId={currentOrganization.id} />
+        )}
+
+        {/* Billing tab */}
+        {activeTab === 'billing' && currentOrganization && (
+          <BillingTab orgId={currentOrganization.id} />
         )}
       </div>
     </>

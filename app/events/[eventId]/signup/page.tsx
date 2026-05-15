@@ -140,6 +140,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   const [coSponsors, setCoSponsors]       = useState<{ id: string; name: string; logo_url: string | null }[]>([])
   const [loading, setLoading]             = useState(true)
   const [pageError, setPageError]         = useState<string | null>(null)
+  const [branding, setBranding]           = useState<{ primary_color: string | null; banner_image_url: string | null; header_links: { label: string; url: string }[]; org_name: string | null; org_logo: string | null } | null>(null)
   const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set())
   const [formData, setFormData]             = useState({ name: '', email: '', phone: '', attendee_type: 'volunteer' })
   const [submitted, setSubmitted]           = useState(false)
@@ -172,6 +173,16 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
           .then(r => r.ok ? r.json() : [])
           .then(setCoSponsors)
           .catch(() => {})
+
+        // Fetch custom domain branding if on a custom host
+        const host = typeof window !== 'undefined' ? window.location.hostname : ''
+        const is123impact = host === '123impact.org' || host === 'www.123impact.org' || host === 'localhost' || host.includes('vercel.app')
+        if (!is123impact && host) {
+          fetch(`/api/custom-domain/branding?host=${encodeURIComponent(host)}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data) setBranding(data) })
+            .catch(() => {})
+        }
 
         // Record anonymous QR scan if a ref token is present
         if (refToken) {
@@ -398,9 +409,36 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
   // ── Main form ────────────────────────────────────────────────────────────
 
+  const accentColor = branding?.primary_color ?? null
+
   return (
     <>
-      <Header />
+      {branding ? (
+        /* Custom domain branded header */
+        <header className="border-b bg-white dark:bg-gray-900 dark:border-gray-800">
+          <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {branding.org_logo ? (
+                <img src={branding.org_logo} alt={branding.org_name ?? ''} className="h-8 w-auto object-contain" />
+              ) : branding.org_name ? (
+                <span className="font-bold text-gray-900 dark:text-gray-100">{branding.org_name}</span>
+              ) : null}
+            </div>
+            {branding.header_links.length > 0 && (
+              <nav className="flex gap-4">
+                {branding.header_links.map((link, i) => (
+                  <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
+                    className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+                    {link.label}
+                  </a>
+                ))}
+              </nav>
+            )}
+          </div>
+        </header>
+      ) : (
+        <Header />
+      )}
       <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
         <div className="max-w-4xl mx-auto">
 
@@ -409,9 +447,16 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
             <div
               className="h-48 bg-gradient-to-r from-blue-500 to-purple-600"
               style={{
-                backgroundImage:    event.image_url ? `url(${event.image_url})` : undefined,
+                backgroundImage:    branding?.banner_image_url
+                  ? `url(${branding.banner_image_url})`
+                  : event.image_url
+                  ? `url(${event.image_url})`
+                  : undefined,
                 backgroundSize:     'cover',
                 backgroundPosition: 'center',
+                ...(accentColor && !branding?.banner_image_url && !event.image_url
+                  ? { background: `linear-gradient(to right, ${accentColor}, ${accentColor}99)` }
+                  : {}),
               }}
             />
             <div className="p-6">

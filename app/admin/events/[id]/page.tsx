@@ -729,9 +729,10 @@ interface QRInstance {
   type: 'qr' | 'link';
 }
 
-function QRCodesTab({ eventId }: { eventId: string }) {
+function QRCodesTab({ eventId, organizationId }: { eventId: string; organizationId: string }) {
   const [instances, setInstances]         = useState<QRInstance[]>([]);
   const [eventSlug, setEventSlug]         = useState('');
+  const [customDomain, setCustomDomain]   = useState<string | null>(null);
   const [loading, setLoading]             = useState(true);
   const [adding, setAdding]               = useState(false);
   const [newLabel, setNewLabel]           = useState('');
@@ -741,19 +742,28 @@ function QRCodesTab({ eventId }: { eventId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/events/${eventId}/qr-instances`);
-    if (res.ok) {
-      const json = await res.json();
+    const [qrRes, domainRes] = await Promise.all([
+      fetch(`/api/events/${eventId}/qr-instances`),
+      fetch(`/api/organizations/${organizationId}/custom-domain`),
+    ]);
+    if (qrRes.ok) {
+      const json = await qrRes.json();
       setInstances(json.instances ?? []);
       setEventSlug(json.event_slug ?? '');
     }
+    if (domainRes.ok) {
+      const domainJson = await domainRes.json();
+      setCustomDomain(domainJson?.status === 'active' ? domainJson.subdomain : null);
+    }
     setLoading(false);
-  }, [eventId]);
+  }, [eventId, organizationId]);
 
   useEffect(() => { load(); }, [load]);
 
   function signupUrl(refToken: string) {
-    const base = typeof window !== 'undefined' ? window.location.origin : '';
+    const base = customDomain
+      ? `https://${customDomain}`
+      : typeof window !== 'undefined' ? window.location.origin : '';
     return `${base}/events/${eventSlug}/signup?ref=${refToken}`;
   }
 
@@ -1454,7 +1464,7 @@ export default function AdminEventDetailPage() {
         ) : activeTab === 'live' ? (
           <LiveTab eventId={event.id} />
         ) : activeTab === 'qr' ? (
-          <QRCodesTab eventId={event.id} />
+          <QRCodesTab eventId={event.id} organizationId={event.organization_id} />
         ) : event.is_shiftless ? (
           <>
             {loadingShiftlessRegs ? (

@@ -655,10 +655,28 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         return fail('title, date, time, and location are required');
       }
 
-      if (body.end_date) {
-        const { data: org } = await buildServiceClient().from('organizations').select('plan').eq('id', orgId).single();
-        if (!org || org.plan === 'free') {
-          return fail('Multi-day events require a paid plan', 403);
+      const service = buildServiceClient();
+      const { data: org } = await service.from('organizations').select('plan, created_at').eq('id', orgId).single();
+
+      if (body.end_date && (!org || org.plan === 'free')) {
+        return fail('Multi-day events require a paid plan', 403);
+      }
+
+      if (org?.plan === 'free') {
+        const created = new Date(org.created_at);
+        const now = new Date();
+        const anniversary = new Date(created);
+        anniversary.setFullYear(now.getFullYear());
+        if (anniversary > now) anniversary.setFullYear(now.getFullYear() - 1);
+
+        const { count } = await service
+          .from('events')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
+          .gte('created_at', anniversary.toISOString());
+
+        if ((count ?? 0) >= 35) {
+          return fail('You\'ve reached the 35-event free tier limit. Upgrade to Pro for unlimited events.', 403);
         }
       }
 
