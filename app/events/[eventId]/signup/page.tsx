@@ -644,9 +644,12 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                       onClick={() => handleInputChange('attendee_type', val)}
                       className={`flex-1 py-2 rounded-md text-sm font-medium border transition-colors ${
                         formData.attendee_type === val
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                          ? 'text-white border-transparent'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
                       }`}
+                      style={formData.attendee_type === val
+                        ? (btnStyle ?? { backgroundColor: '#2563eb', borderColor: '#2563eb' })
+                        : undefined}
                     >
                       {label}
                     </button>
