@@ -331,6 +331,13 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
 
   // ── Success ──────────────────────────────────────────────────────────────
 
+  const accentColor    = branding?.primary_color ?? null
+  const secondaryColor = branding?.secondary_color ?? null
+  const btnStyle = accentColor
+    ? { background: `linear-gradient(to right, ${accentColor}, ${secondaryColor ?? accentColor})`, border: 'none' }
+    : undefined
+  const accentStyle = accentColor ? { backgroundColor: accentColor } : undefined
+
   if (submitted) {
     const anyWaitlisted = submittedShifts.some(s => s.waitlisted)
     const allWaitlisted = submittedShifts.length > 0 && submittedShifts.every(s => s.waitlisted)
@@ -338,7 +345,25 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
 
     return (
       <>
-        <Header />
+        {branding ? (
+          <header className="border-b bg-white dark:bg-gray-900 dark:border-gray-800">
+            <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                {branding.org_logo
+                  ? <img src={branding.org_logo} alt={branding.org_name ?? ''} className="h-8 w-auto object-contain" />
+                  : branding.org_name && <span className="font-bold text-gray-900 dark:text-gray-100">{branding.org_name}</span>}
+              </div>
+              {branding.header_links.length > 0 && (
+                <nav className="flex items-center gap-4">
+                  {branding.header_links.map((link, i) => (
+                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
+                      className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">{link.label}</a>
+                  ))}
+                </nav>
+              )}
+            </div>
+          </header>
+        ) : <Header />}
         <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
           <div className="max-w-2xl mx-auto">
             <Card className="p-8 text-center">
@@ -367,11 +392,10 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
               {submittedShifts.length > 0 && (
                 <div className="space-y-2 mb-6 text-left">
                   {submittedShifts.map(s => (
-                    <div key={s.id} className={`rounded-lg p-4 border ${
-                      s.waitlisted
-                        ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
-                        : 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700'
-                    }`}>
+                    <div key={s.id}
+                      className={`rounded-lg p-4 border ${s.waitlisted ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700' : 'bg-blue-50 dark:bg-blue-900/30'}`}
+                      style={!s.waitlisted && accentColor ? { borderColor: accentColor } : undefined}
+                    >
                       <div className="flex items-center justify-between">
                         <p className={`text-sm font-medium ${s.waitlisted ? 'text-amber-900 dark:text-amber-200' : 'text-blue-900 dark:text-blue-200'}`}>
                           {s.name}
@@ -401,13 +425,6 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
   }
 
   // ── Main form ────────────────────────────────────────────────────────────
-
-  const accentColor   = branding?.primary_color ?? null
-  const secondaryColor = branding?.secondary_color ?? null
-  const btnStyle = accentColor
-    ? { background: `linear-gradient(to right, ${accentColor}, ${secondaryColor ?? accentColor})`, border: 'none' }
-    : undefined
-  const accentStyle = accentColor ? { backgroundColor: accentColor } : undefined
 
   return (
     <>
