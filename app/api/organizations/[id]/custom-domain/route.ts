@@ -49,7 +49,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data } = await service
     .from('org_custom_domains')
-    .select('id, subdomain, dns_admin_email, status, ssl_expires_at, primary_color, banner_image_url, header_links, token_expires_at, verification_token')
+    .select('id, subdomain, dns_admin_email, status, ssl_expires_at, primary_color, secondary_color, banner_image_url, header_links, token_expires_at, verification_token')
     .eq('organization_id', orgId)
     .maybeSingle();
 
@@ -126,7 +126,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const body = await req.json();
-  const allowed = ['primary_color', 'banner_image_url', 'header_links', 'dns_admin_email'];
+  const allowed = ['primary_color', 'secondary_color', 'banner_image_url', 'header_links', 'dns_admin_email'];
   const updates: Record<string, any> = { updated_at: new Date().toISOString() };
   for (const key of allowed) {
     if (key in body) updates[key] = body[key];

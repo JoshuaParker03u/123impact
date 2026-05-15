@@ -360,7 +360,8 @@ function CustomDomainTab({ orgId }) {
   const [removing, setRemoving]     = useState(false);
   const [error, setError]           = useState('');
   const [verifyErrors, setVerifyErrors] = useState([]);
-  const [primaryColor, setPrimaryColor] = useState('#2563EB');
+  const [primaryColor, setPrimaryColor]     = useState('#2563EB');
+  const [secondaryColor, setSecondaryColor] = useState('#9333EA');
   const [bannerUrl, setBannerUrl]   = useState('');
   const [headerLinks, setHeaderLinks] = useState([]);
   const [savingBranding, setSavingBranding] = useState(false);
@@ -379,6 +380,7 @@ function CustomDomainTab({ orgId }) {
         setSubdomain(domainData.subdomain ?? '');
         setDnsEmail(domainData.dns_admin_email ?? '');
         setPrimaryColor(domainData.primary_color ?? '#2563EB');
+        setSecondaryColor(domainData.secondary_color ?? '#9333EA');
         setBannerUrl(domainData.banner_image_url ?? '');
         setHeaderLinks(domainData.header_links ?? []);
       }
@@ -442,7 +444,7 @@ function CustomDomainTab({ orgId }) {
     await fetch(`/api/organizations/${orgId}/custom-domain`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ primary_color: primaryColor, banner_image_url: bannerUrl || null, header_links: headerLinks }),
+      body: JSON.stringify({ primary_color: primaryColor, secondary_color: secondaryColor, banner_image_url: bannerUrl || null, header_links: headerLinks }),
     });
     setSavingBranding(false);
     load();
@@ -558,13 +560,24 @@ function CustomDomainTab({ orgId }) {
       {isActive && (
         <div className="border dark:border-gray-700 rounded-xl p-5 bg-white dark:bg-gray-900 space-y-4">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100">Branding</h3>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Primary Color</label>
-            <div className="flex items-center gap-2">
-              <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
-                className="w-10 h-10 rounded cursor-pointer border border-gray-300 dark:border-gray-600" />
-              <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
-                className={inputCls + ' flex-1'} placeholder="#2563EB" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Primary Color</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
+                  className="w-10 h-10 rounded cursor-pointer border border-gray-300 dark:border-gray-600" />
+                <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
+                  className={inputCls + ' flex-1'} placeholder="#2563EB" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Secondary Color</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)}
+                  className="w-10 h-10 rounded cursor-pointer border border-gray-300 dark:border-gray-600" />
+                <input type="text" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)}
+                  className={inputCls + ' flex-1'} placeholder="#9333EA" />
+              </div>
             </div>
           </div>
           <div>

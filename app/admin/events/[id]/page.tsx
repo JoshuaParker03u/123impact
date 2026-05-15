@@ -998,6 +998,7 @@ export default function AdminEventDetailPage() {
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
+  const [customDomain, setCustomDomain] = useState<string | null>(null);
   const [syncing, setSyncing]     = useState(false);
   const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -1019,13 +1020,19 @@ export default function AdminEventDetailPage() {
 
     setUserRole(role);
 
-    // Fetch org plan
+    // Fetch org plan and custom domain
     const { data: orgData } = await supabase
       .from('organizations')
       .select('plan')
       .eq('id', data.organization_id)
       .maybeSingle();
     setOrgPlan((orgData as any)?.plan ?? 'free');
+
+    const domainRes = await fetch(`/api/organizations/${data.organization_id}/custom-domain`);
+    if (domainRes.ok) {
+      const domainJson = await domainRes.json();
+      setCustomDomain(domainJson?.status === 'active' ? domainJson.subdomain : null);
+    }
 
     // Fetch registration counts
     const countsRes = await fetch(`/api/events/${data.id}/registration-counts`);
@@ -1379,7 +1386,7 @@ export default function AdminEventDetailPage() {
 
             {/* Action buttons */}
             <div className="flex flex-col gap-2 shrink-0">
-              <Link href={`/events/${event.event_id}/signup`} target="_blank" rel="noopener noreferrer">
+              <Link href={customDomain ? `https://${customDomain}/events/${event.event_id}/signup` : `/events/${event.event_id}/signup`} target="_blank" rel="noopener noreferrer">
                 <Button variant="outline" className="w-full justify-start gap-2">
                   <Link2 className="w-4 h-4" /> View Signup Page
                 </Button>

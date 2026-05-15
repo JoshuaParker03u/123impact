@@ -140,7 +140,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   const [coSponsors, setCoSponsors]       = useState<{ id: string; name: string; logo_url: string | null }[]>([])
   const [loading, setLoading]             = useState(true)
   const [pageError, setPageError]         = useState<string | null>(null)
-  const [branding, setBranding]           = useState<{ primary_color: string | null; banner_image_url: string | null; header_links: { label: string; url: string }[]; org_name: string | null; org_logo: string | null } | null>(null)
+  const [branding, setBranding]           = useState<{ primary_color: string | null; secondary_color: string | null; banner_image_url: string | null; header_links: { label: string; url: string }[]; org_name: string | null; org_logo: string | null } | null>(null)
   const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set())
   const [formData, setFormData]             = useState({ name: '', email: '', phone: '', attendee_type: 'volunteer' })
   const [submitted, setSubmitted]           = useState(false)
@@ -409,7 +409,12 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
   // ── Main form ────────────────────────────────────────────────────────────
 
-  const accentColor = branding?.primary_color ?? null
+  const accentColor   = branding?.primary_color ?? null
+  const secondaryColor = branding?.secondary_color ?? null
+  const btnStyle = accentColor
+    ? { background: `linear-gradient(to right, ${accentColor}, ${secondaryColor ?? accentColor})`, border: 'none' }
+    : undefined
+  const accentStyle = accentColor ? { backgroundColor: accentColor } : undefined
 
   return (
     <>
@@ -455,7 +460,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                 backgroundSize:     'cover',
                 backgroundPosition: 'center',
                 ...(accentColor && !branding?.banner_image_url && !event.image_url
-                  ? { background: `linear-gradient(to right, ${accentColor}, ${accentColor}99)` }
+                  ? { background: `linear-gradient(to right, ${accentColor}, ${secondaryColor ?? accentColor + '99'})` }
                   : {}),
               }}
             />
@@ -482,7 +487,8 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                         {event.organizations.logo_url ? (
                           <img src={event.organizations.logo_url} alt={event.organizations.name} className="w-7 h-7 rounded-md object-cover" />
                         ) : (
-                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                          <div className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-bold shrink-0"
+                            style={btnStyle ?? { background: 'linear-gradient(to bottom right, #3b82f6, #9333ea)' }}>
                             {event.organizations.name.slice(0, 2).toUpperCase()}
                           </div>
                         )}
@@ -499,7 +505,8 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                             {org.logo_url ? (
                               <img src={org.logo_url} alt={org.name} className="w-7 h-7 rounded-md object-cover" />
                             ) : (
-                              <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                              <div className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-bold"
+                                style={btnStyle ?? { background: 'linear-gradient(to bottom right, #3b82f6, #9333ea)' }}>
                                 {org.name.slice(0, 2).toUpperCase()}
                               </div>
                             )}
@@ -693,7 +700,8 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:shadow-lg"
+                className="w-full hover:shadow-lg"
+                style={btnStyle ?? { background: 'linear-gradient(to right, #2563eb, #9333ea)' }}
                 size="lg"
                 disabled={submitting || isClosed}
               >

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const { data } = await service
     .from('org_custom_domains')
-    .select('organization_id, primary_color, banner_image_url, header_links')
+    .select('organization_id, primary_color, secondary_color, banner_image_url, header_links')
     .eq('subdomain', host.toLowerCase())
     .eq('status', 'active')
     .maybeSingle();
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     primary_color:    (data as any).primary_color ?? null,
+    secondary_color:  (data as any).secondary_color ?? null,
     banner_image_url: (data as any).banner_image_url ?? null,
     header_links:     (data as any).header_links ?? [],
     org_name:         (org as any)?.name ?? null,

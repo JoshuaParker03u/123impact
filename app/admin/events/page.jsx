@@ -40,11 +40,16 @@ export default function AdminEventsPage() {
   const [copiedEventId, setCopiedEventId] = useState(null);
   const [qrEvent, setQrEvent] = useState(null);
   const [orgPlan, setOrgPlan] = useState('free');
+  const [customDomain, setCustomDomain] = useState(null);
 
   // Fetch events when organization changes
   useEffect(() => {
     if (currentOrganization?.id) {
       fetchEvents();
+      fetch(`/api/organizations/${currentOrganization.id}/custom-domain`)
+        .then((r) => r.json())
+        .then((d) => setCustomDomain(d?.status === 'active' ? d.subdomain : null))
+        .catch(() => {});
     }
   }, [currentOrganization?.id]);
 
@@ -138,7 +143,8 @@ export default function AdminEventsPage() {
   };
 
   const copyEventLink = (event) => {
-    const url = `${window.location.origin}/events/${event.event_id}/signup`;
+    const base = customDomain ? `https://${customDomain}` : window.location.origin;
+    const url = `${base}/events/${event.event_id}/signup`;
     navigator.clipboard.writeText(url);
     setCopiedEventId(event.id);
     setTimeout(() => setCopiedEventId(null), 2000);
@@ -460,6 +466,7 @@ export default function AdminEventsPage() {
         {qrEvent && (
           <QRModal
             event={qrEvent}
+            customDomain={customDomain}
             onClose={() => setQrEvent(null)}
           />
         )}
@@ -482,8 +489,9 @@ export default function AdminEventsPage() {
 }
 
 // QR Code Modal
-function QRModal({ event, onClose }) {
-  const url = `${window.location.origin}/events/${event.event_id}/signup`;
+function QRModal({ event, customDomain, onClose }) {
+  const base = customDomain ? `https://${customDomain}` : window.location.origin;
+  const url = `${base}/events/${event.event_id}/signup`;
 
   const downloadQR = () => {
     const svg = document.getElementById('event-qr-svg');
