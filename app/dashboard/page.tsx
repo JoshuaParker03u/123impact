@@ -71,9 +71,9 @@ function DashboardContent() {
       if (code) {
         try {
           await supabase.auth.exchangeCodeForSession(code)
+          await refreshOrganization()
         } catch {}
-        // Full reload so the singleton re-initialises with the new session in cookies.
-        window.location.replace('/dashboard')
+        router.replace('/dashboard')
         return
       }
 
@@ -82,7 +82,14 @@ function DashboardContent() {
 
     async function fetchUser() {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
+        let { data: { user }, error } = await supabase.auth.getUser()
+        // If the session is still settling after a fresh exchange, retry once
+        if ((error || !user) && !searchParams.get('code')) {
+          await new Promise(r => setTimeout(r, 800))
+          const retry = await supabase.auth.getUser()
+          user  = retry.data.user
+          error = retry.error
+        }
         if (error) { router.push('/login?reason=auth_error'); return }
         if (!user)  { router.push('/login?reason=no_user');   return }
 
