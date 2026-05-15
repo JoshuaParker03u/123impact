@@ -19,6 +19,7 @@ import {
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
   AlertTriangle, QrCode, Download, BarChart2, Radio, Link2, Copy,
+  CheckCircle2, WifiOff, RotateCcw,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -65,6 +66,12 @@ interface Event {
   event_day_hours?: { id: string; event_date: string; start_time: string; end_time: string }[];
   is_shiftless?: boolean;
   shiftless_capacity?: number | null;
+  platform_source?: 'luma' | 'eventbrite' | null;
+  external_id?: string | null;
+  platform_image?: string | null;
+  last_synced_at?: string | null;
+  sync_status?: 'synced' | 'failed' | 'pending' | null;
+  is_private_on_platform?: boolean;
 }
 
 interface OrgMember {
@@ -981,6 +988,9 @@ export default function AdminEventDetailPage() {
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
+  const [syncing, setSyncing]     = useState(false);
+  const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const { currentOrganization } = useOrganization() as any;
 
@@ -1025,6 +1035,25 @@ export default function AdminEventDetailPage() {
     // Auto-load registrations for shiftless events
     if (data.is_shiftless) {
       loadShiftlessRegs(data.id);
+    }
+  }
+
+  async function handleForceSync() {
+    if (!event) return;
+    setSyncing(true);
+    setSyncError(null);
+    setSyncResult(null);
+    try {
+      const res = await fetch(`/api/events/${event.id}/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Sync failed');
+      setSyncResult({ changed: data.changed, lastSyncedAt: data.lastSyncedAt });
+      // Refresh event data so changed fields show immediately
+      await loadEvent();
+    } catch (e: any) {
+      setSyncError(e.message);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -1236,7 +1265,7 @@ export default function AdminEventDetailPage() {
         <Card className="p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{event.title}</h1>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
                   event.status === 'active'    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' :
@@ -1246,7 +1275,49 @@ export default function AdminEventDetailPage() {
                 }`}>
                   {event.status}
                 </span>
+                {event.platform_source && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 capitalize">
+                    {event.platform_source}
+                  </span>
+                )}
+                {event.is_private_on_platform && (
+                  <span title={`This event is private on ${event.platform_source}`} className="text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">
+                    Private on platform
+                  </span>
+                )}
               </div>
+
+              {/* Sync status bar — only for imported events */}
+              {event.platform_source && (
+                <div className="flex items-center gap-3 mt-1 mb-2">
+                  {syncError ? (
+                    <span className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+                      <AlertTriangle className="w-3.5 h-3.5" /> {syncError}
+                    </span>
+                  ) : syncResult ? (
+                    <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {syncResult.changed.length > 0 ? `Updated: ${syncResult.changed.join(', ')}` : 'Already up to date'}
+                    </span>
+                  ) : event.sync_status === 'failed' ? (
+                    <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                      <WifiOff className="w-3.5 h-3.5" /> Sync failed — retrying nightly
+                    </span>
+                  ) : event.last_synced_at ? (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      Synced {new Date(event.last_synced_at).toLocaleString()}
+                    </span>
+                  ) : null}
+                  <button
+                    onClick={handleForceSync}
+                    disabled={syncing}
+                    className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                  >
+                    {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                    {syncing ? 'Syncing…' : 'Sync Now'}
+                  </button>
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mt-2">
                 <span className="flex items-center gap-1">

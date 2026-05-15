@@ -38,11 +38,12 @@ export async function GET(req: NextRequest) {
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const today = new Date().toISOString().split('T')[0]
+  const sevenDaysOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   // Upcoming events: fetch all active/ongoing, filter by date in JS to avoid or() interference
   const { data: eventsRaw } = await service
     .from('events')
-    .select('id, event_id, title, date, end_date, time, location, is_shiftless, shifts(id, capacity)')
+    .select('id, event_id, title, date, end_date, time, location, is_shiftless, shifts(id, capacity, shift_date)')
     .eq('organization_id', orgId)
     .in('status', ['active', 'ongoing'])
     .order('date', { ascending: true })
@@ -175,7 +176,12 @@ export async function GET(req: NextRequest) {
   let understaffedShifts = 0
   for (const e of upcomingEventsRaw) {
     for (const s of (e as any).shifts ?? []) {
-      if (s.capacity > 0 && (regCountMap[s.id] ?? 0) / s.capacity < 0.5) {
+      const shiftDate = s.shift_date ?? (e as any).date
+      if (
+        shiftDate <= sevenDaysOut &&
+        s.capacity > 0 &&
+        (regCountMap[s.id] ?? 0) / s.capacity < 0.5
+      ) {
         understaffedShifts++
         understaffedEventIds.add((e as any).id)
       }

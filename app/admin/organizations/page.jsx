@@ -9,7 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Upload, Link as LinkIcon, X, Loader2, Check, AlertTriangle,
   UserPlus, Users, Mail, RefreshCw, Trash2, Crown, Shield, User,
-  Send, ChevronDown, ChevronUp,
+  Send, ChevronDown, ChevronUp, Plug, CheckCircle2, XCircle, ExternalLink,
 } from 'lucide-react';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
@@ -299,6 +299,273 @@ function InviteModal({ orgId, onClose, onSent, userRole }) {
         </form>
       </Card>
     </div>
+  );
+}
+
+// ── Integrations Tab ──────────────────────────────────────────────────────────
+
+function ImportModal({ orgId, platform, onClose, onImported }) {
+  const [events, setEvents]       = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState('');
+  const [selected, setSelected]   = useState(new Set());
+  const [syncNew, setSyncNew]     = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/organizations/${orgId}/platform-events?platform=${platform}`)
+      .then(r => r.json())
+      .then(data => { if (data.error) throw new Error(data.error); setEvents(data.events ?? []); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [orgId, platform]);
+
+  async function handleImport() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setImporting(true);
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, external_ids: ids, sync_new_events: syncNew }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onImported(data.imported);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+      setImporting(false);
+    }
+  }
+
+  const platformLabel = platform === 'luma' ? 'Luma' : 'Eventbrite';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between p-5 border-b dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Import from {platformLabel}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading && <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {!loading && !error && events.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">No events found on {platformLabel}.</p>
+          )}
+          {!loading && !error && events.length > 0 && (
+            <div className="space-y-2">
+              {events.map(e => (
+                <label key={e.external_id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  e.already_imported ? 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-700' :
+                  selected.has(e.external_id) ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' :
+                  'border-gray-200 dark:border-gray-700 hover:border-blue-300'
+                }`}>
+                  <input type="checkbox" className="mt-0.5 rounded"
+                    disabled={e.already_imported}
+                    checked={e.already_imported || selected.has(e.external_id)}
+                    onChange={ev => {
+                      const next = new Set(selected);
+                      ev.target.checked ? next.add(e.external_id) : next.delete(e.external_id);
+                      setSelected(next);
+                    }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{e.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{e.date}{e.end_date ? ` – ${e.end_date}` : ''} {e.location ? `· ${e.location}` : ''}</p>
+                  </div>
+                  {e.already_imported && <span className="text-xs text-green-600 dark:text-green-400 shrink-0">Imported</span>}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t dark:border-gray-700 space-y-4">
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-700 dark:text-gray-300">
+            <input type="checkbox" className="rounded" checked={syncNew} onChange={e => setSyncNew(e.target.checked)} />
+            Automatically import new events added to this account (nightly)
+          </label>
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button onClick={handleImport} disabled={importing || selected.size === 0} className="flex-1">
+              {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing…</> : `Import ${selected.size > 0 ? `(${selected.size})` : ''}`}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntegrationsTab({ orgId }) {
+  const [connections, setConnections] = useState({ luma: null, eventbrite: null });
+  const [loading, setLoading]         = useState(true);
+  const [lumaKey, setLumaKey]         = useState('');
+  const [savingLuma, setSavingLuma]   = useState(false);
+  const [lumaError, setLumaError]     = useState('');
+  const [lumaSuccess, setLumaSuccess] = useState(false);
+  const [disconnecting, setDisconnecting] = useState('');
+  const [importModal, setImportModal] = useState(null);
+  const [toast, setToast]             = useState('');
+
+  function loadConnections() {
+    setLoading(true);
+    fetch(`/api/organizations/${orgId}/connections`)
+      .then(r => r.json())
+      .then(data => setConnections(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { if (orgId) loadConnections(); }, [orgId]);
+
+  async function connectLuma() {
+    if (!lumaKey.trim()) return;
+    setSavingLuma(true); setLumaError(''); setLumaSuccess(false);
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'luma', api_key: lumaKey.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setLumaSuccess(true); setLumaKey(''); loadConnections();
+    } catch (e) { setLumaError(e.message); }
+    finally { setSavingLuma(false); }
+  }
+
+  async function disconnect(platform) {
+    if (!confirm(`Disconnect ${platform === 'luma' ? 'Luma' : 'Eventbrite'}? Sync will stop but your imported events will not be affected.`)) return;
+    setDisconnecting(platform);
+    await fetch(`/api/organizations/${orgId}/connections`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform }),
+    });
+    setDisconnecting(''); loadConnections();
+  }
+
+  async function toggleSync(platform, value) {
+    await fetch(`/api/organizations/${orgId}/connections`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, sync_new_events: value }),
+    });
+    loadConnections();
+  }
+
+  function handleImported(n) {
+    setToast(`${n} event${n !== 1 ? 's' : ''} imported successfully`);
+    setTimeout(() => setToast(''), 4000);
+  }
+
+  if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
+
+  const platforms = [
+    {
+      key: 'luma',
+      label: 'Luma',
+      description: 'Import events from your Luma calendar using your API key.',
+      docsHint: 'Find your API key in Luma → Settings → API',
+    },
+    {
+      key: 'eventbrite',
+      label: 'Eventbrite',
+      description: 'Import events from your Eventbrite organization via OAuth.',
+    },
+  ];
+
+  return (
+    <>
+      {toast && (
+        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 z-50">
+          <CheckCircle2 className="w-4 h-4 text-green-400" /> {toast}
+        </div>
+      )}
+      {importModal && (
+        <ImportModal orgId={orgId} platform={importModal} onClose={() => setImportModal(null)} onImported={handleImported} />
+      )}
+
+      <div className="space-y-4">
+        {platforms.map(({ key, label, description, docsHint }) => {
+          const conn = connections[key];
+          return (
+            <div key={key} className="border dark:border-gray-700 rounded-xl p-5 bg-white dark:bg-gray-900">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Plug className="w-4 h-4 text-gray-500" />
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{label}</h3>
+                    {conn ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">Connected</span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 font-medium">Not connected</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+                  {conn && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      Connected {new Date(conn.connected_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {conn && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => setImportModal(key)}>Import Events</Button>
+                      <Button size="sm" variant="outline" onClick={() => disconnect(key)} disabled={disconnecting === key} className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20">
+                        {disconnecting === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Disconnect'}
+                      </Button>
+                    </>
+                  )}
+                  {!conn && key === 'eventbrite' && (
+                    <Button size="sm" onClick={() => window.location.href = `/api/auth/integrations/eventbrite?org_id=${orgId}`}>
+                      Connect Eventbrite
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {!conn && key === 'luma' && (
+                <div className="mt-4 space-y-2">
+                  {docsHint && <p className="text-xs text-gray-400 dark:text-gray-500">{docsHint}</p>}
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={lumaKey}
+                      onChange={e => setLumaKey(e.target.value)}
+                      placeholder="luma_api_..."
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Button size="sm" onClick={connectLuma} disabled={savingLuma || !lumaKey.trim()}>
+                      {savingLuma ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Connect'}
+                    </Button>
+                  </div>
+                  {lumaError && <p className="text-xs text-red-600 dark:text-red-400">{lumaError}</p>}
+                  {lumaSuccess && <p className="text-xs text-green-600 dark:text-green-400">Luma connected successfully</p>}
+                </div>
+              )}
+
+              {conn && (
+                <div className="mt-4 pt-4 border-t dark:border-gray-700">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" className="rounded"
+                      checked={conn.sync_new_events}
+                      onChange={e => toggleSync(key, e.target.checked)} />
+                    Automatically import new events added to this account (nightly)
+                  </label>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -631,7 +898,8 @@ function OrganizationsPageContent() {
   });
 
   useEffect(() => {
-    if (searchParams.get('tab') === 'members') setActiveTab('members');
+    const t = searchParams.get('tab');
+    if (t === 'members' || t === 'integrations') setActiveTab(t);
   }, [searchParams]);
 
   useEffect(() => {
@@ -748,14 +1016,14 @@ function OrganizationsPageContent() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-6 border-b dark:border-gray-700">
-          {['settings', 'members'].map((tab) => (
+          {['settings', 'members', 'integrations'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
                 activeTab === tab
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
               }`}>
-              {tab === 'settings' ? 'Settings' : 'Members'}
+              {tab === 'settings' ? 'Settings' : tab === 'members' ? 'Members' : 'Integrations'}
             </button>
           ))}
         </div>
@@ -852,6 +1120,11 @@ function OrganizationsPageContent() {
         {/* Members tab */}
         {activeTab === 'members' && org && (
           <MembersTab org={org} currentUserId={currentUserId} userRole={userRole ?? currentOrganization.role} />
+        )}
+
+        {/* Integrations tab */}
+        {activeTab === 'integrations' && currentOrganization && (
+          <IntegrationsTab orgId={currentOrganization.id} />
         )}
       </div>
     </>
