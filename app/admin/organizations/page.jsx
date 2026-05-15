@@ -402,6 +402,7 @@ function ImportModal({ orgId, platform, onClose, onImported }) {
 }
 
 function IntegrationsTab({ orgId }) {
+  const searchParams = useSearchParams();
   const [connections, setConnections] = useState({ luma: null, eventbrite: null });
   const [loading, setLoading]         = useState(true);
   const [lumaKey, setLumaKey]         = useState('');
@@ -411,6 +412,19 @@ function IntegrationsTab({ orgId }) {
   const [disconnecting, setDisconnecting] = useState('');
   const [importModal, setImportModal] = useState(null);
   const [toast, setToast]             = useState('');
+  const [oauthError, setOauthError]   = useState('');
+
+  const OAUTH_ERRORS = {
+    eventbrite_already_connected: 'This Eventbrite account is already connected to another organization.',
+    eventbrite_denied:  'Eventbrite authorization was cancelled.',
+    eventbrite_failed:  'Eventbrite connection failed. Please try again.',
+    invalid_state:      'Invalid OAuth state. Please try again.',
+  };
+
+  useEffect(() => {
+    const err = searchParams.get('error');
+    if (err && OAUTH_ERRORS[err]) setOauthError(OAUTH_ERRORS[err]);
+  }, [searchParams]);
 
   function loadConnections() {
     setLoading(true);
@@ -492,6 +506,13 @@ function IntegrationsTab({ orgId }) {
         <ImportModal orgId={orgId} platform={importModal} onClose={() => setImportModal(null)} onImported={handleImported} />
       )}
 
+      {oauthError && (
+        <div className="flex items-start gap-2 mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+          <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{oauthError}</span>
+          <button onClick={() => setOauthError('')} className="ml-auto text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+        </div>
+      )}
       <div className="space-y-4">
         {platforms.map(({ key, label, description, docsHint }) => {
           const conn = connections[key];

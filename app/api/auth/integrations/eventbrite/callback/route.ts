@@ -35,6 +35,19 @@ export async function GET(req: NextRequest) {
     const { access_token } = await eventbriteExchangeCode(code);
     const externalOrgId = await eventbriteGetOrgId(access_token);
 
+    // Enforce: one Eventbrite account per org across all orgs
+    const { data: existing } = await service
+      .from('platform_connections')
+      .select('organization_id')
+      .eq('platform', 'eventbrite')
+      .eq('external_org_id', externalOrgId)
+      .neq('organization_id', orgId)
+      .maybeSingle();
+
+    if (existing) {
+      return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=eventbrite_already_connected`);
+    }
+
     await service.from('platform_connections').upsert({
       organization_id: orgId,
       platform:        'eventbrite',
