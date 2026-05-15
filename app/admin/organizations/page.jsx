@@ -446,6 +446,10 @@ function CustomDomainTab({ orgId }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ primary_color: primaryColor, secondary_color: secondaryColor, banner_image_url: bannerUrl || null, header_links: headerLinks }),
     });
+    // Purge Vercel edge cache for the branding endpoint
+    if (domain?.subdomain) {
+      await fetch(`/api/organizations/${orgId}/custom-domain/purge-cache`, { method: 'POST' }).catch(() => {});
+    }
     setSavingBranding(false);
     load();
   }

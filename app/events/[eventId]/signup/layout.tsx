@@ -27,7 +27,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description = event.description
     ? event.description.slice(0, 160)
     : `Sign up to volunteer for ${event.title} hosted by ${orgName}.`;
-  const image = event.image_url ?? `${process.env.NEXT_PUBLIC_APP_URL}/og-default.png`;
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/events/${eventId}/signup`;
 
   return {
@@ -37,14 +36,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description,
       url,
-      images: [{ url: image, width: 1200, height: 630, alt: event.title }],
       type: 'website',
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: [image],
     },
   };
 }

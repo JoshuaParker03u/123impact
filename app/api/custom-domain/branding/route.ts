@@ -37,6 +37,6 @@ export async function GET(req: NextRequest) {
     org_name:         (org as any)?.name ?? null,
     org_logo:         (org as any)?.logo_url ?? null,
   }, {
-    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
+    headers: { 'Cache-Control': 'public, s-maxage=0, must-revalidate' },
   });
 }
