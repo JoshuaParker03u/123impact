@@ -73,13 +73,24 @@ export async function syncEvent(
   }
 }
 
+export interface ImportResult {
+  imported: number;
+  skipped: { externalId: string; reason: string }[];
+}
+
 export async function importEvents(
   service: SupabaseClient,
   orgId: string,
   connection: PlatformConnection,
   externalIds: string[]
-): Promise<number> {
+): Promise<ImportResult> {
   let imported = 0;
+  const skipped: ImportResult['skipped'] = [];
+
+  // Check org plan once — needed to gate multi-day imports
+  const { data: orgData } = await service
+    .from('organizations').select('plan').eq('id', orgId).single();
+  const isPaid = orgData?.plan && orgData.plan !== 'free';
 
   for (const externalId of externalIds) {
     try {
@@ -91,6 +102,12 @@ export async function importEvents(
       } else {
         const raw = await eventbriteGetEvent(connection.access_token, externalId);
         mapped = mapEventbriteEvent(raw);
+      }
+
+      // Block multi-day imports for free orgs
+      if (mapped.end_date && !isPaid) {
+        skipped.push({ externalId, reason: 'multi_day_requires_paid' });
+        continue;
       }
 
       // Generate a URL-safe slug
@@ -115,5 +132,5 @@ export async function importEvents(
     }
   }
 
-  return imported;
+  return { imported, skipped };
 }

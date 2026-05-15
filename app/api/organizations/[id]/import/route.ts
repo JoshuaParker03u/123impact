@@ -55,7 +55,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('organization_id', orgId).eq('platform', platform).single();
   if (!connection) return NextResponse.json({ error: 'Platform not connected' }, { status: 404 });
 
-  const imported = await importEvents(service, orgId, { platform, ...connection }, external_ids);
+  const { imported, skipped } = await importEvents(service, orgId, { platform, ...connection }, external_ids);
 
   // Update sync_new_events setting
   if (typeof sync_new_events === 'boolean') {
@@ -65,5 +65,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('platform', platform);
   }
 
-  return NextResponse.json({ imported });
+  const multiDayBlocked = skipped.filter(s => s.reason === 'multi_day_requires_paid').length;
+
+  return NextResponse.json({
+    imported,
+    skipped: skipped.length,
+    multiDayBlocked,
+    ...(multiDayBlocked > 0 && {
+      warning: `${multiDayBlocked} multi-day event${multiDayBlocked !== 1 ? 's were' : ' was'} not imported. Multi-day events require a paid plan.`,
+    }),
+  });
 }

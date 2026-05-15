@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
         const newIds = externalIds.filter(id => !existingSet.has(id));
 
         if (newIds.length > 0) {
-          const n = await importEvents(service, conn.organization_id, conn, newIds);
+          const { imported: n } = await importEvents(service, conn.organization_id, conn, newIds);
           totalNewImports += n;
         }
       }

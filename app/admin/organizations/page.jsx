@@ -332,7 +332,7 @@ function ImportModal({ orgId, platform, onClose, onImported }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      onImported(data.imported);
+      onImported(data.imported, data.warning);
       onClose();
     } catch (e) {
       setError(e.message);
@@ -459,9 +459,10 @@ function IntegrationsTab({ orgId }) {
     loadConnections();
   }
 
-  function handleImported(n) {
-    setToast(`${n} event${n !== 1 ? 's' : ''} imported successfully`);
-    setTimeout(() => setToast(''), 4000);
+  function handleImported(n, warning) {
+    const base = n > 0 ? `${n} event${n !== 1 ? 's' : ''} imported successfully` : '';
+    setToast(warning ? (base ? `${base}. ${warning}` : warning) : base);
+    setTimeout(() => setToast(''), 8000);
   }
 
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
