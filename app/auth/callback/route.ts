@@ -24,12 +24,11 @@ export async function GET(request: NextRequest) {
     cookieRedirect.startsWith('/events/')
   )) ? cookieRedirect : '/dashboard'
 
-  // Pass code to destination for client-side exchange (same pattern as dashboard)
+  // Pass code to destination for client-side exchange via getBrowserClient()
   const redirectUrl = new URL(destination, origin)
   redirectUrl.searchParams.set('code', code)
 
   const response = NextResponse.redirect(redirectUrl.toString())
-  // Clear the one-time redirect cookie
   response.cookies.set('oauth_redirect', '', { path: '/', maxAge: 0 })
   return response
 }

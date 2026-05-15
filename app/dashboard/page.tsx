@@ -72,8 +72,9 @@ function DashboardContent() {
         try {
           await supabase.auth.exchangeCodeForSession(code)
           await refreshOrganization()
-          router.replace('/dashboard')
         } catch {}
+        router.replace('/dashboard')
+        return
       }
 
       await fetchUser()

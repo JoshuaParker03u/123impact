@@ -149,6 +149,9 @@ export default function AdminNavigation() {
   }, []);
 
   const handleLogout = async () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('intentionalSignOut', 'true');
+    }
     await supabase.auth.signOut();
     router.push('/');
   };
