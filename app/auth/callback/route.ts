@@ -16,7 +16,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=no_code`)
   }
 
-  // Read post-OAuth destination from cookie (set before OAuth redirect)
   const cookieRedirect = request.cookies.get('oauth_redirect')?.value
   const destination = (cookieRedirect && (
     cookieRedirect.startsWith('/invite/') ||
@@ -24,7 +23,6 @@ export async function GET(request: NextRequest) {
     cookieRedirect.startsWith('/events/')
   )) ? cookieRedirect : '/dashboard'
 
-  // Pass code to destination for client-side exchange via getBrowserClient()
   const redirectUrl = new URL(destination, origin)
   redirectUrl.searchParams.set('code', code)
 

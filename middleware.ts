@@ -13,11 +13,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Allow dashboard through when it has a code param (client-side exchange in progress)
-  if (pathname.startsWith('/dashboard') && searchParams.has('code')) {
-    return NextResponse.next()
-  }
-
   let response = NextResponse.next({ request: { headers: req.headers } })
 
   const supabase = createServerClient(
@@ -39,8 +34,8 @@ export async function middleware(req: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isProtected = pathname.startsWith('/dashboard') || pathname.startsWith('/admin')
-  if (isProtected && !user) {
+  // Only hard-protect /admin routes — /dashboard handles its own auth client-side
+  if (pathname.startsWith('/admin') && !user) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('reason', 'session_expired')
     return NextResponse.redirect(loginUrl)

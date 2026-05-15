@@ -71,9 +71,9 @@ function DashboardContent() {
       if (code) {
         try {
           await supabase.auth.exchangeCodeForSession(code)
-          await refreshOrganization()
         } catch {}
-        router.replace('/dashboard')
+        // Full reload so the singleton re-initialises with the new session in cookies.
+        window.location.replace('/dashboard')
         return
       }
 
