@@ -551,11 +551,14 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
                       isSelected
                         ? isWaitlistable
                           ? 'ring-2 ring-amber-500 bg-amber-50 dark:bg-amber-900/20'
-                          : 'ring-2 ring-blue-600 bg-blue-50 dark:bg-blue-900/30'
+                          : 'ring-2 bg-blue-50 dark:bg-blue-900/30'
                         : isDisabled
                         ? 'opacity-50 cursor-not-allowed'
                         : 'hover:shadow-lg cursor-pointer'
                     }`}
+                    style={isSelected && !isWaitlistable && accentColor
+                      ? { outline: `2px solid ${accentColor}`, outlineOffset: '-2px' }
+                      : undefined}
                     onClick={() => !isDisabled && toggleShift(shift)}
                   >
                     <div className="flex items-start justify-between">
@@ -563,7 +566,10 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{shift.name}</h3>
                           {isSelected && (
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isWaitlistable ? 'bg-amber-500' : 'bg-blue-600'}`}>
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center ${isWaitlistable ? 'bg-amber-500' : 'bg-blue-600'}`}
+                              style={!isWaitlistable && accentStyle ? accentStyle : undefined}
+                            >
                               <Check className="w-4 h-4 text-white" />
                             </div>
                           )}
