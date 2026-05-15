@@ -39,18 +39,20 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
   const [formData, setFormData] = useState({
-    event_id:      event?.event_id      || '',
-    title:         event?.title         || '',
-    date:          event?.date          || '',
-    end_date:      event?.end_date      || '',
-    time:          event?.time          || '',
-    location:      event?.location      || '',
-    description:   event?.description   || '',
-    image_url:     event?.image_url     || '',
-    status:        event?.status        || 'active',
-    event_format:  event?.event_format  || 'in_person',
-    online_url:    event?.online_url    || '',
-    recording_url: event?.recording_url || '',
+    event_id:            event?.event_id            || '',
+    title:               event?.title               || '',
+    date:                event?.date                || '',
+    end_date:            event?.end_date            || '',
+    time:                event?.time                || '',
+    location:            event?.location            || '',
+    description:         event?.description         || '',
+    image_url:           event?.image_url           || '',
+    status:              event?.status              || 'active',
+    event_format:        event?.event_format        || 'in_person',
+    online_url:          event?.online_url          || '',
+    recording_url:       event?.recording_url       || '',
+    is_shiftless:        event?.is_shiftless        ?? false,
+    shiftless_capacity:  event?.shiftless_capacity  ?? '',
   });
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
   const [dayHours, setDayHours] = useState(() =>
@@ -63,6 +65,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
   const [submitting, setSubmitting] = useState(false);
 
   const hasVolunteers = !!event && (event.shifts ?? []).reduce((sum, s) => sum + (s.filled ?? 0), 0) > 0;
+  const hasShifts = !!event && (event.shifts ?? []).length > 0;
 
   const handleTitleChange = (value) => {
     const updates = { title: value };
@@ -106,10 +109,14 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
 
     setSubmitting(true);
     try {
+      const shiftlessPayload = {
+        is_shiftless:       formData.is_shiftless,
+        shiftless_capacity: formData.shiftless_capacity ? parseInt(formData.shiftless_capacity) : null,
+      };
       if (event) {
         const { error } = await supabase
           .from('events')
-          .update({ ...formData, end_date: formData.end_date || null })
+          .update({ ...formData, end_date: formData.end_date || null, ...shiftlessPayload })
           .eq('id', event.id);
         if (error) throw error;
         await saveDayHours(event.id);
@@ -130,6 +137,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             online_url:    formData.online_url || null,
             recording_url: formData.recording_url || null,
             organization_id: organizationId,
+            ...shiftlessPayload,
           })
           .select('id')
           .single();
@@ -352,6 +360,36 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                 placeholder="https://youtube.com/watch?v=..."
               />
             </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-600 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={formData.is_shiftless}
+                  disabled={hasShifts}
+                  onChange={(e) => setFormData({ ...formData, is_shiftless: e.target.checked, shiftless_capacity: '' })}
+                  className="rounded"
+                />
+                Shiftless event (volunteers register without selecting a time slot)
+              </label>
+              {hasShifts && (
+                <p className="text-xs text-gray-400 mt-1">Cannot enable — this event already has shifts</p>
+              )}
+            </div>
+
+            {formData.is_shiftless && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Capacity (optional)</label>
+                <input
+                  type="number"
+                  value={formData.shiftless_capacity}
+                  onChange={(e) => setFormData({ ...formData, shiftless_capacity: e.target.value })}
+                  className={inputCls}
+                  placeholder="Leave blank for unlimited"
+                  min={1}
+                />
+              </div>
+            )}
 
             {event && (
               <div>

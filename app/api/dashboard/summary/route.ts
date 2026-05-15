@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   // Upcoming events: fetch all active/ongoing, filter by date in JS to avoid or() interference
   const { data: eventsRaw } = await service
     .from('events')
-    .select('id, event_id, title, date, end_date, time, location, shifts(id, capacity)')
+    .select('id, event_id, title, date, end_date, time, location, is_shiftless, shifts(id, capacity)')
     .eq('organization_id', orgId)
     .in('status', ['active', 'ongoing'])
     .order('date', { ascending: true })
@@ -185,7 +185,7 @@ export async function GET(req: NextRequest) {
 
   // Events with no shifts — upcoming active/ongoing events that have no shifts yet
   const eventsWithNoShifts = upcomingEventsRaw
-    .filter((e: any) => (e.shifts ?? []).length === 0)
+    .filter((e: any) => (e.shifts ?? []).length === 0 && !e.is_shiftless)
     .map((e: any) => ({ id: e.id, event_id: e.event_id, title: e.title, date: e.date, end_date: e.end_date }))
 
   // No events at all — prompt the user to create their first event

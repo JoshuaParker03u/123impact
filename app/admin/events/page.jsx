@@ -377,15 +377,18 @@ export default function AdminEventsPage() {
                       </div>
                     </div>
 
-                    {/* Shifts Toggle */}
+                    {/* Shifts Toggle / Manage footer */}
                     <div className="flex items-center justify-between pt-4 border-t dark:border-gray-700">
-                      <button
-                        onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
-                        className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        {event.shifts?.length || 0} Shifts
-                      </button>
+                      {!event.is_shiftless && (
+                        <button
+                          onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
+                          className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          {event.shifts?.length || 0} Shifts
+                        </button>
+                      )}
+                      {event.is_shiftless && <span />}
                       <Link
                         href={`/admin/events/${event.event_id}`}
                         className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
@@ -396,7 +399,7 @@ export default function AdminEventsPage() {
                   </div>
 
                   {/* Shifts List (Collapsible) */}
-                  {isExpanded && (
+                  {isExpanded && !event.is_shiftless && (
                     <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-6">
                       {!event.shifts || event.shifts.length === 0 ? (
                         <p className="text-gray-600 dark:text-gray-400 text-center py-4">No shifts yet. Add one to get started!</p>

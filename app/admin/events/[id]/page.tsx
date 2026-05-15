@@ -63,6 +63,8 @@ interface Event {
   organization_id: string;
   shifts: Shift[];
   event_day_hours?: { id: string; event_date: string; start_time: string; end_time: string }[];
+  is_shiftless?: boolean;
+  shiftless_capacity?: number | null;
 }
 
 interface OrgMember {
@@ -975,6 +977,8 @@ export default function AdminEventDetailPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr' | 'analytics' | 'live'>('shifts');
+  const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string }[]>([]);
+  const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
 
@@ -1017,6 +1021,18 @@ export default function AdminEventDetailPage() {
 
     setEvent({ ...data, shifts: sorted } as Event);
     setLoading(false);
+
+    // Auto-load registrations for shiftless events
+    if (data.is_shiftless) {
+      loadShiftlessRegs(data.id);
+    }
+  }
+
+  async function loadShiftlessRegs(eventId: string) {
+    setLoadingShiftlessRegs(true);
+    const res = await fetch(`/api/events/${eventId}/shiftless-registrations`);
+    if (res.ok) setShiftlessRegs(await res.json());
+    setLoadingShiftlessRegs(false);
   }
 
   async function toggleShift(shiftId: string) {
@@ -1195,9 +1211,13 @@ export default function AdminEventDetailPage() {
     );
   }
 
-  const totalFilled   = event.shifts.reduce((s, sh) => s + (sh.filled ?? 0), 0);
-  const totalCapacity = event.shifts.reduce((s, sh) => s + sh.capacity, 0);
-  const fillPct       = totalCapacity > 0 ? Math.round((totalFilled / totalCapacity) * 100) : 0;
+  const totalFilled   = event.is_shiftless
+    ? shiftlessRegs.length
+    : event.shifts.reduce((s, sh) => s + (sh.filled ?? 0), 0);
+  const totalCapacity = event.is_shiftless
+    ? (event.shiftless_capacity ?? 0)
+    : event.shifts.reduce((s, sh) => s + sh.capacity, 0);
+  const fillPct = totalCapacity > 0 ? Math.round((totalFilled / totalCapacity) * 100) : 0;
 
   return (
     <>
@@ -1240,7 +1260,12 @@ export default function AdminEventDetailPage() {
                 </span>
                 <span className="flex items-center gap-1">
                   <Users className="w-4 h-4" />
-                  {totalFilled}/{totalCapacity} volunteers ({fillPct}% full)
+                  {event.is_shiftless
+                    ? totalCapacity > 0
+                      ? `${totalFilled}/${totalCapacity} registrations`
+                      : `${totalFilled} registrations`
+                    : `${totalFilled}/${totalCapacity} volunteers (${fillPct}% full)`
+                  }
                 </span>
               </div>
 
@@ -1301,7 +1326,7 @@ export default function AdminEventDetailPage() {
           return (
             <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6">
               <button onClick={() => setActiveTab('shifts')} className={tabClass(activeTab === 'shifts')}>
-                Shifts ({event.shifts.length})
+                {event.is_shiftless ? `Registrations (${shiftlessRegs.length})` : `Shifts (${event.shifts.length})`}
               </button>
               <button onClick={() => setActiveTab('analytics')} className={tabClass(activeTab === 'analytics')}>
                 <BarChart2 className="w-4 h-4" />Analytics
@@ -1337,6 +1362,39 @@ export default function AdminEventDetailPage() {
           <LiveTab eventId={event.id} />
         ) : activeTab === 'qr' ? (
           <QRCodesTab eventId={event.id} />
+        ) : event.is_shiftless ? (
+          <>
+            {loadingShiftlessRegs ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+            ) : shiftlessRegs.length === 0 ? (
+              <Card className="p-8 text-center text-gray-500">No registrations yet.</Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <div className="px-5 py-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                        <th className="pb-2 font-medium">Name</th>
+                        <th className="pb-2 font-medium">Email</th>
+                        <th className="pb-2 font-medium">Phone</th>
+                        <th className="pb-2 font-medium">Registered</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {shiftlessRegs.map((r) => (
+                        <tr key={r.id} className="text-gray-700 dark:text-gray-300">
+                          <td className="py-2 pr-4 font-medium">{r.name}</td>
+                          <td className="py-2 pr-4">{r.email}</td>
+                          <td className="py-2 pr-4">{r.phone ?? '—'}</td>
+                          <td className="py-2 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </>
         ) : (
           <>
             <div className="flex items-center justify-between mb-3">

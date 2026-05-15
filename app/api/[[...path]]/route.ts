@@ -191,9 +191,46 @@ async function sendRegistrationConfirmation(
 }
 
 // ---------------------------------------------------------------------------
-// scheduleAutomatedEmails
-// Called after a successful public volunteer registration to queue any
-// automated emails defined for the shift's event.
+// sendShiftlessConfirmation
+// Confirmation email for shiftless event registrations (no shift details).
+// ---------------------------------------------------------------------------
+
+async function sendShiftlessConfirmation(
+  supabase: SupabaseClient,
+  volunteerName: string,
+  volunteerEmail: string,
+  eventId: string
+) {
+  const { data: event } = await supabase
+    .from('events')
+    .select('title, date, end_date, location')
+    .eq('id', eventId)
+    .single();
+
+  if (!event) return;
+
+  const dateDisplay = event.end_date && event.end_date !== event.date
+    ? `${event.date} – ${event.end_date}`
+    : event.date;
+
+  const html = wrapEmailHtml(`
+    <h2>Registration Confirmed</h2>
+    <p>Hi ${volunteerName},</p>
+    <p>You're registered for <strong>${event.title}</strong>. We look forward to seeing you!</p>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      <tr><td style="padding:8px 0;color:#6b7280;width:120px;">Event</td><td style="padding:8px 0;font-weight:600;">${event.title}</td></tr>
+      <tr><td style="padding:8px 0;color:#6b7280;">Date</td><td style="padding:8px 0;">${dateDisplay}</td></tr>
+      <tr><td style="padding:8px 0;color:#6b7280;">Location</td><td style="padding:8px 0;">${event.location}</td></tr>
+    </table>
+    <p>See you there!</p>
+  `);
+
+  await sendEmail({
+    to: volunteerEmail,
+    subject: `Confirmed: ${event.title}`,
+    html,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // scheduleAutomatedEmails
@@ -330,7 +367,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .from('events')
         .select(`
           id, event_id, title, description, date, end_date, time, location,
-          image_url, status, organization_id, created_at, updated_at,
+          image_url, status, organization_id, is_shiftless, shiftless_capacity,
+          created_at, updated_at,
           event_day_hours (event_date, start_time, end_time),
           organizations (id, name, logo_url)
         `)
@@ -339,7 +377,19 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .single();
 
       if (error) return fail('Event not found', 404);
-      return ok(data);
+
+      // For shiftless events, include a live count of registrations
+      let shiftless_filled = 0;
+      if (data.is_shiftless) {
+        const { count } = await buildServiceClient()
+          .from('volunteer_registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', data.id)
+          .is('shift_id', null);
+        shiftless_filled = count ?? 0;
+      }
+
+      return ok({ ...data, shiftless_filled });
     }
 
     // ── PUBLIC: GET /api/events/:id/shifts ──────────────────────────────────
@@ -510,21 +560,53 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // Inserts into volunteer_registrations and queues automated emails.
     if (seg.length === 1 && seg[0] === 'volunteer-registrations') {
       const body = await request.json();
-      const { shift_id, name, email, phone, attendee_type } = body;
+      const { shift_id, event_id, name, email, phone, attendee_type } = body;
 
-      if (!shift_id || !name || !email) {
-        return fail('shift_id, name, and email are required');
-      }
+      if (!name || !email) return fail('name and email are required');
+      if (!shift_id && !event_id) return fail('shift_id or event_id is required');
 
       const validTypes = ['volunteer', 'attendee', 'speaker'];
       const resolvedType = validTypes.includes(attendee_type) ? attendee_type : 'volunteer';
 
       const supabase = buildServiceClient();
 
-      // Enforce capacity server-side
+      // ── Shiftless path ──────────────────────────────────────────────────────
+      if (!shift_id) {
+        const { data: ev } = await supabase
+          .from('events')
+          .select('id, is_shiftless, shiftless_capacity')
+          .eq('id', event_id)
+          .single();
+
+        if (!ev || !ev.is_shiftless) return fail('Event does not allow shiftless registration', 400);
+
+        if (ev.shiftless_capacity) {
+          const { count } = await supabase
+            .from('volunteer_registrations')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', event_id)
+            .is('shift_id', null);
+          if ((count ?? 0) >= ev.shiftless_capacity) return fail('This event is full', 409);
+        }
+
+        const { data: registration, error: regError } = await supabase
+          .from('volunteer_registrations')
+          .insert({ event_id, name, email, phone: phone ?? null, attendee_type: resolvedType })
+          .select()
+          .single();
+
+        if (regError) throw regError;
+
+        sendShiftlessConfirmation(supabase, name, email, event_id)
+          .catch((e) => console.error('sendShiftlessConfirmation error:', e));
+
+        return ok(registration, 201);
+      }
+
+      // ── Shift-based path ────────────────────────────────────────────────────
       const { data: shift } = await supabase
         .from('shifts')
-        .select('id, capacity, allow_waitlist')
+        .select('id, capacity, allow_waitlist, event_id')
         .eq('id', shift_id)
         .single();
 
@@ -545,13 +627,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
       const { data: registration, error: regError } = await supabase
         .from('volunteer_registrations')
-        .insert({ shift_id, name, email, phone: phone ?? null, attendee_type: resolvedType, is_waitlisted: isWaitlisted })
+        .insert({ shift_id, event_id: shift.event_id, name, email, phone: phone ?? null, attendee_type: resolvedType, is_waitlisted: isWaitlisted })
         .select()
         .single();
 
       if (regError) throw regError;
 
-      // Fire-and-forget: send confirmation + queue automated emails (errors are non-fatal)
       sendRegistrationConfirmation(supabase, name, email, shift_id, isWaitlisted)
         .catch((e) => console.error('sendRegistrationConfirmation error:', e));
       scheduleAutomatedEmails(supabase, registration.id, name, email, shift_id)

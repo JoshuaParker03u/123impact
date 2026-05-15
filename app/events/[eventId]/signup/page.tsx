@@ -44,6 +44,9 @@ type Event = {
   status: string
   event_day_hours?: DayHours[]
   organizations?: { id: string; name: string; logo_url: string | null } | null
+  is_shiftless?: boolean
+  shiftless_capacity?: number | null
+  shiftless_filled?: number
 }
 
 function EventScheduleDisplay({ event }: { event: Event }) {
@@ -203,7 +206,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     if (formData.phone.trim() && !/^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/.test(formData.phone))
       next.phone = 'Phone number format is invalid (e.g., 555-123-4567)'
 
-    if (!selectedShift)
+    if (!event?.is_shiftless && !selectedShift)
       next.shift = 'Please select a shift'
 
     setErrors(next)
@@ -214,7 +217,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate() || !selectedShift || !event) return
+    if (!validate() || (!event?.is_shiftless && !selectedShift) || !event) return
 
     setSubmitting(true)
     setErrors({})
@@ -226,15 +229,21 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
       const selectedShiftData = shifts.find(s => s.id === selectedShift)
       const joiningWaitlist = !!(selectedShiftData?.is_full && selectedShiftData?.allow_waitlist)
 
+      const payload: Record<string, unknown> = {
+        name:          formData.name,
+        email:         formData.email.toLowerCase(),
+        phone:         formData.phone.trim() || null,
+        attendee_type: formData.attendee_type,
+      }
+      if (event?.is_shiftless) {
+        payload.event_id = event.id
+      } else {
+        payload.shift_id = selectedShift
+      }
+
       await apiFetch('volunteer-registrations', {
         method: 'POST',
-        body: JSON.stringify({
-          shift_id:      selectedShift,
-          name:          formData.name,
-          email:         formData.email.toLowerCase(),
-          phone:         formData.phone.trim() || null,
-          attendee_type: formData.attendee_type,
-        }),
+        body: JSON.stringify(payload),
       })
 
       setSubmittedWaitlisted(joiningWaitlist)
@@ -429,7 +438,17 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
             </div>
           </Card>
 
-          {/* Shift selection */}
+          {/* Shift selection — hidden for shiftless events */}
+          {event.is_shiftless ? (
+            event.shiftless_capacity ? (
+              <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
+                <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <p className="text-sm text-blue-900 dark:text-blue-200">
+                  {Math.max(0, event.shiftless_capacity - (event.shiftless_filled ?? 0))} of {event.shiftless_capacity} spots remaining
+                </p>
+              </div>
+            ) : null
+          ) : (
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Choose Your Shift</h2>
             {errors.shift && <p className="text-red-600 text-sm mb-2">{errors.shift}</p>}
@@ -495,6 +514,7 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
               })}
             </div>
           </div>
+          )}
 
           {/* Registration form */}
           <Card className="p-6">
