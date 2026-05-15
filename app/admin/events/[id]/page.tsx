@@ -1201,6 +1201,28 @@ export default function AdminEventDetailPage() {
     });
   }
 
+  async function removeVolunteer(registrationId: string, shiftId: string, isWaitlisted: boolean) {
+    if (!confirm('Remove this volunteer from the shift?')) return;
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, { method: 'DELETE' });
+    if (!res.ok) { alert('Failed to remove volunteer.'); return; }
+
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        shifts: prev.shifts.map((s) => {
+          if (s.id !== shiftId) return s;
+          return {
+            ...s,
+            filled:     isWaitlisted ? (s.filled ?? 0) : Math.max(0, (s.filled ?? 0) - 1),
+            waitlisted: isWaitlisted ? Math.max(0, (s.waitlisted ?? 0) - 1) : (s.waitlisted ?? 0),
+            volunteers: (s.volunteers ?? []).filter((v) => v.id !== registrationId),
+          };
+        }),
+      };
+    });
+  }
+
   async function handleDeleteEvent() {
     if (!event) return;
     if (!confirm('This will delete the event, all its shifts, and all volunteer registrations. Continue?')) return;
@@ -1593,6 +1615,7 @@ export default function AdminEventDetailPage() {
                                             <th className="pb-2 font-medium">Email</th>
                                             <th className="pb-2 font-medium">Phone</th>
                                             <th className="pb-2 font-medium">Registered</th>
+                                            <th className="pb-2 font-medium"></th>
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1601,8 +1624,17 @@ export default function AdminEventDetailPage() {
                                               <td className="py-2 pr-4 font-medium">{v.name}</td>
                                               <td className="py-2 pr-4">{v.email}</td>
                                               <td className="py-2 pr-4">{v.phone ?? '—'}</td>
-                                              <td className="py-2 text-gray-400 dark:text-gray-500">
+                                              <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                                 {new Date(v.registered_at).toLocaleDateString()}
+                                              </td>
+                                              <td className="py-2">
+                                                <button
+                                                  onClick={() => removeVolunteer(v.id, shift.id, false)}
+                                                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                                  title="Remove volunteer"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                                </button>
                                               </td>
                                             </tr>
                                           ))}
@@ -1634,12 +1666,21 @@ export default function AdminEventDetailPage() {
                                                   {new Date(v.registered_at).toLocaleDateString()}
                                                 </td>
                                                 <td className="py-2">
-                                                  <button
-                                                    onClick={() => promoteVolunteer(v.id, shift.id)}
-                                                    className="text-xs px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
-                                                  >
-                                                    Promote
-                                                  </button>
+                                                  <div className="flex items-center gap-2">
+                                                    <button
+                                                      onClick={() => promoteVolunteer(v.id, shift.id)}
+                                                      className="text-xs px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                                    >
+                                                      Promote
+                                                    </button>
+                                                    <button
+                                                      onClick={() => removeVolunteer(v.id, shift.id, true)}
+                                                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                                      title="Remove volunteer"
+                                                    >
+                                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                                    </button>
+                                                  </div>
                                                 </td>
                                               </tr>
                                             ))}

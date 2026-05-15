@@ -16,11 +16,13 @@ import { Calendar, MapPin, Users, Clock, Check, Loader2, AlertCircle } from 'luc
 
 function formatEventTime(time: string | undefined): string {
   if (!time) return '';
-  if (/^\d{2}:\d{2}$/.test(time)) {
-    const [h, m] = time.split(':').map(Number);
+  const match = time.match(/^(\d{1,2}):(\d{2})/);
+  if (match) {
+    const h = parseInt(match[1], 10);
+    const m = match[2];
     const p = h < 12 ? 'AM' : 'PM';
     const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `${h12}:${m.toString().padStart(2, '0')} ${p}`;
+    return `${h12}:${m} ${p}`;
   }
   return time;
 }
@@ -94,12 +96,20 @@ type Shift = {
   description: string | null
   start_time: string
   end_time: string
+  shift_date: string | null
   capacity: number
   filled: number
   waitlisted: number
   available: number    // computed by API
   is_full: boolean     // computed by API
   allow_waitlist: boolean
+}
+
+function shiftsConflict(a: Shift, b: Shift, eventDate: string): boolean {
+  const dateA = a.shift_date ?? eventDate
+  const dateB = b.shift_date ?? eventDate
+  if (dateA !== dateB) return false
+  return a.start_time < b.end_time && a.end_time > b.start_time
 }
 
 // ---------------------------------------------------------------------------
@@ -130,12 +140,12 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   const [coSponsors, setCoSponsors]       = useState<{ id: string; name: string; logo_url: string | null }[]>([])
   const [loading, setLoading]             = useState(true)
   const [pageError, setPageError]         = useState<string | null>(null)
-  const [selectedShift, setSelectedShift] = useState<string | null>(null)
-  const [formData, setFormData]           = useState({ name: '', email: '', phone: '', attendee_type: 'volunteer' })
-  const [submitted, setSubmitted]         = useState(false)
-  const [submittedWaitlisted, setSubmittedWaitlisted] = useState(false)
-  const [submitting, setSubmitting]       = useState(false)
-  const [errors, setErrors]               = useState<Record<string, string>>({})
+  const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set())
+  const [formData, setFormData]             = useState({ name: '', email: '', phone: '', attendee_type: 'volunteer' })
+  const [submitted, setSubmitted]           = useState(false)
+  const [submittedShifts, setSubmittedShifts] = useState<{ id: string; name: string; start_time: string; end_time: string; waitlisted: boolean }[]>([])
+  const [submitting, setSubmitting]         = useState(false)
+  const [errors, setErrors]                 = useState<Record<string, string>>({})
 
   const isPast       = event ? new Date(event.end_date ?? event.date) < new Date(new Date().toDateString()) : false
   const isCancelled  = event?.status === 'cancelled'
@@ -181,14 +191,21 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     load()
   }, [eventId])
 
-  // ── Auto-select first available shift ────────────────────────────────────
+  // ── Toggle shift selection ────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (shifts.length > 0 && selectedShift === null) {
-      const first = shifts.find(s => !s.is_full) ?? shifts.find(s => s.allow_waitlist)
-      if (first) setSelectedShift(first.id)
-    }
-  }, [shifts])
+  const toggleShift = (shift: Shift) => {
+    setSelectedShifts(prev => {
+      const next = new Set(prev)
+      if (next.has(shift.id)) {
+        next.delete(shift.id)
+      } else {
+        const conflict = shifts.find(s => next.has(s.id) && shiftsConflict(s, shift, event?.date ?? ''))
+        if (conflict) return prev
+        next.add(shift.id)
+      }
+      return next
+    })
+  }
 
   // ── Validation ───────────────────────────────────────────────────────────
 
@@ -206,8 +223,8 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
     if (formData.phone.trim() && !/^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/.test(formData.phone))
       next.phone = 'Phone number format is invalid (e.g., 555-123-4567)'
 
-    if (!event?.is_shiftless && !selectedShift)
-      next.shift = 'Please select a shift'
+    if (!event?.is_shiftless && selectedShifts.size === 0)
+      next.shift = 'Please select at least one shift'
 
     setErrors(next)
     return Object.keys(next).length === 0
@@ -217,46 +234,45 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate() || (!event?.is_shiftless && !selectedShift) || !event) return
+    if (!validate() || (!event?.is_shiftless && selectedShifts.size === 0) || !event) return
 
     setSubmitting(true)
     setErrors({})
 
     try {
-      // POST /api/volunteer-registrations  — public
-      // The API handles: inserting the row, incrementing shift.filled,
-      // and scheduling automated emails.
-      const selectedShiftData = shifts.find(s => s.id === selectedShift)
-      const joiningWaitlist = !!(selectedShiftData?.is_full && selectedShiftData?.allow_waitlist)
-
       const payload: Record<string, unknown> = {
         name:          formData.name,
         email:         formData.email.toLowerCase(),
         phone:         formData.phone.trim() || null,
         attendee_type: formData.attendee_type,
       }
+
       if (event?.is_shiftless) {
         payload.event_id = event.id
+        await apiFetch('volunteer-registrations', { method: 'POST', body: JSON.stringify(payload) })
+        setSubmittedShifts([])
       } else {
-        payload.shift_id = selectedShift
+        payload.shift_ids = [...selectedShifts]
+        const res = await fetch('/api/volunteer-registrations/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`)
+        setSubmittedShifts(
+          data.registrations.map((r: { shiftId: string; shiftName: string; isWaitlisted: boolean }) => {
+            const s = shifts.find(sh => sh.id === r.shiftId)!
+            return { id: r.shiftId, name: r.shiftName, start_time: s.start_time, end_time: s.end_time, waitlisted: r.isWaitlisted }
+          })
+        )
       }
 
-      await apiFetch('volunteer-registrations', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      })
-
-      setSubmittedWaitlisted(joiningWaitlist)
       setSubmitted(true)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to submit registration.'
-
-      // Surface duplicate-registration as a friendly inline message
-      if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique')) {
-        const shiftName = shifts.find(s => s.id === selectedShift)?.name
-        setErrors({
-          submit: `You're already registered for ${shiftName} at "${event?.title}"! See you there!`,
-        })
+      if (message.toLowerCase().includes('already registered')) {
+        setErrors({ submit: `You're already registered for one or more of these shifts at "${event?.title}"! See you there!` })
       } else {
         setErrors({ submit: message })
       }
@@ -312,10 +328,9 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
   // ── Success ──────────────────────────────────────────────────────────────
 
   if (submitted) {
-    const selectedShiftData = shifts.find(s => s.id === selectedShift)
-    const dateDisplay = event.end_date && event.end_date !== event.date
-      ? `${event.date} – ${event.end_date}`
-      : event.date
+    const anyWaitlisted = submittedShifts.some(s => s.waitlisted)
+    const allWaitlisted = submittedShifts.length > 0 && submittedShifts.every(s => s.waitlisted)
+    const isShiftless   = event.is_shiftless
 
     return (
       <>
@@ -323,40 +338,56 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
         <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
           <div className="max-w-2xl mx-auto">
             <Card className="p-8 text-center">
-              {submittedWaitlisted ? (
-                <>
-                  <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Clock className="w-12 h-12 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">You're on the Waitlist!</h1>
-                  <p className="text-gray-600 dark:text-gray-400 mb-6">
-                    We've added you to the waitlist for the <strong>{selectedShiftData?.name}</strong> shift, {formData.name}. The coordinator will reach out if a spot becomes available.
-                  </p>
-                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 mb-6">
-                    <p className="text-sm text-amber-900 dark:text-amber-200 font-medium">{selectedShiftData?.name}</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                      {dateDisplay} • {selectedShiftData?.start_time} – {selectedShiftData?.end_time}
-                    </p>
-                  </div>
-                </>
+              {allWaitlisted ? (
+                <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Clock className="w-12 h-12 text-amber-600 dark:text-amber-400" />
+                </div>
               ) : (
-                <>
-                  <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Check className="w-12 h-12 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">You're All Set!</h1>
-                  <p className="text-gray-600 dark:text-gray-400 mb-6">
-                    Thank you for signing up, {formData.name}! We've sent a confirmation
-                    email to {formData.email} with all the details.
-                  </p>
-                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
-                    <p className="text-sm text-blue-900 dark:text-blue-200 font-medium">{selectedShiftData?.name}</p>
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      {dateDisplay} • {selectedShiftData?.start_time} – {selectedShiftData?.end_time}
-                    </p>
-                  </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">A calendar invite has been added to your email.</p>
-                </>
+                <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Check className="w-12 h-12 text-green-600 dark:text-green-400" />
+                </div>
+              )}
+
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+                {allWaitlisted ? "You're on the Waitlist!" : "You're All Set!"}
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                {isShiftless
+                  ? `You're registered for ${event.title}, ${formData.name}!`
+                  : allWaitlisted
+                  ? `We've added you to the waitlist, ${formData.name}. The coordinator will reach out if spots become available.`
+                  : `Thank you for signing up, ${formData.name}! We've sent a confirmation email to ${formData.email}.`
+                }
+              </p>
+
+              {submittedShifts.length > 0 && (
+                <div className="space-y-2 mb-6 text-left">
+                  {submittedShifts.map(s => (
+                    <div key={s.id} className={`rounded-lg p-4 border ${
+                      s.waitlisted
+                        ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
+                        : 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <p className={`text-sm font-medium ${s.waitlisted ? 'text-amber-900 dark:text-amber-200' : 'text-blue-900 dark:text-blue-200'}`}>
+                          {s.name}
+                        </p>
+                        {anyWaitlisted && (
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            s.waitlisted
+                              ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200'
+                              : 'bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200'
+                          }`}>
+                            {s.waitlisted ? 'Waitlisted' : 'Confirmed'}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-sm ${s.waitlisted ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'}`}>
+                        {formatEventTime(s.start_time)} – {formatEventTime(s.end_time)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               )}
             </Card>
           </div>
@@ -461,9 +492,13 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
             ) : null}
             <div className="grid gap-4">
               {shifts.map((shift) => {
-                const isSelected = selectedShift === shift.id
+                const isSelected     = selectedShifts.has(shift.id)
                 const isWaitlistable = shift.is_full && shift.allow_waitlist
-                const isBlocked = shift.is_full && !shift.allow_waitlist
+                const isBlocked      = shift.is_full && !shift.allow_waitlist
+                const conflictsWith  = !isSelected
+                  ? shifts.find(s => selectedShifts.has(s.id) && shiftsConflict(s, shift, event.date))
+                  : null
+                const isDisabled = isBlocked || !!conflictsWith
                 return (
                   <Card
                     key={shift.id}
@@ -472,9 +507,11 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                         ? isWaitlistable
                           ? 'ring-2 ring-amber-500 bg-amber-50 dark:bg-amber-900/20'
                           : 'ring-2 ring-blue-600 bg-blue-50 dark:bg-blue-900/30'
-                        : 'hover:shadow-lg'
-                    } ${isBlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    onClick={() => !isBlocked && setSelectedShift(shift.id)}
+                        : isDisabled
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'hover:shadow-lg cursor-pointer'
+                    }`}
+                    onClick={() => !isDisabled && toggleShift(shift)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -490,13 +527,18 @@ export default function EventSignup({ params }: { params: Promise<{ eventId: str
                         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
-                            {shift.start_time} – {shift.end_time}
+                            {formatEventTime(shift.start_time)} – {formatEventTime(shift.end_time)}
                           </span>
                           <span className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
                             {isWaitlistable ? 'Waitlist open' : `${shift.available} ${shift.available === 1 ? 'spot' : 'spots'} left`}
                           </span>
                         </div>
+                        {conflictsWith && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                            Conflicts with {conflictsWith.name}
+                          </p>
+                        )}
                       </div>
                       {isBlocked && (
                         <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-full">

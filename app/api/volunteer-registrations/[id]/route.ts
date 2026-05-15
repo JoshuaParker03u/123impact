@@ -79,3 +79,73 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(updated);
 }
+
+// DELETE /api/volunteer-registrations/[id]
+// Removes a volunteer registration. Requires org admin access.
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const { id: registrationId } = await params;
+
+  const cookieStore = await cookies();
+  const session = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (list) => {
+          try { list.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
+        },
+      },
+    }
+  );
+  const service = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { data: reg } = await service
+    .from('volunteer_registrations')
+    .select('shift_id, event_id')
+    .eq('id', registrationId)
+    .single();
+
+  if (!reg) return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
+
+  // Resolve org from shift or event_id
+  let orgId: string | null = null;
+  if (reg.shift_id) {
+    const { data: shift } = await service.from('shifts').select('event_id').eq('id', reg.shift_id).single();
+    if (shift) {
+      const { data: event } = await service.from('events').select('organization_id').eq('id', shift.event_id).single();
+      orgId = event?.organization_id ?? null;
+    }
+  } else if (reg.event_id) {
+    const { data: event } = await service.from('events').select('organization_id').eq('id', reg.event_id).single();
+    orgId = event?.organization_id ?? null;
+  }
+
+  if (!orgId) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+
+  const { data: orgMembership } = await service
+    .from('organization_admins')
+    .select('role')
+    .eq('organization_id', orgId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!orgMembership || !['owner', 'admin'].includes(orgMembership.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { error } = await service
+    .from('volunteer_registrations')
+    .delete()
+    .eq('id', registrationId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
+}
