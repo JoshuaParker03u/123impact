@@ -453,6 +453,7 @@ export default function AdminEventsPage() {
           <EventModal
             event={editingEvent}
             organizationId={currentOrganization.id}
+            organizationLogoUrl={currentOrganization.logo_url}
             isPaid={orgPlan !== 'free'}
             onClose={() => setShowEventModal(false)}
             onSave={() => {

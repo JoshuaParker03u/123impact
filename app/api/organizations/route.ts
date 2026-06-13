@@ -33,6 +33,7 @@ function buildServiceClient() {
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // POST /api/organizations
 // Creates a new organization and adds the authenticated user as owner.
@@ -57,6 +58,13 @@ export async function POST(request: NextRequest) {
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Organization name is required' }, { status: 400 });
+    }
+
+    if (!contactEmail?.trim()) {
+      return NextResponse.json({ error: 'Contact email is required' }, { status: 400 });
+    }
+    if (!EMAIL_REGEX.test(contactEmail.trim())) {
+      return NextResponse.json({ error: 'Enter a valid contact email address' }, { status: 400 });
     }
 
     // ── Handle logo upload ──────────────────────────────────────────────────

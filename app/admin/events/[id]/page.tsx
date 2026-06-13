@@ -1724,6 +1724,7 @@ export default function AdminEventDetailPage() {
         <EventModal
           event={event}
           organizationId={event.organization_id}
+          organizationLogoUrl={currentOrganization?.logo_url}
           supabase={supabase}
           isPaid={orgPlan !== 'free'}
           onClose={() => setShowEventModal(false)}

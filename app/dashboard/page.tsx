@@ -190,6 +190,7 @@ function DashboardContent() {
                            + switchToOngoing.length
                            + eventsWithNoShifts.length
                            + (hasNoEvents ? 1 : 0)
+  const onboardingOnly    = hasNoEvents && actionCount === 1
 
   return (
     <div className="min-h-screen bg-background dark:bg-gray-950">
@@ -268,11 +269,17 @@ function DashboardContent() {
 
         {/* Action Items */}
         {hasOrg && actionCount > 0 && (
-          <Card className="shadow-sm border-orange-200 dark:border-orange-900/50">
+          <Card className={onboardingOnly ? 'shadow-sm border-green-200 dark:border-green-900/50' : 'shadow-sm border-orange-200 dark:border-orange-900/50'}>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2 text-orange-700 dark:text-orange-400">
-                <AlertTriangle className="w-4 h-4" /> Needs Attention
-              </CardTitle>
+              {onboardingOnly ? (
+                <CardTitle className="text-base flex items-center gap-2 text-green-700 dark:text-green-400">
+                  <ArrowRight className="w-4 h-4" /> Next Steps
+                </CardTitle>
+              ) : (
+                <CardTitle className="text-base flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                  <AlertTriangle className="w-4 h-4" /> Needs Attention
+                </CardTitle>
+              )}
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               {hasNoEvents && (

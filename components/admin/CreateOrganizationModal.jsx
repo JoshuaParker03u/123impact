@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
 const MAX_SIZE = 5 * 1024 * 1024;
+const DESCRIPTION_MAX = 150;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── Logo uploader (upload file OR paste URL) ─────────────────────────────────
 
@@ -142,6 +144,9 @@ function LogoUploader({ logoTab, setLogoTab, logoFile, setLogoFile, logoUrl, set
           )}
         </div>
       )}
+      <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+        Square image recommended, at least 64×64px. JPG, PNG, SVG, or WebP — max 5 MB.
+      </p>
     </div>
   );
 }
@@ -161,14 +166,25 @@ export default function CreateOrganizationModal({ onClose, onSuccess }) {
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState('');
   const [nameError, setNameError]     = useState('');
+  const [contactEmailError, setContactEmailError] = useState('');
 
   async function handleSubmit(e) {
     e.preventDefault();
     setNameError('');
+    setContactEmailError('');
     setError('');
 
     if (!name.trim()) {
       setNameError('Organization name is required');
+      return;
+    }
+
+    if (!contactEmail.trim()) {
+      setContactEmailError('Contact email is required');
+      return;
+    }
+    if (!EMAIL_REGEX.test(contactEmail.trim())) {
+      setContactEmailError('Enter a valid email address');
       return;
     }
 
@@ -177,7 +193,7 @@ export default function CreateOrganizationModal({ onClose, onSuccess }) {
       const formData = new FormData();
       formData.append('name', name.trim());
       if (description.trim())  formData.append('description',   description.trim());
-      if (contactEmail.trim()) formData.append('contact_email', contactEmail.trim());
+      formData.append('contact_email', contactEmail.trim());
       if (contactPhone.trim()) formData.append('contact_phone', contactPhone.trim());
       if (website.trim())      formData.append('website',       website.trim());
 
@@ -249,14 +265,20 @@ export default function CreateOrganizationModal({ onClose, onSuccess }) {
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Description <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Description <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {description.length}/{DESCRIPTION_MAX}
+              </span>
+            </div>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDescription(e.target.value.slice(0, DESCRIPTION_MAX))}
               disabled={submitting}
               rows={3}
+              maxLength={DESCRIPTION_MAX}
               placeholder="Tell volunteers about your organization..."
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 resize-none"
             />
@@ -279,16 +301,19 @@ export default function CreateOrganizationModal({ onClose, onSuccess }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Contact Email <span className="text-gray-400 font-normal">(optional)</span>
+                Contact Email <span className="text-red-500">*</span>
               </label>
               <input
                 type="email"
                 value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
+                onChange={(e) => { setContactEmail(e.target.value); if (contactEmailError) setContactEmailError(''); }}
                 disabled={submitting}
                 placeholder="contact@org.com"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className={`w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${
+                  contactEmailError ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                }`}
               />
+              {contactEmailError && <p className="text-red-600 text-sm mt-1">{contactEmailError}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">

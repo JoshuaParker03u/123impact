@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import ShiftDatePicker from './ShiftDatePicker';
-import { X } from 'lucide-react';
+import { X, Upload, Link as LinkIcon } from 'lucide-react';
 
 function generateSlug(title, suffix) {
   const base = title
@@ -35,8 +35,137 @@ function getEventDays(start, end) {
 
 const inputCls = 'w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600';
 const timeInputCls = 'border rounded-md px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600';
+const TITLE_MAX = 75;
+const IMAGE_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
+const IMAGE_MAX_SIZE = 5 * 1024 * 1024;
 
-export default function EventModal({ event, organizationId, onClose, onSave, supabase, isPaid = false }) {
+// ── Event image (upload file OR paste URL, falls back to org logo) ──────────
+
+function EventImageUploader({ value, onChange, organizationId, orgLogoUrl, disabled }) {
+  const fileInputRef = useRef(null);
+  const [tab, setTab] = useState('upload');
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleFile(file) {
+    setError('');
+    if (!file) return;
+    if (!IMAGE_ALLOWED_TYPES.includes(file.type)) {
+      setError('Invalid type. Use JPG, PNG, SVG, or WebP.');
+      return;
+    }
+    if (file.size > IMAGE_MAX_SIZE) {
+      setError('File too large. Max 5 MB.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append('organization_id', organizationId);
+      body.append('image_file', file);
+
+      const res = await fetch('/api/events/image', { method: 'POST', body });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? 'Upload failed');
+      onChange(result.url);
+    } catch (err) {
+      setError(err.message ?? 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    handleFile(e.dataTransfer.files[0]);
+  }
+
+  const previewUrl = value || orgLogoUrl;
+  const usingOrgDefault = !value && !!orgLogoUrl;
+
+  return (
+    <div>
+      {/* Tab switcher */}
+      <div className="flex gap-1 mb-3 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg w-fit">
+        {['upload', 'url'].map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              tab === t
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+            }`}
+          >
+            {t === 'upload' ? <Upload className="w-3.5 h-3.5" /> : <LinkIcon className="w-3.5 h-3.5" />}
+            {t === 'upload' ? 'Upload File' : 'Image URL'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'upload' ? (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => !disabled && !uploading && fileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+            dragOver
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+              : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'
+          }`}
+        >
+          <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            {uploading ? 'Uploading...' : <>Drag & drop or <span className="text-blue-600 dark:text-blue-400 font-medium">browse</span></>}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">JPG, PNG, SVG, WebP — max 5 MB</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/svg+xml,image/webp"
+            className="hidden"
+            disabled={disabled || uploading}
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+        </div>
+      ) : (
+        <input
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://..."
+          disabled={disabled}
+          className={inputCls}
+        />
+      )}
+      {error && <p className="text-red-600 text-sm mt-1">{error}</p>}
+
+      {previewUrl && (
+        <div className="mt-3 flex items-center gap-3">
+          <img src={previewUrl} alt="Preview" className="w-16 h-16 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {usingOrgDefault
+              ? "Using your organization's logo by default. Upload or paste a URL to use a custom image."
+              : 'Preview'}
+          </p>
+        </div>
+      )}
+      {!previewUrl && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          If left blank, your organization's logo will be used.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function EventModal({ event, organizationId, organizationLogoUrl = null, onClose, onSave, supabase, isPaid = false }) {
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
   const [formData, setFormData] = useState({
@@ -76,12 +205,16 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
     setFormData(prev => ({ ...prev, ...updates }));
   };
 
+  const locationRequired = formData.event_format !== 'online';
+  const onlineUrlRequired = formData.event_format === 'online' || formData.event_format === 'hybrid';
+
   const validate = () => {
     const newErrors = {};
     if (!formData.title.trim()) newErrors.title = 'Title is required';
     if (!formData.date) newErrors.date = 'Date is required';
     if (formData.end_date && formData.end_date < formData.date) newErrors.end_date = 'End date must be on or after start date';
-    if (!formData.location.trim()) newErrors.location = 'Location is required';
+    if (locationRequired && !formData.location.trim()) newErrors.location = 'Location is required';
+    if (onlineUrlRequired && !formData.online_url.trim()) newErrors.online_url = 'Online URL is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -114,10 +247,11 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
         is_shiftless:       formData.is_shiftless,
         shiftless_capacity: formData.shiftless_capacity ? parseInt(formData.shiftless_capacity) : null,
       };
+      const imageUrl = formData.image_url || organizationLogoUrl || '';
       if (event) {
         const { error } = await supabase
           .from('events')
-          .update({ ...formData, end_date: formData.end_date || null, ...shiftlessPayload })
+          .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload })
           .eq('id', event.id);
         if (error) throw error;
         await saveDayHours(event.id);
@@ -132,7 +266,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             time:          formData.time || '',
             location:      formData.location,
             description:   formData.description,
-            image_url:     formData.image_url,
+            image_url:     imageUrl,
             status:        formData.status,
             event_format:  formData.event_format,
             online_url:    formData.online_url || null,
@@ -179,19 +313,30 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-1">Title</label>
+              <div className="flex items-baseline justify-between mb-1">
+                <label className="block text-sm font-medium">
+                  Title <span className="text-red-500">*</span>
+                </label>
+                <span className="text-xs text-gray-400">{formData.title.length}/{TITLE_MAX}</span>
+              </div>
               <input
                 type="text"
                 value={formData.title}
-                onChange={(e) => handleTitleChange(e.target.value)}
+                onChange={(e) => handleTitleChange(e.target.value.slice(0, TITLE_MAX))}
+                maxLength={TITLE_MAX}
                 className={inputCls}
               />
-              {errors.title && <p className="text-red-600 text-sm mt-1">{errors.title}</p>}
+              {errors.title
+                ? <p className="text-red-600 text-sm mt-1">{errors.title}</p>
+                : <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Max {TITLE_MAX} characters</p>
+              }
             </div>
 
             <div>
               <div>
-                <label className="block text-sm font-medium mb-1">Date</label>
+                <label className="block text-sm font-medium mb-1">
+                  Date <span className="text-red-500">*</span>
+                </label>
                 <ShiftDatePicker
                   value={formData.date}
                   onChange={(d) => setFormData({ ...formData, date: d })}
@@ -292,7 +437,9 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-1">Location</label>
+              <label className="block text-sm font-medium mb-1">
+                Location {locationRequired && <span className="text-red-500">*</span>}
+              </label>
               <input
                 type="text"
                 value={formData.location}
@@ -324,7 +471,9 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
 
             {(formData.event_format === 'online' || formData.event_format === 'hybrid') && (
               <div>
-                <label className="block text-sm font-medium mb-1">Online URL (Zoom, livestream, etc.)</label>
+                <label className="block text-sm font-medium mb-1">
+                  Online URL (Zoom, livestream, etc.) <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="url"
                   value={formData.online_url}
@@ -332,6 +481,7 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
                   className={inputCls}
                   placeholder="https://zoom.us/j/..."
                 />
+                {errors.online_url && <p className="text-red-600 text-sm mt-1">{errors.online_url}</p>}
               </div>
             )}
 
@@ -346,13 +496,13 @@ export default function EventModal({ event, organizationId, onClose, onSave, sup
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Image URL (optional)</label>
-              <input
-                type="text"
+              <label className="block text-sm font-medium mb-1">Image (optional)</label>
+              <EventImageUploader
                 value={formData.image_url}
-                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                className={inputCls}
-                placeholder="https://..."
+                onChange={(url) => setFormData({ ...formData, image_url: url })}
+                organizationId={organizationId}
+                orgLogoUrl={organizationLogoUrl}
+                disabled={submitting}
               />
             </div>
 
