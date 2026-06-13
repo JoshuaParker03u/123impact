@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
   for (const event of events ?? []) {
     const count = countByEvent[event.id];
     const body  = `${count} new registration${count === 1 ? '' : 's'} for "${event.title}" in the last 24 hours.`;
-    const link  = `/admin/events/${(event as any).event_id}`;
+    const link  = `/admin/volunteers?event=${(event as any).event_id}`;
 
     // Collect recipient user IDs (org admins + active event admins), deduplicated
     const recipientSet = new Set<string>();

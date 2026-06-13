@@ -103,7 +103,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     // Resend email
     const [orgRow, allUsers] = await Promise.all([
-      service.from('organizations').select('name').eq('id', orgId).single(),
+      service.from('organizations').select('name, logo_url').eq('id', orgId).single(),
       service.auth.admin.listUsers(),
     ]);
     const inviterUser = (allUsers.data?.users ?? []).find((u: any) => u.id === user.id);
@@ -124,7 +124,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       </p>
       <p style="color:#6b7280;font-size:13px;">This invitation expires on <strong>${expiry}</strong>.</p>
       <p style="color:#6b7280;font-size:12px;word-break:break-all;">${acceptUrl}</p>
-    `);
+    `, { name: orgRow.data?.name, logoUrl: (orgRow.data as any)?.logo_url });
     sendEmail({
       to: invite.email,
       subject: `You've been invited to join ${orgRow.data?.name} on 123impact`,

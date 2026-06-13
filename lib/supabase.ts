@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-import { Database } from './database.types'
 import { createBrowserClient } from '@supabase/ssr'
 
 // Singleton browser client — one instance for the entire browser session.
@@ -14,11 +12,3 @@ export function getBrowserClient(): ReturnType<typeof createBrowserClient> {
   }
   return _browser!;
 }
-
-/** @deprecated use getBrowserClient() */
-export const getSupabaseClient = getBrowserClient;
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)

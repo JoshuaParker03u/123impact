@@ -91,12 +91,12 @@ export async function GET(req: NextRequest) {
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString())
 
-  // Stale events: active events where the effective end date is in the past
+  // Stale events: active or ongoing events where the effective end date is in the past
   const { data: staleEventsRaw } = await service
     .from('events')
     .select('id, event_id, title, date, end_date, time, location, description, image_url, status, event_format, online_url, recording_url, organization_id')
     .eq('organization_id', orgId)
-    .eq('status', 'active')
+    .in('status', ['active', 'ongoing'])
     .order('date', { ascending: false })
 
   const staleEvents = (staleEventsRaw ?? []).filter((e: any) =>

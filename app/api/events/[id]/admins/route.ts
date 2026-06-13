@@ -32,7 +32,7 @@ async function buildClients() {
 async function requireOrgAdmin(service: any, eventId: string, userId: string) {
   const { data: event } = await service
     .from('events')
-    .select('event_id, organization_id, title, date, organizations!inner(plan, name)')
+    .select('event_id, organization_id, title, date, organizations!inner(plan, name, logo_url)')
     .eq('id', eventId)
     .single();
   if (!event) return { error: 'Event not found', status: 404 };
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       </div>
       <p style="color:#9ca3af;font-size:13px;">Or copy this link:<br/>${acceptUrl}</p>
       <p style="color:#9ca3af;font-size:13px;">This invitation expires on ${expiryFormatted}.</p>
-    `);
+    `, { name: org.name, logoUrl: org.logo_url });
 
     sendEmail({
       to: normalizedEmail,

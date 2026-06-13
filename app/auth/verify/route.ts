@@ -6,11 +6,11 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const token_hash = requestUrl.searchParams.get('token_hash')
   const type = requestUrl.searchParams.get('type')
-  const next = requestUrl.searchParams.get('next') ?? '/dashboard'
-
-  console.log('=== EMAIL VERIFICATION ===')
-  console.log('Token hash:', token_hash ? 'EXISTS' : 'MISSING')
-  console.log('Type:', type)
+  const nextParam = requestUrl.searchParams.get('next')
+  // Only follow same-origin relative paths; reject //evil.com, /\evil.com, absolute/userinfo URLs
+  const next = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') && !nextParam.startsWith('/\\')
+    ? nextParam
+    : '/dashboard'
 
   if (token_hash && type) {
     const cookieStore = await cookies()
@@ -40,15 +40,11 @@ export async function GET(request: Request) {
     })
     
     if (!error) {
-      console.log('✅ Email verified successfully')
       // Redirect to dashboard with code for session exchange
       return NextResponse.redirect(`${requestUrl.origin}${next}?verified=true`)
     }
-    
-    console.error('❌ Verification error:', error.message)
   }
-  
+
   // If verification fails, redirect to login with error
-  console.log('❌ Verification failed - missing token or type')
   return NextResponse.redirect(`${requestUrl.origin}/login?error=verification_failed`)
 }

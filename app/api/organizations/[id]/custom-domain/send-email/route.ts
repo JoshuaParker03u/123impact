@@ -51,8 +51,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const recipientEmail = body.dns_admin_email ?? domain.dns_admin_email;
   if (!recipientEmail) return NextResponse.json({ error: 'dns_admin_email is required' }, { status: 400 });
 
-  const { data: org } = await service.from('organizations').select('name').eq('id', orgId).single();
+  const { data: org } = await service.from('organizations').select('name, logo_url').eq('id', orgId).single();
   const orgName = (org as any)?.name ?? 'An organization';
+  const branding = { name: (org as any)?.name, logoUrl: (org as any)?.logo_url };
 
   // Regenerate token
   const verification_token = crypto.randomUUID();
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     <p>Once you've added the records, click the button below to verify:</p>
     <p><a href="${verifyUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Verify DNS Records</a></p>
     <p style="color:#9ca3af;font-size:12px;">This link expires in 7 days. If it expires, ask ${orgName} to resend the instructions.</p>
-  `);
+  `, branding);
 
   await sendEmail({
     to: recipientEmail,

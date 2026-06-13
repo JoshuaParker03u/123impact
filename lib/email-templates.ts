@@ -27,7 +27,27 @@ export function getAvailableVariables() {
   };
 }
 
-export function wrapEmailHtml(content: string): string {
+export interface EmailBranding {
+  name?: string | null;
+  logoUrl?: string | null;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export function wrapEmailHtml(content: string, branding?: EmailBranding): string {
+  const orgName = escapeHtml(branding?.name?.trim() || 'Volunteer Platform');
+  const logoUrl = branding?.logoUrl;
+
+  const headerInner = logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${orgName}" style="max-height:48px;max-width:240px;" />`
+    : `<h1>${orgName}</h1>`;
+
   return `
 <!DOCTYPE html>
 <html>
@@ -67,13 +87,13 @@ export function wrapEmailHtml(content: string): string {
 </head>
 <body>
   <div class="header">
-    <h1>Volunteer Platform</h1>
+    ${headerInner}
   </div>
   <div class="content">
     ${content}
   </div>
   <div class="footer">
-    <p>This is an automated message from the Volunteer Platform.</p>
+    <p>This is an automated message from ${orgName}.</p>
   </div>
 </body>
 </html>

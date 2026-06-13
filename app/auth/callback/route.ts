@@ -20,11 +20,17 @@ export async function GET(request: NextRequest) {
   const destination = (cookieRedirect && (
     cookieRedirect.startsWith('/invite/') ||
     cookieRedirect.startsWith('/event-invite/') ||
-    cookieRedirect.startsWith('/events/')
+    cookieRedirect.startsWith('/events/') ||
+    cookieRedirect.startsWith('/admin/')
   )) ? cookieRedirect : '/dashboard'
 
-  const redirectUrl = new URL(destination, origin)
+  // Always route through /dashboard for code exchange
+  // Dashboard exchanges the code then redirects to `next` param
+  const redirectUrl = new URL('/dashboard', origin)
   redirectUrl.searchParams.set('code', code)
+  if (destination !== '/dashboard') {
+    redirectUrl.searchParams.set('next', destination)
+  }
 
   const response = NextResponse.redirect(redirectUrl.toString())
   response.cookies.set('oauth_redirect', '', { path: '/', maxAge: 0 })

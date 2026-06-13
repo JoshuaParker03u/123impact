@@ -73,7 +73,12 @@ function DashboardContent() {
           await supabase.auth.exchangeCodeForSession(code)
           await refreshOrganization()
         } catch {}
-        router.replace('/dashboard')
+        const next = searchParams.get('next')
+        // Only follow same-origin relative paths; reject //evil.com, /\evil.com, absolute URLs
+        const safeNext = next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\')
+          ? next
+          : '/dashboard'
+        router.replace(safeNext)
         return
       }
 
@@ -186,21 +191,16 @@ function DashboardContent() {
                            + eventsWithNoShifts.length
                            + (hasNoEvents ? 1 : 0)
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background dark:bg-gray-950">
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-lg font-medium text-gray-600 dark:text-gray-400">Loading your impact...</span>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-background dark:bg-gray-950">
       <AdminNavigation />
 
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-32">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-lg font-medium text-gray-600 dark:text-gray-400">Loading your impact...</span>
+        </div>
+      ) : (
       <main className="container mx-auto px-4 py-8 space-y-6">
 
         {/* Email Verified Banner */}
@@ -606,6 +606,7 @@ function DashboardContent() {
         )}
 
       </main>
+      )}
 
       {showCreateOrg && (
         <CreateOrganizationModal

@@ -13,6 +13,7 @@ import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
 import ShiftModal from '@/components/admin/ShiftModal';
 import EventModal from '@/components/admin/EventModal';
+import MessageComposer from '@/components/MessageComposer';
 import ShiftDatePicker from '@/components/admin/ShiftDatePicker';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
@@ -1165,6 +1166,7 @@ export default function AdminEventDetailPage() {
   const [showShiftModal,  setShowShiftModal]  = useState(false);
   const [editingShift,    setEditingShift]    = useState<any>(null);
   const [showEventModal,  setShowEventModal]  = useState(false);
+  const [showMessageComposer, setShowMessageComposer] = useState(false);
 
   async function handleDeleteShift(shiftId: string, filled: number) {
     const msg = filled > 0
@@ -1177,15 +1179,18 @@ export default function AdminEventDetailPage() {
   }
 
   async function handleCopyShift(shift: any) {
+    if (!event) return;
+    const nextShiftId = Math.max(0, ...(event.shifts ?? []).map((s) => s.shift_id ?? 0)) + 1;
     const { error } = await supabase.from('shifts').insert({
-      event_id:    shift.event_id,
-      shift_id:    `${shift.shift_id}-copy-${Math.random().toString(36).slice(2, 6)}`,
+      event_id:    event.id,
+      shift_id:    nextShiftId,
       name:        `${shift.name} (copy)`,
       description: shift.description,
       start_time:  shift.start_time,
       end_time:    shift.end_time,
       capacity:    shift.capacity,
       shift_date:  shift.shift_date ?? null,
+      allow_waitlist: shift.allow_waitlist ?? false,
     });
     if (error) alert('Error copying shift: ' + error.message);
     else loadEvent();
@@ -1396,11 +1401,13 @@ export default function AdminEventDetailPage() {
                   <FileText className="w-4 h-4" /> Email Templates
                 </Button>
               </Link>
-              <Link href={`/admin/messages?eventId=${event.id}`}>
-                <Button variant="outline" className="w-full justify-start gap-2">
-                  <Mail className="w-4 h-4" /> Message Volunteers
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                onClick={() => setShowMessageComposer(true)}
+                className="w-full justify-start gap-2"
+              >
+                <Mail className="w-4 h-4" /> Message Volunteers
+              </Button>
               {canManage && (
                 <>
                   <Button
@@ -1623,89 +1630,72 @@ export default function AdminEventDetailPage() {
                                 {confirmed.length === 0 && waitlisting.length === 0 ? (
                                   <p className="text-sm text-gray-500 dark:text-gray-400">No volunteers registered yet.</p>
                                 ) : (
-                                  <>
-                                    {confirmed.length > 0 && (
-                                      <table className="w-full text-sm">
-                                        <thead>
-                                          <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                                            <th className="pb-2 font-medium">Name</th>
-                                            <th className="pb-2 font-medium">Email</th>
-                                            <th className="pb-2 font-medium">Phone</th>
-                                            <th className="pb-2 font-medium">Registered</th>
-                                            <th className="pb-2 font-medium"></th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                          {confirmed.map((v) => (
-                                            <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                              <td className="py-2 pr-4 font-medium">{v.name}</td>
-                                              <td className="py-2 pr-4">{v.email}</td>
-                                              <td className="py-2 pr-4">{v.phone ?? '—'}</td>
-                                              <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
-                                                {new Date(v.registered_at).toLocaleDateString()}
-                                              </td>
-                                              <td className="py-2">
-                                                <button
-                                                  onClick={() => removeVolunteer(v.id, shift.id, false)}
-                                                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
-                                                  title="Remove volunteer"
-                                                >
-                                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                                </button>
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    )}
-                                    {waitlisting.length > 0 && (
-                                      <div>
-                                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-2">
-                                          Waitlist ({waitlisting.length})
-                                        </p>
-                                        <table className="w-full text-sm">
-                                          <thead>
-                                            <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                                              <th className="pb-2 font-medium">Name</th>
-                                              <th className="pb-2 font-medium">Email</th>
-                                              <th className="pb-2 font-medium">Phone</th>
-                                              <th className="pb-2 font-medium">Registered</th>
-                                              <th className="pb-2 font-medium"></th>
-                                            </tr>
-                                          </thead>
-                                          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                            {waitlisting.map((v) => (
-                                              <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                                <td className="py-2 pr-4 font-medium">{v.name}</td>
-                                                <td className="py-2 pr-4">{v.email}</td>
-                                                <td className="py-2 pr-4">{v.phone ?? '—'}</td>
-                                                <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
-                                                  {new Date(v.registered_at).toLocaleDateString()}
-                                                </td>
-                                                <td className="py-2">
-                                                  <div className="flex items-center gap-2">
-                                                    <button
-                                                      onClick={() => promoteVolunteer(v.id, shift.id)}
-                                                      className="text-xs px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
-                                                    >
-                                                      Promote
-                                                    </button>
-                                                    <button
-                                                      onClick={() => removeVolunteer(v.id, shift.id, true)}
-                                                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
-                                                      title="Remove volunteer"
-                                                    >
-                                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                                    </button>
-                                                  </div>
-                                                </td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    )}
-                                  </>
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                                        <th className="pb-2 font-medium">Name</th>
+                                        <th className="pb-2 font-medium">Email</th>
+                                        <th className="pb-2 font-medium">Phone</th>
+                                        <th className="pb-2 font-medium">Registered</th>
+                                        <th className="pb-2 font-medium"></th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                      {confirmed.map((v) => (
+                                        <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                                          <td className="py-2 pr-4 font-medium">{v.name}</td>
+                                          <td className="py-2 pr-4">{v.email}</td>
+                                          <td className="py-2 pr-4">{v.phone ?? '—'}</td>
+                                          <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
+                                            {new Date(v.registered_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <button
+                                              onClick={() => removeVolunteer(v.id, shift.id, false)}
+                                              className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                              title="Remove volunteer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      {waitlisting.length > 0 && (
+                                        <tr>
+                                          <td colSpan={5} className="pt-3 pb-2 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                                            Waitlist ({waitlisting.length})
+                                          </td>
+                                        </tr>
+                                      )}
+                                      {waitlisting.map((v) => (
+                                        <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                                          <td className="py-2 pr-4 font-medium">{v.name}</td>
+                                          <td className="py-2 pr-4">{v.email}</td>
+                                          <td className="py-2 pr-4">{v.phone ?? '—'}</td>
+                                          <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
+                                            {new Date(v.registered_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              <button
+                                                onClick={() => promoteVolunteer(v.id, shift.id)}
+                                                className="text-xs px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                              >
+                                                Promote
+                                              </button>
+                                              <button
+                                                onClick={() => removeVolunteer(v.id, shift.id, true)}
+                                                className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                                title="Remove volunteer"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 )}
                               </>
                             );
@@ -1738,6 +1728,13 @@ export default function AdminEventDetailPage() {
           isPaid={orgPlan !== 'free'}
           onClose={() => setShowEventModal(false)}
           onSave={() => { setShowEventModal(false); loadEvent(); }}
+        />
+      )}
+      {showMessageComposer && event && (
+        <MessageComposer
+          isOpen={showMessageComposer}
+          onClose={() => setShowMessageComposer(false)}
+          eventId={event.id}
         />
       )}
     </>

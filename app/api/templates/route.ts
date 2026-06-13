@@ -29,12 +29,11 @@ function createServiceRoleClient() {
   );
 }
 
-async function createClient() {
-  return createSessionClient();
-}
-
 export async function GET(request: Request) {
-  const supabase = await createClient();
+  const session = await createSessionClient();
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { searchParams } = new URL(request.url);
   const eventId = searchParams.get('eventId');
 
@@ -42,7 +41,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Event ID required' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const service = createServiceRoleClient();
+  const accessError = await verifyTemplateAccess(user.id, eventId, service);
+  if (accessError === 'event_not_found') return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  if (accessError === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { data, error } = await service
     .from('automated_email_templates')
     .select('*')
     .eq('event_id', eventId)

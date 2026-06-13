@@ -44,26 +44,41 @@ export async function DELETE(request: Request) {
   if (!email) {
     return NextResponse.json({ error: 'Missing email' }, { status: 400 });
   }
+  if (!orgId) {
+    return NextResponse.json({ error: 'Missing org_id' }, { status: 400 });
+  }
 
-  // 1. Delete pending scheduled_email rows for this volunteer
-  await service
-    .from('scheduled_emails')
-    .delete()
-    .eq('volunteer_email', email)
-    .eq('status', 'pending');
+  // Verify the caller belongs to the org before mutating its scheduled mail.
+  const { data: membership } = await service
+    .from('organization_admins')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('user_id', user.id)
+    .maybeSingle();
 
-  // 2. Find scheduled messages that include this email
-  let msgQuery = service
+  if (!membership) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // 1. Find this org's scheduled messages that include this email
+  const { data: msgs } = await service
     .from('messages')
     .select('id, recipient_emails, recipient_count')
+    .eq('organization_id', orgId)
     .eq('delivery_status', 'scheduled')
     .contains('recipient_emails', [email]);
 
-  if (orgId) {
-    msgQuery = msgQuery.eq('organization_id', orgId);
+  // 2. Delete pending scheduled_email rows for this volunteer, scoped to this
+  //    org's messages only (so we never touch another org's queue)
+  const orgMessageIds = (msgs ?? []).map(m => m.id);
+  if (orgMessageIds.length > 0) {
+    await service
+      .from('scheduled_emails')
+      .delete()
+      .eq('volunteer_email', email)
+      .eq('status', 'pending')
+      .in('message_id', orgMessageIds);
   }
-
-  const { data: msgs } = await msgQuery;
 
   if (msgs && msgs.length > 0) {
     for (const msg of msgs) {

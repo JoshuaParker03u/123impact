@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, filterOptedOut } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
 
 export async function GET(request: Request) {
@@ -28,14 +28,40 @@ export async function GET(request: Request) {
       return NextResponse.json({ processed: 0 });
     }
 
+    // Respect opt-outs that may have happened after the message was scheduled
+    const allowed = new Set(
+      await filterOptedOut(supabase, emails.map(e => e.volunteer_email))
+    );
+
+    // Look up org branding (name/logo) for each email's organization
+    const orgIds = [...new Set(emails.map(e => e.organization_id).filter(Boolean))];
+    const { data: orgs } = orgIds.length > 0
+      ? await supabase.from('organizations').select('id, name, logo_url').in('id', orgIds)
+      : { data: [] as any[] };
+    const orgBrandingMap = new Map(
+      (orgs ?? []).map((o: any) => [o.id, { name: o.name, logoUrl: o.logo_url }])
+    );
+
     let successCount = 0;
     let failCount = 0;
+    let skippedCount = 0;
     const affectedMessageIds = new Set<string>();
 
     for (const email of emails) {
       if (email.message_id) affectedMessageIds.add(email.message_id);
+
+      if (!allowed.has(email.volunteer_email)) {
+        // Recipient opted out since scheduling — cancel, don't send
+        await supabase
+          .from('scheduled_emails')
+          .update({ status: 'cancelled', error_message: 'Recipient opted out' })
+          .eq('id', email.id);
+        skippedCount++;
+        continue;
+      }
+
       try {
-        const htmlContent = wrapEmailHtml(email.body.replace(/\n/g, '<br>'));
+        const htmlContent = wrapEmailHtml(email.body.replace(/\n/g, '<br>'), orgBrandingMap.get(email.organization_id));
 
         const result = await sendEmail({
           to: email.volunteer_email,
@@ -103,7 +129,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       processed: emails.length,
       success: successCount,
-      failed: failCount
+      failed: failCount,
+      skipped: skippedCount
     });
   } catch (error: any) {
     console.error('Cron job error:', error);

@@ -144,13 +144,14 @@ async function sendRegistrationConfirmation(
 ) {
   const { data: shift } = await supabase
     .from('shifts')
-    .select('*, events(*)')
+    .select('*, events(*, organizations(name, logo_url))')
     .eq('id', shiftId)
     .single();
 
   if (!shift) return;
 
   const event = shift.events as any;
+  const branding = { name: event.organizations?.name, logoUrl: event.organizations?.logo_url };
 
   const dateDisplay = event.end_date && event.end_date !== event.date
     ? `${event.date} – ${event.end_date}`
@@ -172,14 +173,14 @@ async function sendRegistrationConfirmation(
         <p>You've been added to the waitlist for the <strong>${shift.name}</strong> shift at <strong>${event.title}</strong>. The coordinator will reach out if a spot becomes available.</p>
         ${detailTable}
         <p>We'll be in touch!</p>
-      `)
+      `, branding)
     : wrapEmailHtml(`
         <h2>Registration Confirmed</h2>
         <p>Hi ${volunteerName},</p>
         <p>Thank you for signing up to volunteer at <strong>${event.title}</strong>. We look forward to seeing you!</p>
         ${detailTable}
         <p>See you there!</p>
-      `);
+      `, branding);
 
   await sendEmail({
     to: volunteerEmail,
@@ -203,11 +204,14 @@ async function sendShiftlessConfirmation(
 ) {
   const { data: event } = await supabase
     .from('events')
-    .select('title, date, end_date, location')
+    .select('title, date, end_date, location, organizations(name, logo_url)')
     .eq('id', eventId)
     .single();
 
   if (!event) return;
+
+  const org = (event as any).organizations;
+  const branding = { name: org?.name, logoUrl: org?.logo_url };
 
   const dateDisplay = event.end_date && event.end_date !== event.date
     ? `${event.date} – ${event.end_date}`
@@ -223,7 +227,7 @@ async function sendShiftlessConfirmation(
       <tr><td style="padding:8px 0;color:#6b7280;">Location</td><td style="padding:8px 0;">${event.location}</td></tr>
     </table>
     <p>See you there!</p>
-  `);
+  `, branding);
 
   await sendEmail({
     to: volunteerEmail,

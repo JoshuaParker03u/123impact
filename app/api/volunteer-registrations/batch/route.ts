@@ -31,11 +31,14 @@ async function sendMultiShiftConfirmation(
 ) {
   const { data: event } = await supabase
     .from('events')
-    .select('title, date, end_date, location')
+    .select('title, date, end_date, location, organizations(name, logo_url)')
     .eq('id', eventId)
     .single();
 
   if (!event) return;
+
+  const org = (event as any).organizations;
+  const branding = { name: org?.name, logoUrl: org?.logo_url };
 
   const dateDisplay = (event as any).end_date && (event as any).end_date !== (event as any).date
     ? `${(event as any).date} – ${(event as any).end_date}`
@@ -78,7 +81,7 @@ async function sendMultiShiftConfirmation(
       ${shiftRows}
     </table>
     <p>See you there!</p>
-  `);
+  `, branding);
 
   const subjectStatus = allWaitlisted ? 'Waitlist' : anyWaitlisted ? 'Partially Confirmed' : 'Confirmed';
   await sendEmail({

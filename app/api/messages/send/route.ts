@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { subject, message, recipientType, eventId, shiftId, scheduledFor } = body;
+  const { subject, message, recipientType, eventId, shiftId, scheduledFor, waitlistFilter = 'all' } = body;
 
   // Resolve organization_id via service client
   let organizationId: string | null = null;
@@ -59,6 +59,30 @@ export async function POST(request: Request) {
     organizationId = oa?.organization_id ?? null;
   }
 
+  if (!organizationId) {
+    return NextResponse.json({ error: 'No organization found' }, { status: 400 });
+  }
+
+  // Verify the caller is an admin/member of the resolved org before exposing
+  // its volunteers' contact info or sending on its behalf.
+  const { data: membership } = await serviceSupabase
+    .from('organization_admins')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!membership) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { data: org } = await serviceSupabase
+    .from('organizations')
+    .select('name, logo_url')
+    .eq('id', organizationId)
+    .single();
+  const branding = { name: org?.name, logoUrl: (org as any)?.logo_url };
+
   try {
     let recipients: { name: string; email: string }[] = [];
 
@@ -71,17 +95,25 @@ export async function POST(request: Request) {
       const shiftIds = shifts?.map((s: any) => s.id) || [];
 
       if (shiftIds.length > 0) {
-        const { data } = await serviceSupabase
+        let query = serviceSupabase
           .from('volunteer_registrations')
           .select('name, email')
           .in('shift_id', shiftIds);
+        if (waitlistFilter !== 'all') {
+          query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+        }
+        const { data } = await query;
         recipients = data || [];
       }
     } else if (recipientType === 'shift' && shiftId) {
-      const { data } = await serviceSupabase
+      let query = serviceSupabase
         .from('volunteer_registrations')
         .select('name, email')
         .eq('shift_id', shiftId);
+      if (waitlistFilter !== 'all') {
+        query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+      }
+      const { data } = await query;
       recipients = data || [];
     }
 
@@ -127,6 +159,7 @@ export async function POST(request: Request) {
 
       const scheduledRows = uniqueRecipients.map(r => ({
         message_id:      msgRecord.id,
+        organization_id: organizationId,
         volunteer_name:  r.name,
         volunteer_email: r.email,
         subject,
@@ -152,7 +185,7 @@ export async function POST(request: Request) {
     }
 
     // ── Immediate send ──────────────────────────────────────────────────────
-    const htmlContent = wrapEmailHtml(message.replace(/\n/g, '<br>'));
+    const htmlContent = wrapEmailHtml(message.replace(/\n/g, '<br>'), branding);
 
     const allowedEmails = await filterOptedOut(serviceSupabase, emails);
     const result = await sendBulkEmail(

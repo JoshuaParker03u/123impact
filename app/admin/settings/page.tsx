@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { User, Lock, Link2, Globe, Trash2, LogOut as LeaveIcon } from 'lucide-react'
-import type { User as SupabaseUser, UserIdentity } from '@supabase/supabase-js'
+import type { UserIdentity } from '@supabase/supabase-js'
+import { PASSWORD_RULES, PASSWORD_REQUIREMENTS_TEXT, validatePassword } from '@/lib/password'
 
 const PROVIDER_LABELS: Record<string, string> = {
   google: 'Google',
@@ -49,7 +50,6 @@ export default function SettingsPage() {
   const supabase = getBrowserClient()
   const { refreshOrganizations } = useOrganization() as any
 
-  const [user, setUser]       = useState<SupabaseUser | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Profile
@@ -90,7 +90,6 @@ export default function SettingsPage() {
   useEffect(() => {
     supabase.auth.getUser().then((res: any) => { const user = res.data?.user;
       if (!user) { router.push('/login'); return }
-      setUser(user)
       setDisplayName(user.user_metadata?.full_name ?? '')
       setTimezone(user.user_metadata?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)
       setIdentities(user.identities ?? [])
@@ -130,22 +129,21 @@ export default function SettingsPage() {
   // --- Password save ---
   const savePassword = async () => {
     if (newPw !== confirmPw) { setPwResult({ err: 'Passwords do not match.' }); return }
-    if (newPw.length < 6)    { setPwResult({ err: 'Password must be at least 6 characters.' }); return }
+    const passwordError = validatePassword(newPw)
+    if (passwordError) { setPwResult({ err: passwordError }); return }
     setPwSaving(true)
     setPwResult({})
 
-    if (hasEmailIdentity) {
-      // Verify current password first
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        email: user!.email!,
-        password: currentPw,
-      })
-      if (signInErr) { setPwResult({ err: 'Current password is incorrect.' }); setPwSaving(false); return }
-    }
+    // Routed through our API so the password policy is enforced server-side too.
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+    })
+    const result = await res.json()
 
-    const { error } = await supabase.auth.updateUser({ password: newPw })
-    if (error) {
-      setPwResult({ err: error.message })
+    if (!res.ok) {
+      setPwResult({ err: result.error || 'Failed to update password.' })
     } else {
       setPwResult({ ok: hasEmailIdentity ? 'Password changed.' : 'Password set. You can now sign in with your email and password.' })
       setCurrentPw(''); setNewPw(''); setConfirmPw('')
@@ -273,16 +271,17 @@ export default function SettingsPage() {
             {hasEmailIdentity && (
               <div className="space-y-1.5">
                 <Label htmlFor="currentPw">Current Password</Label>
-                <Input id="currentPw" type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} placeholder="••••••••" />
+                <Input id="currentPw" name="currentPassword" type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
               </div>
             )}
             <div className="space-y-1.5">
               <Label htmlFor="newPw">{hasEmailIdentity ? 'New Password' : 'Password'}</Label>
-              <Input id="newPw" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="••••••••" minLength={6} />
+              <Input id="newPw" name="newPassword" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="••••••••" minLength={8} autoComplete="new-password" {...{ passwordrules: PASSWORD_RULES } as any} />
+              <p className="text-xs text-gray-500 dark:text-gray-400">{PASSWORD_REQUIREMENTS_TEXT}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="confirmPw">Confirm Password</Label>
-              <Input id="confirmPw" type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="••••••••" minLength={6} />
+              <Input id="confirmPw" name="confirmPassword" type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="••••••••" minLength={8} autoComplete="new-password" {...{ passwordrules: PASSWORD_RULES } as any} />
             </div>
             <div className="flex items-center gap-3">
               <Button onClick={savePassword} disabled={pwSaving} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">

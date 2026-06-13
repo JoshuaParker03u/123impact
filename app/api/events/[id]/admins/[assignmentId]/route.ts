@@ -41,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Verify caller is org admin for this event
   const { data: event } = await service
     .from('events')
-    .select('organization_id, title, date, organizations!inner(name)')
+    .select('organization_id, title, date, organizations!inner(name, logo_url)')
     .eq('id', eventId)
     .single();
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -122,7 +122,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         </a>
       </div>
       <p style="color:#9ca3af;font-size:13px;">Or copy this link:<br/>${acceptUrl}</p>
-    `);
+    `, { name: org.name, logoUrl: org.logo_url });
 
     sendEmail({
       to: assignment.email,

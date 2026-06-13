@@ -24,6 +24,7 @@ export default function MessageComposer({
   const [selectedEvent, setSelectedEvent] = useState(eventId || '');
   const [selectedShift, setSelectedShift] = useState(shiftId || '');
   const [recipientCount, setRecipientCount] = useState(0);
+  const [waitlistFilter, setWaitlistFilter] = useState<'all' | 'confirmed' | 'waitlisted'>('all');
   const [events, setEvents] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [sendMode, setSendMode] = useState<'now' | 'scheduled'>('now');
@@ -58,7 +59,7 @@ export default function MessageComposer({
 
   useEffect(() => {
     updateRecipientCount();
-  }, [recipientType, selectedEvent, selectedShift]);
+  }, [recipientType, selectedEvent, selectedShift, waitlistFilter]);
 
   async function loadEvents() {
     let query = supabase.from('events').select('id, title').order('title');
@@ -88,23 +89,31 @@ export default function MessageComposer({
           .from('shifts')
           .select('id')
           .eq('event_id', selectedEvent);
-        
+
         const shiftIds = shifts?.map((s: { id: string }) => s.id) || [];
-        
+
         if (shiftIds.length > 0) {
-          const { data } = await supabase
+          let query = supabase
             .from('volunteer_registrations')
             .select('email')
             .in('shift_id', shiftIds);
-          
+          if (waitlistFilter !== 'all') {
+            query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+          }
+          const { data } = await query;
+
           const uniqueEmails = new Set(data?.map((r: { email: string }) => r.email) || []);
           count = uniqueEmails.size;
         }
       } else if (recipientType === 'shift' && selectedShift) {
-        const { count: c } = await supabase
+        let query = supabase
           .from('volunteer_registrations')
           .select('*', { count: 'exact', head: true })
           .eq('shift_id', selectedShift);
+        if (waitlistFilter !== 'all') {
+          query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+        }
+        const { count: c } = await query;
         count = c || 0;
       }
     } catch (error) {
@@ -150,6 +159,7 @@ export default function MessageComposer({
           eventId: selectedEvent || null,
           shiftId: recipientType === 'shift' ? selectedShift : null,
           scheduledFor: sendMode === 'scheduled' ? scheduledFor : null,
+          waitlistFilter,
         }),
       });
 
@@ -260,6 +270,44 @@ export default function MessageComposer({
                 )}
               </>
             )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Recipients
+              </label>
+              <div className="flex flex-col gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="waitlistFilter"
+                    checked={waitlistFilter === 'all'}
+                    onChange={() => setWaitlistFilter('all')}
+                    className="border-gray-300 dark:border-gray-600"
+                  />
+                  All volunteers (confirmed + waitlisted)
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="waitlistFilter"
+                    checked={waitlistFilter === 'confirmed'}
+                    onChange={() => setWaitlistFilter('confirmed')}
+                    className="border-gray-300 dark:border-gray-600"
+                  />
+                  Confirmed volunteers only
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="waitlistFilter"
+                    checked={waitlistFilter === 'waitlisted'}
+                    onChange={() => setWaitlistFilter('waitlisted')}
+                    className="border-gray-300 dark:border-gray-600"
+                  />
+                  Waitlisted volunteers only
+                </label>
+              </div>
+            </div>
 
             <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
               <p className="text-sm text-blue-800 dark:text-blue-300">

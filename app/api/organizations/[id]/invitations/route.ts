@@ -55,6 +55,7 @@ async function sendInvitationEmail(
   inviterName: string,
   inviteeEmail: string,
   orgName: string,
+  orgLogoUrl: string | null,
   role: string,
   token: string,
   expiresAt: string,
@@ -79,7 +80,7 @@ async function sendInvitationEmail(
     <p style="color:#6b7280;font-size:13px;">If the button above doesn't work, copy and paste this link into your browser:</p>
     <p style="color:#6b7280;font-size:12px;word-break:break-all;">${acceptUrl}</p>
     <p style="color:#9ca3af;font-size:12px;margin-top:24px;">If you weren't expecting this invitation, you can ignore this email.</p>
-  `);
+  `, { name: orgName, logoUrl: orgLogoUrl });
 
   return sendEmail({
     to: inviteeEmail,
@@ -195,7 +196,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Fetch org name and inviter name for the email
   const { data: org } = await service
     .from('organizations')
-    .select('name')
+    .select('name, logo_url')
     .eq('id', orgId)
     .single();
 
@@ -221,7 +222,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || '';
-  const emailResult = await sendInvitationEmail(inviterName, email, org?.name ?? 'an organization', role, invitation.token, expiresAt, origin)
+  const emailResult = await sendInvitationEmail(inviterName, email, org?.name ?? 'an organization', (org as any)?.logo_url ?? null, role, invitation.token, expiresAt, origin)
     .catch((e) => ({ success: false, error: e.message }));
 
   if (emailResult && !emailResult.success) {

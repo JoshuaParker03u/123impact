@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Card } from '@/components/ui/card';
@@ -29,13 +30,16 @@ function VolunteerAvatar({ name }) {
 
 const supabase = getBrowserClient();
 
-export default function AdminVolunteersPage() {
+import { Suspense } from 'react';
+
+function AdminVolunteersPage() {
   const { currentOrganization, loading: orgLoading } = useOrganization();
+  const searchParams = useSearchParams();
   const [volunteers, setVolunteers] = useState([]);
   const [filteredVolunteers, setFilteredVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [eventFilter, setEventFilter] = useState('all');
+  const [eventFilter, setEventFilter] = useState(searchParams.get('event') ?? 'all');
   const [events, setEvents] = useState([]);
 
   useEffect(() => {
@@ -415,4 +419,8 @@ export default function AdminVolunteersPage() {
       </div>
     </>
   );
+}
+
+export default function VolunteersPageWrapper() {
+  return <Suspense><AdminVolunteersPage /></Suspense>;
 }

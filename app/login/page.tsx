@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { PASSWORD_RULES, PASSWORD_REQUIREMENTS_TEXT, validatePassword } from '@/lib/password'
 
 type OAuthProvider = 'google' | 'azure' | null
 type AuthMode = 'signin' | 'signup'
@@ -57,7 +58,8 @@ function LoginContent() {
           if (redirectTo && (
             redirectTo.startsWith('/invite/') ||
             redirectTo.startsWith('/event-invite/') ||
-            redirectTo.startsWith('/events/')
+            redirectTo.startsWith('/events/') ||
+            redirectTo.startsWith('/admin/')
           )) {
             router.push(redirectTo)
           } else {
@@ -80,7 +82,8 @@ function LoginContent() {
       if (redirectParam && (
         redirectParam.startsWith('/invite/') ||
         redirectParam.startsWith('/event-invite/') ||
-        redirectParam.startsWith('/events/')
+        redirectParam.startsWith('/events/') ||
+        redirectParam.startsWith('/admin/')
       )) {
         // Cookie survives the OAuth roundtrip; URL params may not
         // Do NOT encodeURIComponent — slashes are safe in cookie values and encoding breaks startsWith checks
@@ -120,18 +123,25 @@ function LoginContent() {
           return
         }
 
-        // Sign up
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/verify`,
-          },
+        const passwordError = validatePassword(password)
+        if (passwordError) {
+          setError(passwordError)
+          setIsEmailLoading(false)
+          return
+        }
+
+        // Sign up — routed through our API so the password policy is
+        // enforced server-side too, not just in this form.
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
         })
+        const result = await res.json()
 
-        if (error) throw error
+        if (!res.ok) throw new Error(result.error || 'Failed to create account')
 
-        if (data.user && data.user.identities && data.user.identities.length === 0) {
+        if (result.alreadyRegistered) {
           setError('An account with this email already exists. Please sign in instead.')
           setMode('signin')
         } else {
@@ -153,7 +163,8 @@ function LoginContent() {
         if (redirectTo && (
           redirectTo.startsWith('/invite/') ||
           redirectTo.startsWith('/event-invite/') ||
-          redirectTo.startsWith('/events/')
+          redirectTo.startsWith('/events/') ||
+          redirectTo.startsWith('/admin/')
         )) {
           router.push(redirectTo)
         } else {
@@ -203,11 +214,13 @@ function LoginContent() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
                 disabled={isEmailLoading}
               />
             </div>
@@ -216,14 +229,20 @@ function LoginContent() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={mode === 'signup' ? 8 : 6}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                 disabled={isEmailLoading}
+                {...(mode === 'signup' ? { passwordrules: PASSWORD_RULES } as any : {})}
               />
+              {mode === 'signup' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">{PASSWORD_REQUIREMENTS_TEXT}</p>
+              )}
             </div>
 
             {mode === 'signup' && (
@@ -231,13 +250,16 @@ function LoginContent() {
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <Input
                   id="confirmPassword"
+                  name="confirmPassword"
                   type="password"
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={8}
+                  autoComplete="new-password"
                   disabled={isEmailLoading}
+                  {...{ passwordrules: PASSWORD_RULES } as any}
                 />
               </div>
             )}

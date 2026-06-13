@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
+import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1382,11 +1383,12 @@ function MembersTab({ org, currentUserId, userRole }) {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 function OrganizationsPageContent() {
-  const { currentOrganization, loading: orgLoading, refreshOrganizations, userRole } = useOrganization();
+  const { currentOrganization, organizations, loading: orgLoading, refreshOrganizations, userRole } = useOrganization();
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [activeTab, setActiveTab]     = useState('settings');
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [org, setOrg]                 = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [fetching, setFetching]       = useState(false);
@@ -1496,14 +1498,39 @@ function OrganizationsPageContent() {
   }
 
   if (!currentOrganization) {
+    const wantsBilling = searchParams.get('tab') === 'billing';
+    const hasNoOrgs = !orgLoading && organizations.length === 0;
     return (
       <>
         <AdminNavigation />
         <div className="container mx-auto px-4 py-8">
-          <Card className="p-8 text-center">
-            <p className="text-gray-600 dark:text-gray-400">No organization selected.</p>
+          <Card className="p-8 text-center max-w-md mx-auto">
+            <Zap className="w-10 h-10 text-blue-500 mx-auto mb-3" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              {wantsBilling ? 'Create an organization to get started' : 'No organization selected.'}
+            </h2>
+            {wantsBilling && (
+              <>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  You'll need an organization before upgrading to Pro.
+                </p>
+                <Button onClick={() => setShowCreateModal(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90">
+                  Create Organization
+                </Button>
+              </>
+            )}
           </Card>
         </div>
+        {showCreateModal && (
+          <CreateOrganizationModal
+            onClose={() => setShowCreateModal(false)}
+            onSuccess={async (newOrg) => {
+              setShowCreateModal(false);
+              await refreshOrganizations();
+              router.push('/admin/organizations?tab=billing');
+            }}
+          />
+        )}
       </>
     );
   }
