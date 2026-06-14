@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import ShiftDatePicker from './ShiftDatePicker';
+import LocationAutocomplete from './LocationAutocomplete';
 import { X, Upload, Link as LinkIcon } from 'lucide-react';
 
 function generateSlug(title, suffix) {
@@ -440,10 +441,11 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
               <label className="block text-sm font-medium mb-1">
                 Location {locationRequired && <span className="text-red-500">*</span>}
               </label>
-              <input
-                type="text"
+              <LocationAutocomplete
                 value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                onChange={(location) => setFormData({ ...formData, location })}
+                disabled={submitting}
+                placeholder="Start typing an address or venue..."
                 className={inputCls}
               />
               {errors.location && <p className="text-red-600 text-sm mt-1">{errors.location}</p>}
