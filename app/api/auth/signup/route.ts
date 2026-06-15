@@ -9,10 +9,18 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { email, password } = body;
+  const { email, password, redirectPath } = body;
   if (!email || !password) {
     return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
   }
+
+  // Only follow same-origin relative paths; reject //evil.com, /\evil.com, absolute URLs
+  const next = typeof redirectPath === 'string'
+    && redirectPath.startsWith('/')
+    && !redirectPath.startsWith('//')
+    && !redirectPath.startsWith('/\\')
+    ? redirectPath
+    : null;
 
   const passwordError = validatePassword(password);
   if (passwordError) {
@@ -34,10 +42,13 @@ export async function POST(req: NextRequest) {
   );
 
   const origin = new URL(req.url).origin;
+  const emailRedirectTo = next
+    ? `${origin}/auth/verify?next=${encodeURIComponent(next)}`
+    : `${origin}/auth/verify`;
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${origin}/auth/verify` },
+    options: { emailRedirectTo },
   });
 
   if (error) {

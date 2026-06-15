@@ -53,6 +53,8 @@ function DashboardContent() {
   const [summary, setSummary]                   = useState<any>(null)
   const [showCreateOrg, setShowCreateOrg]       = useState(false)
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
+  const [pendingInvitations, setPendingInvitations] = useState<any[]>([])
+  const [actingInviteToken, setActingInviteToken] = useState<string | null>(null)
 
   const router      = useRouter()
   const searchParams = useSearchParams()
@@ -110,12 +112,14 @@ function DashboardContent() {
         const accountAge  = Date.now() - new Date(user.created_at).getTime()
         setIsFirstLogin(accountAge < 5 * 60 * 1000)
 
-        const [assignmentsRes, orgsRes] = await Promise.all([
+        const [assignmentsRes, orgsRes, invitesRes] = await Promise.all([
           fetch('/api/users/me/event-admin-assignments'),
           fetch('/api/organizations/user'),
+          fetch('/api/users/me/invitations'),
         ])
 
         if (assignmentsRes.ok) setEventAdminAssignments(await assignmentsRes.json())
+        if (invitesRes.ok) setPendingInvitations(await invitesRes.json())
 
         if (orgsRes.ok) {
           const { data } = await orgsRes.json()
@@ -149,6 +153,38 @@ function DashboardContent() {
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setSummary(data) })
   }, [summaryOrgId])
+
+  async function handleInviteAction(token: string, action: 'accept' | 'decline') {
+    setActingInviteToken(token)
+    try {
+      const res = await fetch(`/api/invite/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error ?? 'Something went wrong.')
+        return
+      }
+      setPendingInvitations((prev) => prev.filter((i: any) => i.token !== token))
+      if (action === 'accept') {
+        await refreshOrganization()
+        const orgsRes = await fetch('/api/organizations/user')
+        if (orgsRes.ok) {
+          const { data: orgs } = await orgsRes.json()
+          if ((orgs ?? []).length > 0) {
+            setHasOrg(true)
+            const storedId = typeof window !== 'undefined' ? localStorage.getItem('123impact_current_org_id') : null
+            const matched = (orgs ?? []).find((o: any) => o.id === storedId) ?? orgs[0]
+            setOrgId(matched.id)
+          }
+        }
+      }
+    } finally {
+      setActingInviteToken(null)
+    }
+  }
 
   async function markOngoing(eventId: string) {
     setResolvingEventId(eventId)
@@ -238,6 +274,52 @@ function DashboardContent() {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Pending Org Invitations */}
+        {pendingInvitations.length > 0 && (
+          <Card className="shadow-sm border-blue-200 dark:border-blue-900/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                <Mail className="w-4 h-4" /> Pending Invitation{pendingInvitations.length !== 1 ? 's' : ''}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pendingInvitations.map((inv: any) => (
+                <div key={inv.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-950/20">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {inv.organization?.logo_url ? (
+                      <img src={inv.organization.logo_url} alt={inv.organization.name} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {(inv.organization?.name ?? '??').slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{inv.organization?.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {inv.inviter_name} invited you as <span className="capitalize">{inv.role}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {actingInviteToken === inv.token ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                    ) : (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => handleInviteAction(inv.token, 'decline')}>
+                          Decline
+                        </Button>
+                        <Button size="sm" onClick={() => handleInviteAction(inv.token, 'accept')} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                          Accept
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}

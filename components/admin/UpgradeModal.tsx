@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X, Zap, Check } from 'lucide-react';
+import CheckoutModal from './CheckoutModal';
 
 interface Props {
   feature: string;
@@ -10,27 +11,16 @@ interface Props {
 }
 
 export default function UpgradeModal({ feature, orgId, onClose }: Props) {
-  const [loading, setLoading] = useState<'month' | 'year' | null>(null);
+  const [checkoutInterval, setCheckoutInterval] = useState<'month' | 'year' | null>(null);
 
-  async function startCheckout(interval: 'month' | 'year') {
-    setLoading(interval);
-    try {
-      const res = await fetch('/api/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interval, orgId }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error ?? 'Something went wrong');
-        setLoading(null);
-      }
-    } catch {
-      alert('Network error, please try again');
-      setLoading(null);
-    }
+  if (checkoutInterval) {
+    return (
+      <CheckoutModal
+        orgId={orgId}
+        interval={checkoutInterval}
+        onClose={() => setCheckoutInterval(null)}
+      />
+    );
   }
 
   return (
@@ -55,22 +45,17 @@ export default function UpgradeModal({ feature, orgId, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3 mb-6">
             {/* Monthly */}
             <button
-              onClick={() => startCheckout('month')}
-              disabled={loading !== null}
+              onClick={() => setCheckoutInterval('month')}
               className="flex flex-col items-center border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:border-blue-500 dark:hover:border-blue-400 transition-colors disabled:opacity-60"
             >
               <span className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monthly</span>
               <span className="text-2xl font-bold text-gray-900 dark:text-white">$20</span>
               <span className="text-xs text-gray-500 dark:text-gray-400">per month</span>
-              {loading === 'month' && (
-                <span className="text-xs text-blue-500 mt-2">Redirecting…</span>
-              )}
             </button>
 
             {/* Annual */}
             <button
-              onClick={() => startCheckout('year')}
-              disabled={loading !== null}
+              onClick={() => setCheckoutInterval('year')}
               className="flex flex-col items-center border-2 border-blue-500 dark:border-blue-400 rounded-xl p-4 hover:border-blue-600 transition-colors disabled:opacity-60 relative"
             >
               <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-xs font-medium px-2 py-0.5 rounded-full">
@@ -80,9 +65,6 @@ export default function UpgradeModal({ feature, orgId, onClose }: Props) {
               <span className="text-2xl font-bold text-gray-900 dark:text-white">$16</span>
               <span className="text-xs text-gray-500 dark:text-gray-400">per month</span>
               <span className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">$192 billed yearly</span>
-              {loading === 'year' && (
-                <span className="text-xs text-blue-500 mt-2">Redirecting…</span>
-              )}
             </button>
           </div>
 

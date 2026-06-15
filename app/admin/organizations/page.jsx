@@ -5,6 +5,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal';
+import CheckoutModal from '@/components/admin/CheckoutModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -627,7 +628,7 @@ function BillingTab({ orgId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [portalLoading, setPortalLoading] = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(null); // 'month' | 'year'
+  const [checkoutInterval, setCheckoutInterval] = useState(null); // 'month' | 'year'
   const searchParams = useSearchParams();
   const router = useRouter();
   const justUpgraded = searchParams.get('success') === '1';
@@ -662,20 +663,6 @@ function BillingTab({ orgId }) {
     } catch { alert('Network error'); setPortalLoading(false); }
   }
 
-  async function startCheckout(interval) {
-    setCheckoutLoading(interval);
-    try {
-      const res = await fetch('/api/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interval, orgId }),
-      });
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else { alert(data.error ?? 'Could not start checkout'); setCheckoutLoading(null); }
-    } catch { alert('Network error'); setCheckoutLoading(null); }
-  }
-
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
   if (error) return <div className="p-4 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm">{error}</div>;
 
@@ -698,13 +685,13 @@ function BillingTab({ orgId }) {
           <p className="font-semibold mb-1">Pro access ending {graceEnd}</p>
           <p className="mb-3">Your subscription was canceled or payment failed. Re-subscribe to keep Pro features.</p>
           <div className="flex gap-2">
-            <button onClick={() => startCheckout('month')} disabled={checkoutLoading !== null}
+            <button onClick={() => setCheckoutInterval('month')} disabled={checkoutInterval !== null}
               className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg font-medium disabled:opacity-60">
-              {checkoutLoading === 'month' ? 'Redirecting…' : 'Re-subscribe Monthly ($20/mo)'}
+              Re-subscribe Monthly ($20/mo)
             </button>
-            <button onClick={() => startCheckout('year')} disabled={checkoutLoading !== null}
+            <button onClick={() => setCheckoutInterval('year')} disabled={checkoutInterval !== null}
               className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg font-medium disabled:opacity-60">
-              {checkoutLoading === 'year' ? 'Redirecting…' : 'Annual ($192/yr)'}
+              Annual ($192/yr)
             </button>
           </div>
         </div>
@@ -759,14 +746,13 @@ function BillingTab({ orgId }) {
             <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
               <p className="text-sm font-medium text-gray-900 dark:text-white mb-3">Upgrade to Pro for unlimited events and more</p>
               <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => startCheckout('month')} disabled={checkoutLoading !== null}
+                <button onClick={() => setCheckoutInterval('month')} disabled={checkoutInterval !== null}
                   className="flex flex-col items-center border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:border-blue-500 dark:hover:border-blue-400 transition-colors disabled:opacity-60">
                   <span className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monthly</span>
                   <span className="text-2xl font-bold text-gray-900 dark:text-white">$20</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">per month</span>
-                  {checkoutLoading === 'month' && <span className="text-xs text-blue-500 mt-2">Redirecting…</span>}
                 </button>
-                <button onClick={() => startCheckout('year')} disabled={checkoutLoading !== null}
+                <button onClick={() => setCheckoutInterval('year')} disabled={checkoutInterval !== null}
                   className="flex flex-col items-center border-2 border-blue-500 dark:border-blue-400 rounded-xl p-4 hover:border-blue-600 transition-colors disabled:opacity-60 relative">
                   <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
                     Save 20%
@@ -775,13 +761,20 @@ function BillingTab({ orgId }) {
                   <span className="text-2xl font-bold text-gray-900 dark:text-white">$16</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">per month</span>
                   <span className="text-xs text-gray-400 dark:text-gray-500">$192/yr</span>
-                  {checkoutLoading === 'year' && <span className="text-xs text-blue-500 mt-2">Redirecting…</span>}
                 </button>
               </div>
             </div>
           </>
         )}
       </div>
+
+      {checkoutInterval && (
+        <CheckoutModal
+          orgId={orgId}
+          interval={checkoutInterval}
+          onClose={() => setCheckoutInterval(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1383,7 +1376,7 @@ function MembersTab({ org, currentUserId, userRole }) {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 function OrganizationsPageContent() {
-  const { currentOrganization, organizations, loading: orgLoading, refreshOrganizations, userRole } = useOrganization();
+  const { currentOrganization, loading: orgLoading, refreshOrganizations, userRole } = useOrganization();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1406,8 +1399,9 @@ function OrganizationsPageContent() {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t === 'members' || t === 'integrations' || t === 'custom-domain' || t === 'billing') setActiveTab(t);
-  }, [searchParams]);
+    const canManageSettings = ['owner', 'admin'].includes(userRole);
+    if (canManageSettings && (t === 'members' || t === 'integrations' || t === 'custom-domain' || t === 'billing')) setActiveTab(t);
+  }, [searchParams, userRole]);
 
   useEffect(() => {
     if (!currentOrganization) return;
@@ -1499,7 +1493,6 @@ function OrganizationsPageContent() {
 
   if (!currentOrganization) {
     const wantsBilling = searchParams.get('tab') === 'billing';
-    const hasNoOrgs = !orgLoading && organizations.length === 0;
     return (
       <>
         <AdminNavigation />
@@ -1512,7 +1505,7 @@ function OrganizationsPageContent() {
             {wantsBilling && (
               <>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  You'll need an organization before upgrading to Pro.
+                  You&apos;ll need an organization before upgrading to Pro.
                 </p>
                 <Button onClick={() => setShowCreateModal(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90">
                   Create Organization
@@ -1524,7 +1517,7 @@ function OrganizationsPageContent() {
         {showCreateModal && (
           <CreateOrganizationModal
             onClose={() => setShowCreateModal(false)}
-            onSuccess={async (newOrg) => {
+            onSuccess={async () => {
               setShowCreateModal(false);
               await refreshOrganizations();
               router.push('/admin/organizations?tab=billing');
@@ -1548,7 +1541,7 @@ function OrganizationsPageContent() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-6 border-b dark:border-gray-700">
-          {['settings', 'members', 'integrations', 'custom-domain', 'billing'].map((tab) => (
+          {['settings', ...(canManageSettings ? ['members', 'integrations', 'custom-domain', 'billing'] : [])].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
                 activeTab === tab

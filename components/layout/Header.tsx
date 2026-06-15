@@ -5,6 +5,7 @@ import { Heart, LogOut } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
+import AdminNavigation from '@/components/admin/AdminNavigation'
 import { getBrowserClient } from '@/lib/supabase'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 
@@ -20,6 +21,8 @@ export default function Header() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent) => {
       if (event === 'SIGNED_OUT') {
         setIsLoggedIn(false)
+      } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+        setIsLoggedIn(true)
       }
     })
 
@@ -29,6 +32,10 @@ export default function Header() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     window.location.href = '/login'
+  }
+
+  if (isLoggedIn) {
+    return <AdminNavigation />
   }
 
   return (

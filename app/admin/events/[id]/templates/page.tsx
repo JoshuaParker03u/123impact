@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase';
 import { useParams } from 'next/navigation';
 import EmailTemplateEditor from '@/components/EmailTemplateEditor';
+import AdminNavigation from '@/components/admin/AdminNavigation';
 
 const supabase = getBrowserClient();
 
@@ -56,37 +57,46 @@ export default function EventTemplatesPage() {
   }
 
   if (loading) {
-    return <div className="flex justify-center items-center h-64">Loading...</div>;
+    return (
+      <>
+        <AdminNavigation />
+        <div className="flex justify-center items-center h-64">Loading...</div>
+      </>
+    );
   }
 
   if (showEditor) {
     return (
-      <div className="container mx-auto p-6">
-        <EmailTemplateEditor
-          eventId={eventId}
-          template={editingTemplate}
-          onSave={() => {
-            setShowEditor(false);
-            setEditingTemplate(null);
-            loadData();
-          }}
-          onCancel={() => {
-            setShowEditor(false);
-            setEditingTemplate(null);
-          }}
-        />
-      </div>
+      <>
+        <AdminNavigation />
+        <div className="container mx-auto p-6">
+          <EmailTemplateEditor
+            eventId={eventId}
+            template={editingTemplate}
+            onSave={() => {
+              setShowEditor(false);
+              setEditingTemplate(null);
+              loadData();
+            }}
+            onCancel={() => {
+              setShowEditor(false);
+              setEditingTemplate(null);
+            }}
+          />
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Email Templates</h1>
-        <p className="text-gray-600">{event?.title}</p>
-      </div>
-
-      <div className="mb-6">
+    <>
+      <AdminNavigation />
+      <div className="container mx-auto p-6">
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Email Templates</h1>
+          <p className="text-gray-600">{event?.title}</p>
+        </div>
         <button
           onClick={() => {
             setEditingTemplate(null);
@@ -158,6 +168,7 @@ export default function EventTemplatesPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

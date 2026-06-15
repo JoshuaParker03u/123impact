@@ -1003,6 +1003,7 @@ export default function AdminEventDetailPage() {
   const [syncing, setSyncing]     = useState(false);
   const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
 
   const { currentOrganization } = useOrganization() as any;
 
@@ -1245,6 +1246,20 @@ export default function AdminEventDetailPage() {
     });
   }
 
+  async function handleDuplicateEvent() {
+    if (!event) return;
+    setDuplicating(true);
+    try {
+      const res = await fetch(`/api/events/${event.id}/duplicate`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Unknown error');
+      router.push(`/admin/events/${data.event_id}`);
+    } catch (error: any) {
+      alert('Error duplicating event: ' + error.message);
+      setDuplicating(false);
+    }
+  }
+
   async function handleDeleteEvent() {
     if (!event) return;
     if (!confirm('This will delete the event, all its shifts, and all volunteer registrations. Continue?')) return;
@@ -1416,6 +1431,16 @@ export default function AdminEventDetailPage() {
                     className="w-full justify-start gap-2"
                   >
                     <Pencil className="w-4 h-4" /> Edit Event
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleDuplicateEvent}
+                    disabled={duplicating}
+                    className="w-full justify-start gap-2"
+                  >
+                    {duplicating
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Copy className="w-4 h-4" />} Duplicate Event
                   </Button>
                   <Button
                     variant="outline"

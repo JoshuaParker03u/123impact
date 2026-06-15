@@ -7,7 +7,7 @@ import AdminNavigation from '@/components/admin/AdminNavigation';
 import EventModal from '@/components/admin/EventModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, Link2, Check, QrCode, Download, X, ArrowRight } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, Link2, Check, QrCode, Download, X, ArrowRight, Copy } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Link from 'next/link';
 
@@ -38,6 +38,7 @@ export default function AdminEventsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [copiedEventId, setCopiedEventId] = useState(null);
+  const [duplicatingEventId, setDuplicatingEventId] = useState(null);
   const [qrEvent, setQrEvent] = useState(null);
   const [orgPlan, setOrgPlan] = useState('free');
   const [customDomain, setCustomDomain] = useState(null);
@@ -139,6 +140,20 @@ export default function AdminEventsPage() {
       alert('Error deleting event: ' + (data.error ?? 'Unknown error'));
     } else {
       fetchEvents();
+    }
+  };
+
+  const handleDuplicateEvent = async (eventId) => {
+    setDuplicatingEventId(eventId);
+    try {
+      const res = await fetch(`/api/events/${eventId}/duplicate`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Unknown error');
+      await fetchEvents();
+    } catch (error) {
+      alert('Error duplicating event: ' + error.message);
+    } finally {
+      setDuplicatingEventId(null);
     }
   };
 
@@ -378,6 +393,19 @@ export default function AdminEventsPage() {
                             onClick={() => handleEditEvent(event)}
                           >
                             <Edit className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {isAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDuplicateEvent(event.id)}
+                            disabled={duplicatingEventId === event.id}
+                            title="Duplicate event"
+                          >
+                            {duplicatingEventId === event.id
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <Copy className="w-4 h-4" />}
                           </Button>
                         )}
                       </div>

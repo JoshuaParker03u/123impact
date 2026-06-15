@@ -65,7 +65,8 @@ export default function AdminNavigation() {
     switchOrganization,
   } = useOrganizationSwitch();
 
-  const { refreshOrganization } = useOrganization();
+  const { refreshOrganization, userRole } = useOrganization();
+  const canViewAnalytics = ['owner', 'admin'].includes(userRole);
 
   const [dropdownOpen, setDropdownOpen]       = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -197,7 +198,9 @@ export default function AdminNavigation() {
               <Link href="/dashboard" className={navLinkClass}>Dashboard</Link>
               <Link href="/admin/events" className={navLinkClass}>Events</Link>
               <Link href="/admin/volunteers" className={navLinkClass}>Volunteers</Link>
-              <Link href="/admin/analytics" className={navLinkClass}>Analytics</Link>
+              {canViewAnalytics && (
+                <Link href="/admin/analytics" className={navLinkClass}>Analytics</Link>
+              )}
               {currentOrganization ? (
                 <Link href="/admin/organizations" className={navLinkClass}>Organization</Link>
               ) : (
@@ -383,7 +386,7 @@ export default function AdminNavigation() {
             { href: '/dashboard',           label: 'Dashboard' },
             { href: '/admin/events',         label: 'Events' },
             { href: '/admin/volunteers',     label: 'Volunteers' },
-            { href: '/admin/analytics',      label: 'Analytics' },
+            ...(canViewAnalytics ? [{ href: '/admin/analytics', label: 'Analytics' }] : []),
           ].map(({ href, label }) => (
             <Link
               key={href}

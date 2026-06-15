@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await session.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { interval, orgId } = await req.json();
+  const { interval, orgId, theme } = await req.json();
   if (!orgId || !['month', 'year'].includes(interval)) {
     return NextResponse.json({ error: 'orgId and interval (month|year) required' }, { status: 400 });
   }
@@ -66,13 +66,19 @@ export async function POST(req: NextRequest) {
 
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: 'subscription',
+    ui_mode: 'embedded_page',
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${appUrl}/admin/organizations?tab=billing&success=1`,
-    cancel_url:  `${appUrl}/admin/organizations?tab=billing`,
+    return_url: `${appUrl}/admin/organizations?tab=billing&success=1`,
     metadata: { org_id: orgId },
     subscription_data: { metadata: { org_id: orgId } },
+    branding_settings: {
+      button_color: '#7c3aed',
+      border_style: 'rounded',
+      font_family: 'inter',
+      background_color: theme === 'dark' ? '#111827' : '#ffffff',
+    },
   });
 
-  return NextResponse.json({ url: checkoutSession.url });
+  return NextResponse.json({ clientSecret: checkoutSession.client_secret });
 }

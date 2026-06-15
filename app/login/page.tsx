@@ -130,12 +130,22 @@ function LoginContent() {
           return
         }
 
+        // Carry the invite/event-invite redirect through email verification
+        // so the user lands back where they need to accept it.
+        const redirectParam = searchParams.get('redirect')
+        const redirectPath = redirectParam && (
+          redirectParam.startsWith('/invite/') ||
+          redirectParam.startsWith('/event-invite/') ||
+          redirectParam.startsWith('/events/') ||
+          redirectParam.startsWith('/admin/')
+        ) ? redirectParam : undefined
+
         // Sign up — routed through our API so the password policy is
         // enforced server-side too, not just in this form.
         const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, password, redirectPath }),
         })
         const result = await res.json()
 

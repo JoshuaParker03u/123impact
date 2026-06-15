@@ -149,9 +149,10 @@ export async function GET(req: NextRequest) {
   if (allDashboardShiftIds.length > 0) {
     const { data: regRows } = await service
       .from('volunteer_registrations')
-      .select('shift_id')
+      .select('shift_id, is_waitlisted')
       .in('shift_id', allDashboardShiftIds)
     for (const r of regRows ?? []) {
+      if (r.is_waitlisted) continue
       regCountMap[r.shift_id] = (regCountMap[r.shift_id] ?? 0) + 1
     }
   }
