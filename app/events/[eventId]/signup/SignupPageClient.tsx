@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { use } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Header from '@/components/layout/Header'
+import { getBrowserClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -194,6 +195,29 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
 
     load()
   }, [eventId])
+
+  // ── Pre-fill form for logged-in users ───────────────────────────────────────
+
+  useEffect(() => {
+    async function prefill() {
+      const { data: { user } } = await getBrowserClient().auth.getUser()
+      if (!user) return
+
+      try {
+        const res = await fetch('/api/users/me')
+        if (!res.ok) return
+        const profile = await res.json()
+        setFormData(prev => ({
+          ...prev,
+          name: prev.name || profile.full_name || prev.name,
+          email: prev.email || profile.email || prev.email,
+          phone: prev.phone || profile.phone || prev.phone,
+        }))
+      } catch {}
+    }
+
+    prefill()
+  }, [])
 
   // ── Toggle shift selection ────────────────────────────────────────────────
 

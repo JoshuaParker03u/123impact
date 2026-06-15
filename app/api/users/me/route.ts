@@ -25,6 +25,32 @@ async function buildClients() {
   return { session, service };
 }
 
+// GET /api/users/me — return profile info for pre-filling forms
+export async function GET() {
+  const { session, service } = await buildClients();
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  let phone: string | null = null;
+  if (user.email) {
+    const { data: registration } = await service
+      .from('volunteer_registrations')
+      .select('phone')
+      .eq('email', user.email.toLowerCase())
+      .not('phone', 'is', null)
+      .order('registered_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    phone = registration?.phone ?? null;
+  }
+
+  return NextResponse.json({
+    full_name: user.user_metadata?.full_name ?? null,
+    email: user.email ?? null,
+    phone,
+  });
+}
+
 // PATCH /api/users/me — update display name and/or timezone
 export async function PATCH(req: NextRequest) {
   const { session, service } = await buildClients();

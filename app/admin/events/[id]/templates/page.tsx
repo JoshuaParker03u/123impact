@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import EmailTemplateEditor from '@/components/EmailTemplateEditor';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 
@@ -70,6 +72,12 @@ export default function EventTemplatesPage() {
       <>
         <AdminNavigation />
         <div className="container mx-auto p-6">
+          <Link
+            href={event?.event_id ? `/admin/events/${event.event_id}` : '/admin/events'}
+            className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-6"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to Event
+          </Link>
           <EmailTemplateEditor
             eventId={eventId}
             template={editingTemplate}
@@ -92,6 +100,12 @@ export default function EventTemplatesPage() {
     <>
       <AdminNavigation />
       <div className="container mx-auto p-6">
+      <Link
+        href={event?.event_id ? `/admin/events/${event.event_id}` : '/admin/events'}
+        className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-6"
+      >
+        <ArrowLeft className="w-4 h-4" /> Back to Event
+      </Link>
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">Email Templates</h1>
