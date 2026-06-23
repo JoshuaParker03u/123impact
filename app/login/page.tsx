@@ -195,6 +195,12 @@ function LoginContent() {
     }
   }
 
+  // While checking if an existing session can forward the user, show nothing
+  // to avoid a flash of the login form before the redirect fires.
+  if (!sessionChecked && searchParams.get('reason') === 'session_expired') {
+    return <div className="min-h-screen bg-gray-950" />
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">

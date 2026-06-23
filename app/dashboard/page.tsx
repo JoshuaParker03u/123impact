@@ -76,11 +76,12 @@ function DashboardContent() {
           await refreshOrganization()
         } catch {}
         const next = searchParams.get('next')
-        // Only follow same-origin relative paths; reject //evil.com, /\evil.com, absolute URLs
         const safeNext = next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\')
           ? next
           : '/dashboard'
-        router.replace(safeNext)
+        // Full browser navigation (not router.replace) so the session cookie
+        // is committed before the next request hits the middleware
+        window.location.href = safeNext
         return
       }
 

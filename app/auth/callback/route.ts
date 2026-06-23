@@ -24,8 +24,9 @@ export async function GET(request: NextRequest) {
     cookieRedirect.startsWith('/admin/')
   )) ? cookieRedirect : '/dashboard'
 
-  // Always route through /dashboard for code exchange
-  // Dashboard exchanges the code then redirects to `next` param
+  // Code exchange must happen client-side: the PKCE code verifier is stored
+  // in localStorage by the browser Supabase client and is not accessible here.
+  // Route through /dashboard which holds the verifier and can complete the exchange.
   const redirectUrl = new URL('/dashboard', origin)
   redirectUrl.searchParams.set('code', code)
   if (destination !== '/dashboard') {
