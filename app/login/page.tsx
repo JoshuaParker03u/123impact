@@ -19,6 +19,7 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [mode, setMode] = useState<AuthMode>('signin')
+  const [sessionChecked, setSessionChecked] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -40,9 +41,7 @@ function LoginContent() {
       setSuccess('Email verified successfully! You can now sign in.')
     }
 
-    if (searchParams.get('reason') === 'session_expired') {
-      setError('Your session expired. Please sign in again.')
-    }
+    // session_expired message is deferred until checkAndRedirect confirms no valid session
 
     if (searchParams.get('mode') === 'signup') {
       setMode('signup')
@@ -65,9 +64,16 @@ function LoginContent() {
           } else {
             router.push('/dashboard')
           }
+        } else {
+          // No valid session — now safe to show the session_expired message
+          if (searchParams.get('reason') === 'session_expired') {
+            setError('Your session expired. Please sign in again.')
+          }
+          setSessionChecked(true)
         }
       } catch (err) {
         console.error('Error checking session:', err)
+        setSessionChecked(true)
       }
     }
     checkAndRedirect()

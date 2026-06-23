@@ -55,6 +55,7 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith('/admin') && !user) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('reason', 'session_expired')
+    loginUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
