@@ -3,13 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrganizationSwitch } from '@/hooks/useOrganizationSwitch';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { Heart, LogOut, ChevronDown, Check, Plus, Bell, Settings, Menu, X } from 'lucide-react';
+import { Heart, LogOut, ChevronDown, Check, Plus, Bell, Settings, Menu, X, EyeOff, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import ThemeToggle from '@/components/ThemeToggle';
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
+import { redact } from '@/lib/redact';
 
 // Role badge colours
 const roleBadgeClass = {
@@ -67,6 +69,7 @@ export default function AdminNavigation() {
 
   const { refreshOrganization, userRole } = useOrganization();
   const canViewAnalytics = ['owner', 'admin'].includes(userRole);
+  const { streamerMode, toggleStreamerMode } = useStreamerMode();
 
   const [dropdownOpen, setDropdownOpen]       = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -279,6 +282,20 @@ export default function AdminNavigation() {
               )}
             </div>
 
+            {/* Streamer mode toggle — desktop only */}
+            <button
+              onClick={toggleStreamerMode}
+              title={streamerMode ? 'Disable streamer mode' : 'Enable streamer mode'}
+              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                streamerMode
+                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {streamerMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {streamerMode ? 'Streaming' : 'Stream'}
+            </button>
+
             {/* Theme toggle — desktop only */}
             <div className="hidden md:block">
               <ThemeToggle />
@@ -351,8 +368,8 @@ export default function AdminNavigation() {
             >
               <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
               <div className="flex flex-col leading-tight max-w-[200px]">
-                {userName && <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{userName}</span>}
-                {userEmail && <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{userEmail}</span>}
+                {userName && <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{redact(userName, 'name', streamerMode)}</span>}
+                {userEmail && <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{redact(userEmail, 'email', streamerMode)}</span>}
               </div>
             </Link>
 
@@ -455,6 +472,18 @@ export default function AdminNavigation() {
                 <ThemeToggle />
               </div>
 
+              <button
+                onClick={toggleStreamerMode}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  streamerMode
+                    ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                <span>Streamer Mode</span>
+                {streamerMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+
               <Link
                 href="/admin/settings"
                 onClick={() => setMobileMenuOpen(false)}
@@ -465,7 +494,7 @@ export default function AdminNavigation() {
               </Link>
 
               {userName && (
-                <p className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 truncate">{userName}</p>
+                <p className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 truncate">{redact(userName, 'name', streamerMode)}</p>
               )}
 
               <button

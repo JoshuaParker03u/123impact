@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
+import { redact } from '@/lib/redact';
 
 type LiveData = {
   checked_in_count: number;
@@ -50,6 +52,7 @@ function TypeRow({
 }
 
 export default function LiveTab({ eventId }: { eventId: string }) {
+  const { streamerMode } = useStreamerMode();
   const [data, setData]           = useState<LiveData | null>(null);
   const [loading, setLoading]     = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -155,7 +158,7 @@ export default function LiveTab({ eventId }: { eventId: string }) {
           <ul className="space-y-3">
             {speakers.map((s, i) => (
               <li key={i} className="flex items-center justify-between">
-                <span className="font-medium text-gray-900 dark:text-gray-100">{s.name}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{redact(s.name, 'name', streamerMode)}</span>
                 {s.checked_in ? (
                   <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400 text-sm font-semibold">
                     <CheckCircle2 className="w-4 h-4" />

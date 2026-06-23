@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
+import { redact } from '@/lib/redact';
 import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal';
@@ -1071,6 +1073,7 @@ function IntegrationsTab({ orgId }) {
 // ── Members Tab ────────────────────────────────────────────────────────────────
 
 function MembersTab({ org, currentUserId, userRole }) {
+  const { streamerMode } = useStreamerMode();
   const [members, setMembers]         = useState([]);
   const [invites, setInvites]         = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -1213,14 +1216,14 @@ function MembersTab({ org, currentUserId, userRole }) {
             return (
               <div key={m.user_id} className="flex items-center gap-3 px-6 py-3">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
-                  {(m.name || m.email || '?')[0].toUpperCase()}
+                  {streamerMode ? '?' : (m.name || m.email || '?')[0].toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                    {m.name || m.email || m.user_id}
+                    {redact(m.name || m.email || m.user_id, m.name ? 'name' : 'email', streamerMode)}
                     {isCurrentUser && <span className="ml-2 text-xs text-gray-400">(you)</span>}
                   </p>
-                  {m.name && m.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{m.email}</p>}
+                  {m.name && m.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{redact(m.email, 'email', streamerMode)}</p>}
                 </div>
                 {canEditRole ? (
                   changingRoleId === m.user_id ? (
@@ -1280,9 +1283,9 @@ function MembersTab({ org, currentUserId, userRole }) {
                 return (
                   <div key={inv.id} className="px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{inv.email}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{redact(inv.email, 'email', streamerMode)}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Invited by {inv.inviter_name} · Expires {new Date(inv.expires_at).toLocaleDateString()}
+                        Invited by {redact(inv.inviter_name, 'name', streamerMode)} · Expires {new Date(inv.expires_at).toLocaleDateString()}
                       </p>
                     </div>
                     {editRoleId === inv.id ? (
@@ -1334,8 +1337,8 @@ function MembersTab({ org, currentUserId, userRole }) {
                 {expiredInvites.map((inv) => (
                   <div key={inv.id} className="px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-1">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{inv.email}</p>
-                      <p className="text-xs text-gray-400">{inv.inviter_name}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{redact(inv.email, 'email', streamerMode)}</p>
+                      <p className="text-xs text-gray-400">{redact(inv.inviter_name, 'name', streamerMode)}</p>
                     </div>
                     <RoleBadge role={inv.role} />
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${

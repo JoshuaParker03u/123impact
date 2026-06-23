@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBrowserClient } from '@/lib/supabase'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useStreamerMode } from '@/contexts/StreamerModeContext'
+import { REDACTED_NAME, REDACTED_EMAIL } from '@/lib/redact'
 import AdminNavigation from '@/components/admin/AdminNavigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -49,6 +51,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const supabase = getBrowserClient()
   const { refreshOrganizations } = useOrganization() as any
+  const { streamerMode } = useStreamerMode()
 
   const [loading, setLoading] = useState(true)
 
@@ -237,13 +240,19 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="displayName">Display Name</Label>
-              <Input
-                id="displayName"
-                value={displayName}
-                onChange={e => setDisplayName(e.target.value)}
-                placeholder="How you'd like to appear"
-                maxLength={60}
-              />
+              {streamerMode ? (
+                <p className="px-3 py-2 text-sm rounded-md border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 font-mono tracking-wider">
+                  {REDACTED_NAME}
+                </p>
+              ) : (
+                <Input
+                  id="displayName"
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  placeholder="How you'd like to appear"
+                  maxLength={60}
+                />
+              )}
             </div>
             <div className="flex items-center gap-3">
               <Button onClick={saveProfile} disabled={profileSaving} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
@@ -310,7 +319,11 @@ export default function SettingsPage() {
                       {PROVIDER_LABELS[identity.provider] ?? identity.provider}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Connected {new Date(identity.created_at!).toLocaleDateString()}
+                      {identity.provider === 'email' && !streamerMode
+                        ? (identity.identity_data?.email ?? REDACTED_EMAIL)
+                        : identity.provider === 'email' && streamerMode
+                        ? REDACTED_EMAIL
+                        : `Connected ${new Date(identity.created_at!).toLocaleDateString()}`}
                     </p>
                   </div>
                 </div>

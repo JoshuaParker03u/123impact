@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
+import { redact } from '@/lib/redact';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
@@ -169,6 +171,7 @@ function AddAdminModal({
   onClose: () => void;
   onAdded: () => void;
 }) {
+  const { streamerMode } = useStreamerMode();
   const [query, setQuery]           = useState('');
   const [members, setMembers]       = useState<OrgMember[]>([]);
   const [filtered, setFiltered]     = useState<OrgMember[]>([]);
@@ -279,10 +282,10 @@ function AddAdminModal({
                 {roleIcon(selected.role)}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                    {selected.name || selected.email}
+                    {redact(selected.name || selected.email, selected.name ? 'name' : 'email', streamerMode)}
                   </p>
                   {selected.name && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{selected.email}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{redact(selected.email, 'email', streamerMode)}</p>
                   )}
                 </div>
                 <button onClick={() => { setSelected(null); setQuery(''); }} className="text-gray-400 hover:text-gray-600">
@@ -310,10 +313,10 @@ function AddAdminModal({
                           {roleIcon(m.role)}
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                              {m.name || m.email}
+                              {redact(m.name || m.email, m.name ? 'name' : 'email', streamerMode)}
                             </p>
                             {m.name && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{m.email}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{redact(m.email, 'email', streamerMode)}</p>
                             )}
                           </div>
                         </button>
@@ -470,6 +473,7 @@ function EditExpiryModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { streamerMode } = useStreamerMode();
   const current = assignment.expires_at.split('T')[0];
   const [expiresAt, setExpiresAt] = useState(current);
   const [saving, setSaving]       = useState(false);
@@ -495,7 +499,7 @@ function EditExpiryModal({
         </div>
         <div className="px-6 py-4">
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-            Updating expiry for <strong>{assignment.user_name || assignment.email}</strong>
+            Updating expiry for <strong>{redact(assignment.user_name || assignment.email, assignment.user_name ? 'name' : 'email', streamerMode)}</strong>
           </p>
           <ShiftDatePicker
             value={expiresAt}
@@ -529,6 +533,7 @@ function EventAdminsTab({
   orgPlan: string;
   defaultExpiry: string;
 }) {
+  const { streamerMode } = useStreamerMode();
   const [assignments, setAssignments]     = useState<Assignment[]>([]);
   const [loading, setLoading]             = useState(true);
   const [showAddModal, setShowAddModal]   = useState(false);
@@ -611,12 +616,12 @@ function EventAdminsTab({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            {a.user_name || a.email}
+                            {redact(a.user_name || a.email, a.user_name ? 'name' : 'email', streamerMode)}
                           </p>
                           {statusBadge(a.status)}
                         </div>
                         {a.user_name && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{a.email}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{redact(a.email, 'email', streamerMode)}</p>
                         )}
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           Invited by {a.inviter_name} &middot; Expires{' '}
@@ -677,7 +682,7 @@ function EventAdminsTab({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            {a.user_name || a.email}
+                            {redact(a.user_name || a.email, a.user_name ? 'name' : 'email', streamerMode)}
                           </p>
                           {statusBadge(a.status)}
                         </div>
@@ -989,6 +994,7 @@ export default function AdminEventDetailPage() {
   const params  = useParams();
   const router  = useRouter();
   const eventId = params.id as string;
+  const { streamerMode } = useStreamerMode();
 
   const [event,   setEvent]   = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1525,9 +1531,9 @@ export default function AdminEventDetailPage() {
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                       {shiftlessRegs.map((r) => (
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
-                          <td className="py-2 pr-4 font-medium">{r.name}</td>
-                          <td className="py-2 pr-4">{r.email}</td>
-                          <td className="py-2 pr-4">{r.phone ?? '—'}</td>
+                          <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
+                          <td className="py-2 pr-4">{redact(r.email, 'email', streamerMode)}</td>
+                          <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
                         </tr>
                       ))}
@@ -1668,9 +1674,9 @@ export default function AdminEventDetailPage() {
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                                       {confirmed.map((v) => (
                                         <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                          <td className="py-2 pr-4 font-medium">{v.name}</td>
-                                          <td className="py-2 pr-4">{v.email}</td>
-                                          <td className="py-2 pr-4">{v.phone ?? '—'}</td>
+                                          <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
+                                          <td className="py-2 pr-4">{redact(v.email, 'email', streamerMode)}</td>
+                                          <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
                                           </td>
@@ -1694,9 +1700,9 @@ export default function AdminEventDetailPage() {
                                       )}
                                       {waitlisting.map((v) => (
                                         <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                          <td className="py-2 pr-4 font-medium">{v.name}</td>
-                                          <td className="py-2 pr-4">{v.email}</td>
-                                          <td className="py-2 pr-4">{v.phone ?? '—'}</td>
+                                          <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
+                                          <td className="py-2 pr-4">{redact(v.email, 'email', streamerMode)}</td>
+                                          <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
                                           </td>
