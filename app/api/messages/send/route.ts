@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { subject, message, recipientType, eventId, shiftId, scheduledFor, waitlistFilter = 'all' } = body;
+  const { subject, message, recipientType, eventId, shiftId, volunteerEmail, volunteerName, scheduledFor, waitlistFilter = 'all' } = body;
 
   // Resolve organization_id via service client
   let organizationId: string | null = null;
@@ -115,6 +115,8 @@ export async function POST(request: Request) {
       }
       const { data } = await query;
       recipients = data || [];
+    } else if (recipientType === 'volunteer' && volunteerEmail) {
+      recipients = [{ name: volunteerName || '', email: volunteerEmail }];
     }
 
     // Deduplicate by email

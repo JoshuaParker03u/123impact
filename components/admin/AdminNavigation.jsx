@@ -7,7 +7,6 @@ import { Heart, LogOut, ChevronDown, Check, Plus, Bell, Settings, Menu, X, EyeOf
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import ThemeToggle from '@/components/ThemeToggle';
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
@@ -360,28 +359,36 @@ export default function AdminNavigation() {
               )}
             </div>
 
-            {/* Settings + username combined — desktop only */}
-            <Link
-              href="/admin/settings"
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              aria-label="Settings"
-            >
-              <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
-              <div className="flex flex-col leading-tight max-w-[200px]">
-                {userName && <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{redact(userName, 'name', streamerMode)}</span>}
-                {userEmail && <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{redact(userEmail, 'email', streamerMode)}</span>}
-              </div>
-            </Link>
+            {/* Settings + sign-out dropdown — desktop only */}
+            <div className="relative group hidden md:block">
+              <button
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                aria-label="Settings"
+              >
+                <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
+                <div className="flex flex-col leading-tight max-w-[200px] text-left">
+                  {userName && <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{redact(userName, 'name', streamerMode)}</span>}
+                  {userEmail && <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{redact(userEmail, 'email', streamerMode)}</span>}
+                </div>
+              </button>
 
-            {/* Sign Out — rightmost desktop element */}
-            <Button
-              variant="outline"
-              onClick={handleLogout}
-              className="hidden md:flex gap-2 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </Button>
+              <div className="absolute right-0 top-full pt-1 hidden group-hover:block z-50 min-w-[160px]">
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 overflow-hidden">
+                  <Link
+                    href="/admin/settings"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <Settings className="w-4 h-4" /> Settings
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" /> Sign Out
+                  </button>
+                </div>
+              </div>
+            </div>
 
             {/* Hamburger — mobile only */}
             <button

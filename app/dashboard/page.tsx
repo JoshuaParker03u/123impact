@@ -10,8 +10,11 @@ import {
 } from 'lucide-react'
 import AdminNavigation from '@/components/admin/AdminNavigation'
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal'
+import MessageComposer from '@/components/MessageComposer'
 import { getBrowserClient } from '@/lib/supabase'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useStreamerMode } from '@/contexts/StreamerModeContext'
+import { redact } from '@/lib/redact'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 
@@ -42,6 +45,8 @@ function FillBar({ filled, capacity }: { filled: number; capacity: number }) {
 
 function DashboardContent() {
   const { refreshOrganization, currentOrganization } = useOrganization() as any
+  const { streamerMode } = useStreamerMode()
+  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string } | null>(null)
   const [user, setUser]                         = useState<User | null>(null)
   const [isLoading, setIsLoading]               = useState(true)
   const [isFirstLogin, setIsFirstLogin]         = useState(false)
@@ -592,17 +597,19 @@ function DashboardContent() {
               {summary.recentSignups.map((s: any, i: number) => (
                 <div key={i} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                    {s.name.trim().split(/\s+/).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                    {streamerMode ? '?' : s.name.trim().split(/\s+/).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{s.name}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{redact(s.name, 'name', streamerMode)}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.eventTitle}{s.shiftName ? ` · ${s.shiftName}` : ''}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs text-gray-400 dark:text-gray-500">{timeAgo(s.registeredAt)}</p>
-                    <a href={`mailto:${s.email}`} className="text-xs text-blue-500 hover:underline flex items-center gap-0.5 justify-end mt-0.5">
-                      <Mail className="w-3 h-3" /> Email
-                    </a>
+                    {!streamerMode && (
+                      <button onClick={() => setMessageVolunteer({ name: s.name, email: s.email })} className="text-xs text-blue-500 hover:underline flex items-center gap-0.5 justify-end mt-0.5">
+                        <Mail className="w-3 h-3" /> Email
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -710,6 +717,13 @@ function DashboardContent() {
           }}
         />
       )}
+
+      <MessageComposer
+        isOpen={!!messageVolunteer}
+        onClose={() => setMessageVolunteer(null)}
+        volunteerEmail={messageVolunteer?.email}
+        volunteerName={messageVolunteer?.name}
+      />
     </div>
   )
 }

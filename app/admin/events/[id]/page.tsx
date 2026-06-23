@@ -1174,6 +1174,8 @@ export default function AdminEventDetailPage() {
   const [editingShift,    setEditingShift]    = useState<any>(null);
   const [showEventModal,  setShowEventModal]  = useState(false);
   const [showMessageComposer, setShowMessageComposer] = useState(false);
+  const [messageShiftId, setMessageShiftId] = useState<string | undefined>(undefined);
+  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string } | null>(null);
 
   async function handleDeleteShift(shiftId: string, filled: number) {
     const msg = filled > 0
@@ -1532,7 +1534,13 @@ export default function AdminEventDetailPage() {
                       {shiftlessRegs.map((r) => (
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
-                          <td className="py-2 pr-4">{redact(r.email, 'email', streamerMode)}</td>
+                          <td className="py-2 pr-4">
+                            {streamerMode ? redact(r.email, 'email', streamerMode) : (
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                <Mail className="w-3 h-3" />{r.email}
+                              </button>
+                            )}
+                          </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
                         </tr>
@@ -1633,6 +1641,13 @@ export default function AdminEventDetailPage() {
                                 <Copy className="w-3.5 h-3.5 text-gray-500" />
                               </button>
                               <button
+                                onClick={(e) => { e.stopPropagation(); setMessageShiftId(shift.id); setShowMessageComposer(true); }}
+                                className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors"
+                                title="Message this shift's volunteers"
+                              >
+                                <Mail className="w-3.5 h-3.5 text-blue-500" />
+                              </button>
+                              <button
                                 onClick={(e) => { e.stopPropagation(); handleDeleteShift(shift.id, (shift.filled ?? 0) + (shift.waitlisted ?? 0)); }}
                                 className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
                                 title="Delete shift"
@@ -1675,7 +1690,13 @@ export default function AdminEventDetailPage() {
                                       {confirmed.map((v) => (
                                         <tr key={v.id} className="text-gray-700 dark:text-gray-300">
                                           <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
-                                          <td className="py-2 pr-4">{redact(v.email, 'email', streamerMode)}</td>
+                                          <td className="py-2 pr-4">
+                                            {streamerMode ? redact(v.email, 'email', streamerMode) : (
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                                <Mail className="w-3 h-3" />{v.email}
+                                              </button>
+                                            )}
+                                          </td>
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
@@ -1701,7 +1722,13 @@ export default function AdminEventDetailPage() {
                                       {waitlisting.map((v) => (
                                         <tr key={v.id} className="text-gray-700 dark:text-gray-300">
                                           <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
-                                          <td className="py-2 pr-4">{redact(v.email, 'email', streamerMode)}</td>
+                                          <td className="py-2 pr-4">
+                                            {streamerMode ? redact(v.email, 'email', streamerMode) : (
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                                <Mail className="w-3 h-3" />{v.email}
+                                              </button>
+                                            )}
+                                          </td>
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
@@ -1765,10 +1792,18 @@ export default function AdminEventDetailPage() {
       {showMessageComposer && event && (
         <MessageComposer
           isOpen={showMessageComposer}
-          onClose={() => setShowMessageComposer(false)}
+          onClose={() => { setShowMessageComposer(false); setMessageShiftId(undefined); }}
           eventId={event.id}
+          shiftId={messageShiftId}
         />
       )}
+
+      <MessageComposer
+        isOpen={!!messageVolunteer}
+        onClose={() => setMessageVolunteer(null)}
+        volunteerEmail={messageVolunteer?.email}
+        volunteerName={messageVolunteer?.name}
+      />
     </>
   );
 }
