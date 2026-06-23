@@ -21,6 +21,13 @@ export function OrganizationProvider({ children }) {
       if (firstLoad) setLoading(true);
       setError(null);
 
+      const { data: { user } } = await getBrowserClient().auth.getUser();
+      if (!user) {
+        setOrganizations([]);
+        setCurrentOrganization(null);
+        return;
+      }
+
       const response = await fetch('/api/organizations/user');
 
       if (!response.ok) {

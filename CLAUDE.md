@@ -9,6 +9,8 @@
 - Supabase: auth + Postgres with RLS (`supabase/migrations/`, 22 migrations)
 - Stripe subscriptions (monthly/annual), MailerSend email
 - Deployed on Vercel; cron schedules in `vercel.json`
+- Using Cron-job.org to schedule additional crons
+- Google places for location verification
 
 ## Commands
 

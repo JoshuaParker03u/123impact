@@ -94,8 +94,6 @@ export default function AdminNavigation() {
     }
   }, []);
 
-  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
-
   useEffect(() => {
     const setName = (user) => {
       if (!user) return;
@@ -105,7 +103,10 @@ export default function AdminNavigation() {
       setUserEmail(email);
     };
 
-    supabase.auth.getUser().then(({ data: { user } }) => setName(user));
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setName(user);
+      if (user) fetchNotifications();
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -154,7 +155,7 @@ export default function AdminNavigation() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/');
+    window.location.href = '/';
   };
 
   const handleSwitch = (orgId) => {
