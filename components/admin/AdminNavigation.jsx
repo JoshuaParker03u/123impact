@@ -78,8 +78,10 @@ export default function AdminNavigation() {
   const [userName, setUserName]               = useState('');
   const [userEmail, setUserEmail]             = useState('');
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
+  const [settingsOpen, setSettingsOpen]       = useState(false);
   const dropdownRef = useRef(null);
   const notifRef    = useRef(null);
+  const settingsRef = useRef(null);
   const router = useRouter();
 
   const supabase = getBrowserClient();
@@ -149,6 +151,9 @@ export default function AdminNavigation() {
       }
       if (notifRef.current && !notifRef.current.contains(e.target)) {
         setNotifOpen(false);
+      }
+      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
+        setSettingsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -360,10 +365,13 @@ export default function AdminNavigation() {
             </div>
 
             {/* Settings + sign-out dropdown — desktop only */}
-            <div className="relative group hidden md:block">
+            <div className="relative hidden md:block" ref={settingsRef}>
               <button
+                onClick={() => setSettingsOpen((o) => !o)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                aria-label="Settings"
+                aria-label="Account menu"
+                aria-haspopup="menu"
+                aria-expanded={settingsOpen}
               >
                 <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
                 <div className="flex flex-col leading-tight max-w-[200px] text-left">
@@ -372,22 +380,27 @@ export default function AdminNavigation() {
                 </div>
               </button>
 
-              <div className="absolute right-0 top-full pt-1 hidden group-hover:block z-50 min-w-[160px]">
-                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 overflow-hidden">
-                  <Link
-                    href="/admin/settings"
-                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <Settings className="w-4 h-4" /> Settings
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" /> Sign Out
-                  </button>
+              {settingsOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px]" role="menu">
+                  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 overflow-hidden">
+                    <Link
+                      href="/admin/settings"
+                      onClick={() => setSettingsOpen(false)}
+                      role="menuitem"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <Settings className="w-4 h-4" /> Settings
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      role="menuitem"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" /> Sign Out
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Hamburger — mobile only */}

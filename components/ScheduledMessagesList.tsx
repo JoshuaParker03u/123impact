@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Trash2, Users, Calendar } from 'lucide-react';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
+import { redact } from '@/lib/redact';
 
 interface ScheduledMessage {
   id: string;
@@ -17,6 +19,7 @@ interface ScheduledMessage {
 }
 
 export default function ScheduledMessagesList() {
+  const { streamerMode } = useStreamerMode();
   const [messages, setMessages]     = useState<ScheduledMessage[]>([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
@@ -150,7 +153,7 @@ export default function ScheduledMessagesList() {
                 </p>
                 <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-0.5 max-h-40 overflow-y-auto">
                   {(msg.recipient_emails ?? []).map((email) => (
-                    <li key={email}>{email}</li>
+                    <li key={email}>{redact(email, 'email', streamerMode)}</li>
                   ))}
                 </ul>
               </div>

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
+import { redact } from '@/lib/redact';
 
 interface Message {
   id: string;
@@ -14,6 +16,7 @@ interface Message {
 }
 
 export default function SentMessagesHistory() {
+  const { streamerMode } = useStreamerMode();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +82,7 @@ export default function SentMessagesHistory() {
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-3 mb-1">Recipients</p>
               <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-0.5 max-h-40 overflow-y-auto">
                 {msg.recipients.map((r) => (
-                  <li key={r.email}>{r.email}</li>
+                  <li key={r.email}>{redact(r.email, 'email', streamerMode)}</li>
                 ))}
               </ul>
             </div>

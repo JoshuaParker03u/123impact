@@ -39,28 +39,58 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { subject, message, recipientType, eventId, shiftId, volunteerEmail, volunteerName, scheduledFor, waitlistFilter = 'all' } = body;
 
-  // Resolve organization_id via service client
+  // Resolve organization_id from the *target* of the send (never a blanket
+  // fallback), so a caller can only message recipients that actually belong to
+  // an org they administer. The membership check below then authorizes it.
+  const callerOrgIds = new Set(
+    ((await serviceSupabase
+      .from('organization_admins')
+      .select('organization_id')
+      .eq('user_id', user.id)).data ?? []
+    ).map((m: { organization_id: string }) => m.organization_id)
+  );
+
+  // Map a set of shift ids to the org ids that own them (shift → event → org).
+  async function orgIdsForShifts(shiftIds: string[]): Promise<string[]> {
+    if (shiftIds.length === 0) return [];
+    const { data: shiftRows } = await serviceSupabase
+      .from('shifts')
+      .select('event_id')
+      .in('id', shiftIds);
+    const eventIds = [...new Set((shiftRows ?? []).map((s: { event_id: string }) => s.event_id).filter(Boolean))];
+    if (eventIds.length === 0) return [];
+    const { data: evRows } = await serviceSupabase
+      .from('events')
+      .select('organization_id')
+      .in('id', eventIds);
+    return [...new Set((evRows ?? []).map((e: { organization_id: string }) => e.organization_id).filter(Boolean))];
+  }
+
   let organizationId: string | null = null;
-  if (eventId) {
+
+  if (recipientType === 'event' && eventId) {
     const { data: ev } = await serviceSupabase
       .from('events')
       .select('organization_id')
       .eq('id', eventId)
       .single();
     organizationId = ev?.organization_id ?? null;
-  }
-  if (!organizationId) {
-    const { data: oa } = await serviceSupabase
-      .from('organization_admins')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .single();
-    organizationId = oa?.organization_id ?? null;
+  } else if (recipientType === 'shift' && shiftId) {
+    const [orgFromShift] = await orgIdsForShifts([shiftId]);
+    organizationId = orgFromShift ?? null;
+  } else if (recipientType === 'volunteer' && volunteerEmail) {
+    // The email must belong to a registration in an org the caller administers.
+    const { data: regs } = await serviceSupabase
+      .from('volunteer_registrations')
+      .select('shift_id')
+      .eq('email', volunteerEmail);
+    const shiftIds = [...new Set((regs ?? []).map((r: { shift_id: string }) => r.shift_id).filter(Boolean))];
+    const regOrgIds = await orgIdsForShifts(shiftIds);
+    organizationId = regOrgIds.find((id) => callerOrgIds.has(id)) ?? null;
   }
 
   if (!organizationId) {
-    return NextResponse.json({ error: 'No organization found' }, { status: 400 });
+    return NextResponse.json({ error: 'No matching recipients in your organization' }, { status: 400 });
   }
 
   // Verify the caller is an admin/member of the resolved org before exposing
@@ -131,6 +161,11 @@ export async function POST(request: Request) {
 
     const emails = uniqueRecipients.map(r => r.email);
 
+    // The messages.recipient_type CHECK constraint allows only
+    // 'all' | 'event' | 'shift' | 'individual'. A single-volunteer send is
+    // recorded as 'individual'.
+    const dbRecipientType = recipientType === 'volunteer' ? 'individual' : recipientType;
+
     // ── Scheduled send ──────────────────────────────────────────────────────
     if (scheduledFor) {
       const scheduledAt = new Date(scheduledFor).toISOString();
@@ -142,7 +177,7 @@ export async function POST(request: Request) {
           organization_id:  organizationId,
           subject,
           body:             message,
-          recipient_type:   recipientType,
+          recipient_type:   dbRecipientType,
           recipient_emails: emails,
           event_id:         eventId || null,
           shift_id:         shiftId || null,
@@ -200,7 +235,7 @@ export async function POST(request: Request) {
       organization_id:  organizationId,
       subject,
       body:             message,
-      recipient_type:   recipientType,
+      recipient_type:   dbRecipientType,
       recipient_emails: emails,
       event_id:         eventId || null,
       shift_id:         shiftId || null,

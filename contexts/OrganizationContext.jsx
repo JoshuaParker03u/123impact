@@ -21,8 +21,12 @@ export function OrganizationProvider({ children }) {
       if (firstLoad) setLoading(true);
       setError(null);
 
-      const { data: { user } } = await getBrowserClient().auth.getUser();
-      if (!user) {
+      const { data: { user }, error: authError } = await getBrowserClient().auth.getUser();
+      // Only short-circuit when we're *certain* there's no user. A transient
+      // auth/network error also yields user:null — treating that as logged-out
+      // would wipe a still-valid session's orgs mid-flight, so fall through to
+      // the server API (which authoritatively 401s genuine logged-out callers).
+      if (!user && !authError) {
         setOrganizations([]);
         setCurrentOrganization(null);
         return;

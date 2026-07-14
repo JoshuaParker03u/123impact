@@ -46,6 +46,12 @@ export default function MessageComposer({
 
   useEffect(() => {
     if (isOpen) {
+      // Start every open with a clean draft — these instances stay mounted
+      // across recipients, so stale subject/body must not carry over.
+      setSubject('');
+      setMessage('');
+      setSendMode('now');
+      setScheduledFor('');
       if (volunteerEmail) {
         setRecipientType('volunteer');
         setRecipientCount(1);

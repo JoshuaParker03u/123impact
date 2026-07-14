@@ -13,6 +13,12 @@ import { PASSWORD_RULES, PASSWORD_REQUIREMENTS_TEXT, validatePassword } from '@/
 type OAuthProvider = 'google' | 'azure' | null
 type AuthMode = 'signin' | 'signup'
 
+const REDIRECT_PREFIXES = ['/invite/', '/event-invite/', '/events/', '/admin/']
+
+function safeDestination(redirect: string | null, fallback = '/dashboard') {
+  return redirect && REDIRECT_PREFIXES.some((p) => redirect.startsWith(p)) ? redirect : fallback
+}
+
 function LoginContent() {
   const [isLoading, setIsLoading] = useState<OAuthProvider>(null)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
@@ -26,6 +32,17 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = getBrowserClient()
+
+  // /admin/* is middleware-protected, so a soft router.push can hit the guard
+  // before the freshly written session cookie is committed and bounce back to
+  // /login. Use a full navigation for those; soft-navigate everywhere else.
+  const navigateAfterAuth = (dest: string) => {
+    if (dest.startsWith('/admin/')) {
+      window.location.href = dest
+    } else {
+      router.push(dest)
+    }
+  }
 
   useEffect(() => {
     const errorParam = searchParams.get('error')
@@ -53,17 +70,7 @@ function LoginContent() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
-          const redirectTo = searchParams.get('redirect')
-          if (redirectTo && (
-            redirectTo.startsWith('/invite/') ||
-            redirectTo.startsWith('/event-invite/') ||
-            redirectTo.startsWith('/events/') ||
-            redirectTo.startsWith('/admin/')
-          )) {
-            router.push(redirectTo)
-          } else {
-            router.push('/dashboard')
-          }
+          navigateAfterAuth(safeDestination(searchParams.get('redirect')))
         } else {
           // No valid session — now safe to show the session_expired message
           if (searchParams.get('reason') === 'session_expired') {
@@ -175,17 +182,7 @@ function LoginContent() {
 
         if (error) throw error
 
-        const redirectTo = searchParams.get('redirect')
-        if (redirectTo && (
-          redirectTo.startsWith('/invite/') ||
-          redirectTo.startsWith('/event-invite/') ||
-          redirectTo.startsWith('/events/') ||
-          redirectTo.startsWith('/admin/')
-        )) {
-          router.push(redirectTo)
-        } else {
-          router.push('/dashboard')
-        }
+        navigateAfterAuth(safeDestination(searchParams.get('redirect')))
       }
     } catch (err: any) {
       console.error('Email auth error:', err)

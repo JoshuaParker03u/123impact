@@ -6,16 +6,24 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
 import { getBrowserClient } from '@/lib/supabase'
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
+import type { AuthChangeEvent } from '@supabase/supabase-js'
 
 export default function Header() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const supabase = getBrowserClient()
 
   useEffect(() => {
+    // Initial state comes from an explicit validated check; the listener only
+    // reacts to SIGNED_OUT (project convention — avoids churn on
+    // INITIAL_SESSION/TOKEN_REFRESHED and stale getSession() reads).
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setIsLoggedIn(!!user)
+    })()
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event: AuthChangeEvent, session: Session | null) => {
-        setIsLoggedIn(!!session)
+      (event: AuthChangeEvent) => {
+        if (event === 'SIGNED_OUT') setIsLoggedIn(false)
       }
     )
     return () => subscription.unsubscribe()
