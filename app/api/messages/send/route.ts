@@ -50,6 +50,16 @@ export async function POST(request: Request) {
     ).map((m: { organization_id: string }) => m.organization_id)
   );
 
+  // Map a set of event ids to the org ids that own them.
+  async function orgIdsForEvents(eventIds: string[]): Promise<string[]> {
+    if (eventIds.length === 0) return [];
+    const { data: evRows } = await serviceSupabase
+      .from('events')
+      .select('organization_id')
+      .in('id', eventIds);
+    return [...new Set((evRows ?? []).map((e: { organization_id: string }) => e.organization_id).filter(Boolean))];
+  }
+
   // Map a set of shift ids to the org ids that own them (shift → event → org).
   async function orgIdsForShifts(shiftIds: string[]): Promise<string[]> {
     if (shiftIds.length === 0) return [];
@@ -58,12 +68,7 @@ export async function POST(request: Request) {
       .select('event_id')
       .in('id', shiftIds);
     const eventIds = [...new Set((shiftRows ?? []).map((s: { event_id: string }) => s.event_id).filter(Boolean))];
-    if (eventIds.length === 0) return [];
-    const { data: evRows } = await serviceSupabase
-      .from('events')
-      .select('organization_id')
-      .in('id', eventIds);
-    return [...new Set((evRows ?? []).map((e: { organization_id: string }) => e.organization_id).filter(Boolean))];
+    return orgIdsForEvents(eventIds);
   }
 
   let organizationId: string | null = null;
@@ -80,12 +85,14 @@ export async function POST(request: Request) {
     organizationId = orgFromShift ?? null;
   } else if (recipientType === 'volunteer' && volunteerEmail) {
     // The email must belong to a registration in an org the caller administers.
+    // event_id is set on every registration (shift-based or shiftless), so this
+    // correctly resolves the org even for volunteers with no shift_id at all.
     const { data: regs } = await serviceSupabase
       .from('volunteer_registrations')
-      .select('shift_id')
+      .select('event_id')
       .eq('email', volunteerEmail);
-    const shiftIds = [...new Set((regs ?? []).map((r: { shift_id: string }) => r.shift_id).filter(Boolean))];
-    const regOrgIds = await orgIdsForShifts(shiftIds);
+    const eventIds = [...new Set((regs ?? []).map((r: { event_id: string }) => r.event_id).filter(Boolean))];
+    const regOrgIds = await orgIdsForEvents(eventIds);
     organizationId = regOrgIds.find((id) => callerOrgIds.has(id)) ?? null;
   }
 
@@ -117,24 +124,19 @@ export async function POST(request: Request) {
     let recipients: { name: string; email: string }[] = [];
 
     if (recipientType === 'event' && eventId) {
-      const { data: shifts } = await serviceSupabase
-        .from('shifts')
-        .select('id')
+      // event_id is set on every registration (shift-based or shiftless), so
+      // this correctly includes shiftless registrants — a purely shiftless
+      // event has no shift rows at all, so the old shifts-first join always
+      // returned zero recipients for those events.
+      let query = serviceSupabase
+        .from('volunteer_registrations')
+        .select('name, email')
         .eq('event_id', eventId);
-
-      const shiftIds = shifts?.map((s: any) => s.id) || [];
-
-      if (shiftIds.length > 0) {
-        let query = serviceSupabase
-          .from('volunteer_registrations')
-          .select('name, email')
-          .in('shift_id', shiftIds);
-        if (waitlistFilter !== 'all') {
-          query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
-        }
-        const { data } = await query;
-        recipients = data || [];
+      if (waitlistFilter !== 'all') {
+        query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
       }
+      const { data } = await query;
+      recipients = data || [];
     } else if (recipientType === 'shift' && shiftId) {
       let query = serviceSupabase
         .from('volunteer_registrations')

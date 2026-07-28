@@ -99,14 +99,14 @@ export default function MessageComposer({
     let count = 0;
     try {
       if (recipientType === 'event' && selectedEvent) {
-        const { data: shiftRows } = await supabase.from('shifts').select('id').eq('event_id', selectedEvent);
-        const shiftIds = shiftRows?.map((s: any) => s.id) || [];
-        if (shiftIds.length > 0) {
-          let q = supabase.from('volunteer_registrations').select('email').in('shift_id', shiftIds);
-          if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
-          const { data } = await q;
-          count = new Set(data?.map((r: any) => r.email) || []).size;
-        }
+        // Query by event_id directly (set on every registration, shift-based or
+        // shiftless) rather than joining through shifts — a purely shiftless
+        // event has no shift rows at all, so the old shifts-first join always
+        // returned zero recipients for those events.
+        let q = supabase.from('volunteer_registrations').select('email').eq('event_id', selectedEvent);
+        if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+        const { data } = await q;
+        count = new Set(data?.map((r: any) => r.email) || []).size;
       } else if (recipientType === 'shift' && selectedShift) {
         let q = supabase
           .from('volunteer_registrations')
