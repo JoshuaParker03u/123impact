@@ -337,6 +337,14 @@ export default function AdminEventsPage() {
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusBadgeClass[event.status] ?? statusBadgeClass.completed}`}>
                             {event.status}
                           </span>
+                          {event.platform_source && (
+                            <span
+                              title={`Imported from ${event.platform_source} — this event's details are kept in sync automatically and may be overwritten by changes made there`}
+                              className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 capitalize"
+                            >
+                              {event.platform_source}
+                            </span>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                           <span className="flex items-center gap-1">
