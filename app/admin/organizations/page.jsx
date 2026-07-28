@@ -962,12 +962,6 @@ function IntegrationsTab({ orgId }) {
 
   const platforms = [
     {
-      key: 'luma',
-      label: 'Luma',
-      description: 'Import events from your Luma calendar using your API key.',
-      docsHint: 'Find your API key in Luma → Settings → API',
-    },
-    {
       key: 'eventbrite',
       label: 'Eventbrite',
       description: 'Import events from your Eventbrite organization via OAuth.',
