@@ -17,6 +17,7 @@ interface EventRow {
   external_id: string;
   platform_source: 'luma' | 'eventbrite';
   organization_id: string;
+  status?: string;
   [key: string]: any;
 }
 
@@ -24,7 +25,7 @@ export async function syncEvent(
   service: SupabaseClient,
   event: EventRow,
   connection: PlatformConnection
-): Promise<{ changed: string[]; error?: string }> {
+): Promise<{ changed: string[]; error?: string; removedOnPlatform?: 'deleted' | 'cancelled' }> {
   try {
     let mapped: ReturnType<typeof mapLumaEvent> | ReturnType<typeof mapEventbriteEvent>;
 
@@ -34,6 +35,20 @@ export async function syncEvent(
     } else {
       const raw = await eventbriteGetEvent(connection.access_token, event.external_id);
       mapped = mapEventbriteEvent(raw);
+    }
+
+    // The event was deleted or canceled upstream — mark the local copy instead
+    // of leaving it silently frozen. Only act (and only report it) the first
+    // time we see this; once local status already matches, stay quiet.
+    if (mapped.removed_status && event.status !== mapped.removed_status) {
+      await service.from('events').update({
+        status:          mapped.removed_status,
+        last_synced_at:  new Date().toISOString(),
+        sync_status:     'synced',
+        sync_fail_count: 0,
+      }).eq('id', event.id);
+
+      return { changed: [], removedOnPlatform: mapped.removed_status };
     }
 
     const changed: string[] = [];

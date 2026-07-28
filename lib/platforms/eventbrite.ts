@@ -11,6 +11,7 @@ export interface EBEvent {
   logo?: { url?: string };
   is_private?: boolean;
   listed?: boolean;
+  status?: string;
 }
 
 export interface MappedEvent {
@@ -23,6 +24,9 @@ export interface MappedEvent {
   description: string | null;
   online_url: string | null;
   platform_image: string | null;
+  // Set when the event has been deleted or canceled on the platform — lets
+  // syncEvent() mark the local copy instead of leaving it silently frozen.
+  removed_status: 'deleted' | 'cancelled' | null;
   is_private_on_platform: boolean;
   platform_source: 'eventbrite';
 }
@@ -84,6 +88,7 @@ export function mapEventbriteEvent(e: EBEvent): MappedEvent {
     description:             e.description?.text ?? null,
     online_url:              e.url ?? null,
     platform_image:          e.logo?.url ?? null,
+    removed_status:          e.status === 'deleted' ? 'deleted' : e.status === 'canceled' ? 'cancelled' : null,
     is_private_on_platform:  !!(e.is_private || !e.listed),
     platform_source:         'eventbrite',
   };

@@ -61,30 +61,67 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Sync already-imported events that haven't ended (+ 7-day window)
+      // Sync already-imported events that haven't ended (+ 7-day window).
+      // Deliberately NOT filtered by externalIds (the list endpoint) — a
+      // deleted/canceled event drops out of that list, so filtering by it
+      // would skip the very events we need to detect as removed. Every
+      // locally-imported event is checked individually via syncEvent()
+      // instead, which fetches it directly by ID and still sees its status.
       const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const { data: importedEvents } = await service
         .from('events')
-        .select('id, organization_id, external_id, platform_source, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
+        .select('id, organization_id, external_id, platform_source, status, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
         .eq('organization_id', conn.organization_id)
         .eq('platform_source', conn.platform)
-        .in('external_id', externalIds)
+        .not('status', 'in', '(cancelled,deleted)')
         .gte('end_date', cutoff);
 
       // Also include single-day events not yet passed
       const { data: singleDayEvents } = await service
         .from('events')
-        .select('id, organization_id, external_id, platform_source, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
+        .select('id, organization_id, external_id, platform_source, status, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
         .eq('organization_id', conn.organization_id)
         .eq('platform_source', conn.platform)
-        .in('external_id', externalIds)
+        .not('status', 'in', '(cancelled,deleted)')
         .is('end_date', null)
         .gte('date', cutoff);
 
       const eventsToSync = [...(importedEvents ?? []), ...(singleDayEvents ?? [])];
 
       for (const event of eventsToSync) {
-        const { changed, error: syncError } = await syncEvent(service, event, conn);
+        const { changed, error: syncError, removedOnPlatform } = await syncEvent(service, event, conn);
+
+        if (removedOnPlatform) {
+          totalSynced++;
+
+          const [{ data: orgAdmins }, { data: eventAdmins }] = await Promise.all([
+            service.from('organization_admins').select('user_id')
+              .eq('organization_id', conn.organization_id).in('role', ['owner', 'admin']),
+            service.from('event_admin_assignments').select('user_id')
+              .eq('event_id', event.id).eq('status', 'active')
+              .gt('expires_at', new Date().toISOString()),
+          ]);
+
+          const recipients = new Set([
+            ...(orgAdmins ?? []).map((r: any) => r.user_id),
+            ...(eventAdmins ?? []).map((r: any) => r.user_id),
+          ]);
+
+          if (recipients.size > 0) {
+            await service.from('notifications').insert(
+              Array.from(recipients).map(userId => ({
+                user_id: userId,
+                type:    'event_removed_on_platform',
+                title:   `"${event.title}" was ${removedOnPlatform} on ${conn.platform}`,
+                body:    removedOnPlatform === 'deleted'
+                  ? `We've marked it "deleted" here too — its public signup page is now hidden.`
+                  : `We've marked it "cancelled" here too — its signup page stays visible but new signups are closed.`,
+                link:    `/admin/events/${event.id}`,
+              }))
+            );
+          }
+          continue;
+        }
 
         if (syncError) {
           totalErrors++;

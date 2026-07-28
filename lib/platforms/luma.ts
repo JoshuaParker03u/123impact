@@ -22,6 +22,8 @@ export interface MappedEvent {
   description: string | null;
   online_url: string | null;
   platform_image: string | null;
+  // Luma's API doesn't currently expose a deletion/cancellation status here.
+  removed_status: 'deleted' | 'cancelled' | null;
   is_private_on_platform: boolean;
   platform_source: 'luma';
 }
@@ -80,6 +82,7 @@ export function mapLumaEvent(e: LumaEvent): MappedEvent {
     description:             e.description ?? null,
     online_url:              e.url ?? null,
     platform_image:          e.cover_url ?? null,
+    removed_status:          null,
     is_private_on_platform:  e.visibility !== 'public',
     platform_source:         'luma',
   };
