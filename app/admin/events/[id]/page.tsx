@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
+import EventbriteAttendeesTab from './EventbriteAttendeesTab';
 import ShiftModal from '@/components/admin/ShiftModal';
 import EventModal from '@/components/admin/EventModal';
 import MessageComposer from '@/components/MessageComposer';
@@ -1000,7 +1001,7 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr' | 'analytics' | 'live'>('shifts');
+  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
   const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string }[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
@@ -1489,6 +1490,11 @@ export default function AdminEventDetailPage() {
               <button onClick={() => setActiveTab('qr')} className={tabClass(activeTab === 'qr')}>
                 <QrCode className="w-4 h-4" />Marketing
               </button>
+              {event.platform_source === 'eventbrite' && (
+                <button onClick={() => setActiveTab('eventbrite')} className={tabClass(activeTab === 'eventbrite')}>
+                  <Users className="w-4 h-4" />Eventbrite Attendees
+                </button>
+              )}
               {canManageAdmins && (
                 <button onClick={() => setActiveTab('admins')} className={tabClass(activeTab === 'admins')}>
                   <ShieldCheck className="w-4 h-4" />Event Admins
@@ -1512,6 +1518,8 @@ export default function AdminEventDetailPage() {
           <LiveTab eventId={event.id} />
         ) : activeTab === 'qr' ? (
           <QRCodesTab eventId={event.id} organizationId={event.organization_id} />
+        ) : activeTab === 'eventbrite' ? (
+          <EventbriteAttendeesTab eventId={event.id} />
         ) : event.is_shiftless ? (
           <>
             {loadingShiftlessRegs ? (

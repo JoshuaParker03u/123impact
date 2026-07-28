@@ -72,6 +72,64 @@ export async function eventbriteGetEvent(token: string, eventId: string): Promis
   return ebFetch(token, `/events/${eventId}/?expand=venue,logo`);
 }
 
+export interface EBAttendee {
+  id: string;
+  status: string;
+  checked_in: boolean;
+  cancelled: boolean;
+  refunded: boolean;
+  ticket_class_name?: string;
+  profile: {
+    first_name?: string;
+    last_name?: string;
+    name?: string;
+    email?: string;
+  };
+}
+
+export interface MappedAttendee {
+  external_id: string;
+  name: string;
+  email: string | null;
+  ticket_type: string | null;
+  checked_in: boolean;
+  status: string;
+}
+
+// Read-only — attendees are displayed, never written into volunteer_registrations.
+// See lib/platforms/sync.ts for why: no shift mapping, no reliable way to detect
+// cancellations/refunds without another polling loop, and risk of double-counting
+// against people who also register directly through the 123impact signup page.
+export async function eventbriteGetAttendees(token: string, eventId: string): Promise<EBAttendee[]> {
+  const attendees: EBAttendee[] = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const data = await ebFetch(token, `/events/${eventId}/attendees/?page=${page}`);
+    attendees.push(...(data.attendees ?? []));
+    hasMore = data.pagination?.has_more_items ?? false;
+    page++;
+  }
+
+  return attendees;
+}
+
+export function mapEventbriteAttendee(a: EBAttendee): MappedAttendee {
+  const name = a.profile.name
+    || [a.profile.first_name, a.profile.last_name].filter(Boolean).join(' ')
+    || 'Unknown';
+
+  return {
+    external_id: a.id,
+    name,
+    email:       a.profile.email ?? null,
+    ticket_type: a.ticket_class_name ?? null,
+    checked_in:  a.checked_in,
+    status:      a.cancelled ? 'cancelled' : a.refunded ? 'refunded' : a.status,
+  };
+}
+
 export function mapEventbriteEvent(e: EBEvent): MappedEvent {
   // Use .local (event's own timezone) so times aren't shifted by server TZ
   const startDate = e.start.local.split('T')[0];
