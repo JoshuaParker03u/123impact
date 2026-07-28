@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase';
@@ -8,7 +8,7 @@ import AdminNavigation from '@/components/admin/AdminNavigation';
 import MessageComposer from '@/components/MessageComposer';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X } from 'lucide-react';
+import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X, CheckCircle2 } from 'lucide-react';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
 
@@ -27,6 +27,137 @@ function VolunteerAvatar({ name }) {
   return (
     <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white text-sm font-bold flex-shrink-0`}>
       {initials}
+    </div>
+  );
+}
+
+// Compares plain "YYYY-MM-DD" strings directly rather than going through
+// Date objects — avoids the UTC-midnight parsing pitfall where new
+// Date("2026-05-26") shifts a day off in timezones behind UTC.
+function isPastDate(dateStr) {
+  if (!dateStr) return false;
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return dateStr < todayStr;
+}
+
+function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onCheckedIn, onUnchecked }) {
+  const [open, setOpen]     = useState(false);
+  const [saving, setSaving] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  async function markCheckedIn() {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/checkin/${registrationId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ override: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error ?? 'Failed to check in.');
+        return;
+      }
+      onCheckedIn(registrationId, json.checked_in_at ?? new Date().toISOString(), json.is_override ?? true);
+      setOpen(false);
+    } catch {
+      alert('Network error. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function undoCheckIn() {
+    if (!confirm('Undo this check-in? This removes the check-in record.')) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/checkin/${registrationId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error ?? 'Failed to undo check-in.');
+        return;
+      }
+      onUnchecked(registrationId);
+      setOpen(false);
+    } catch {
+      alert('Network error. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (checkedInAt) {
+    // Only a manual override can be undone — a natural check-in (real
+    // scan/link tap) is a permanent ledger entry, not just a static badge.
+    if (!isOverride) {
+      return (
+        <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+          <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+        </span>
+      );
+    }
+
+    return (
+      <div className="relative inline-block" ref={ref}>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400 hover:underline"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+          <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500">(override)</span>
+        </button>
+        {open && (
+          <div className="absolute z-10 mt-1 left-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+            <button
+              onClick={undoCheckIn}
+              disabled={saving}
+              className="w-full text-left px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+              Undo check-in
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!isPastDate(eventDate)) {
+    return <span className="text-xs text-gray-400 dark:text-gray-500">Not yet</span>;
+  }
+
+  // No-show — clickable, lets staff manually override with a real check-in
+  // (e.g. someone who showed up but scanning/link check-in didn't happen).
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
+      >
+        No-show
+      </button>
+      {open && (
+        <div className="absolute z-10 mt-1 left-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+          <button
+            onClick={markCheckedIn}
+            disabled={saving}
+            className="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" />}
+            Mark as checked in
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -86,30 +217,11 @@ function AdminVolunteersPage() {
         return;
       }
 
-      // Fetch shifts for these events
-      const { data: shiftsData, error: shiftsError } = await supabase
-        .from('shifts')
-        .select('id')
-        .in('event_id', eventIds);
-
-      if (shiftsError) {
-        console.error('Error fetching shifts:', shiftsError);
-        setVolunteers([]);
-        setFilteredVolunteers([]);
-        setLoading(false);
-        return;
-      }
-
-      const shiftIds = shiftsData?.map(s => s.id) || [];
-
-      if (shiftIds.length === 0) {
-        setVolunteers([]);
-        setFilteredVolunteers([]);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch volunteer registrations for these shifts
+      // Fetch volunteer registrations for these events directly by event_id
+      // (set on every registration, shift-based or shiftless) rather than
+      // going through shifts first — the old shifts-first join silently
+      // excluded shiftless-event registrations entirely, since they have no
+      // shift_id to match against.
       const { data: volunteersData, error: volunteersError } = await supabase
         .from('volunteer_registrations')
         .select(`
@@ -119,30 +231,51 @@ function AdminVolunteersPage() {
           phone,
           registered_at,
           shift_id,
+          event_id,
           shifts (
             id,
             name,
             start_time,
-            end_time,
+            end_time
+          ),
+          events (
+            id,
+            title,
             event_id,
-            events (
-              id,
-              title,
-              event_id,
-              date
-            )
+            date
           )
         `)
-        .in('shift_id', shiftIds)
+        .in('event_id', eventIds)
         .order('registered_at', { ascending: false });
 
       if (volunteersError) {
         console.error('Error fetching volunteers:', volunteersError);
         setVolunteers([]);
-      } else {
-        setVolunteers(volunteersData || []);
-        setFilteredVolunteers(volunteersData || []);
+        setFilteredVolunteers([]);
+        setLoading(false);
+        return;
       }
+
+      // Attach check-in status. check_ins isn't joined above since it's a
+      // separate one-to-zero-or-one relation keyed by registration_id, not a
+      // direct FK on volunteer_registrations.
+      const registrationIds = (volunteersData || []).map(v => v.id);
+      const { data: checkInsData } = registrationIds.length
+        ? await supabase
+            .from('check_ins')
+            .select('registration_id, checked_in_at, is_override')
+            .in('registration_id', registrationIds)
+        : { data: [] };
+
+      const checkInMap = new Map((checkInsData || []).map(c => [c.registration_id, c]));
+      const withCheckIn = (volunteersData || []).map(v => ({
+        ...v,
+        checked_in_at: checkInMap.get(v.id)?.checked_in_at ?? null,
+        is_override: checkInMap.get(v.id)?.is_override ?? false,
+      }));
+
+      setVolunteers(withCheckIn);
+      setFilteredVolunteers(withCheckIn);
     } catch (error) {
       console.error('Unexpected error in fetchData:', error);
     } finally {
@@ -151,7 +284,8 @@ function AdminVolunteersPage() {
   };
 
   const removeVolunteer = async (volunteer) => {
-    if (!confirm(`Remove ${volunteer.name} from ${volunteer.shifts?.name}?`)) return;
+    const context = volunteer.shift_id ? volunteer.shifts?.name : (volunteer.events?.title || 'this event');
+    if (!confirm(`Remove ${volunteer.name} from ${context}?`)) return;
 
     const { error } = await supabase
       .from('volunteer_registrations')
@@ -163,8 +297,12 @@ function AdminVolunteersPage() {
       return;
     }
 
-    // Decrement shift filled count
-    await supabase.rpc('decrement_shift_filled', { p_shift_id: volunteer.shift_id });
+    // Decrement shift filled count — shiftless registrations have no
+    // shift_id and no equivalent counter to decrement (their capacity is
+    // computed live from the registrations table, not tracked separately).
+    if (volunteer.shift_id) {
+      await supabase.rpc('decrement_shift_filled', { p_shift_id: volunteer.shift_id });
+    }
 
     // Cancel any pending scheduled messages to this volunteer
     await fetch(
@@ -173,6 +311,18 @@ function AdminVolunteersPage() {
     );
 
     setVolunteers((prev) => prev.filter((v) => v.id !== volunteer.id));
+  };
+
+  const handleCheckedIn = (registrationId, checkedInAt, isOverride) => {
+    setVolunteers((prev) =>
+      prev.map((v) => (v.id === registrationId ? { ...v, checked_in_at: checkedInAt, is_override: isOverride } : v))
+    );
+  };
+
+  const handleUnchecked = (registrationId) => {
+    setVolunteers((prev) =>
+      prev.map((v) => (v.id === registrationId ? { ...v, checked_in_at: null, is_override: false } : v))
+    );
   };
 
   const filterVolunteers = () => {
@@ -189,7 +339,7 @@ function AdminVolunteersPage() {
 
     // Event filter
     if (eventFilter !== 'all') {
-      filtered = filtered.filter(v => v.shifts?.events?.id === eventFilter);
+      filtered = filtered.filter(v => v.event_id === eventFilter);
     }
 
     setFilteredVolunteers(filtered);
@@ -326,6 +476,7 @@ function AdminVolunteersPage() {
                       <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Event</th>
                       <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Shift</th>
                       <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Registered</th>
+                      <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Check-in</th>
                       <th className="p-4" />
                     </tr>
                   </thead>
@@ -349,15 +500,27 @@ function AdminVolunteersPage() {
                           </div>
                         </td>
                         <td className="p-4">
-                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.shifts?.events?.title || '—'}</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.shifts?.events?.date || ''}</p>
+                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.events?.title || '—'}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.events?.date || ''}</p>
                         </td>
                         <td className="p-4">
-                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.shifts?.name || '—'}</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.shifts?.start_time || ''} - {volunteer.shifts?.end_time || ''}</p>
+                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.shift_id ? (volunteer.shifts?.name || '—') : 'Direct registration'}</p>
+                          {volunteer.shift_id && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.shifts?.start_time || ''} - {volunteer.shifts?.end_time || ''}</p>
+                          )}
                         </td>
                         <td className="p-4">
                           <p className="text-sm text-gray-600 dark:text-gray-400">{new Date(volunteer.registered_at).toLocaleDateString()}</p>
+                        </td>
+                        <td className="p-4">
+                          <CheckInStatus
+                            registrationId={volunteer.id}
+                            checkedInAt={volunteer.checked_in_at}
+                            isOverride={volunteer.is_override}
+                            eventDate={volunteer.events?.date}
+                            onCheckedIn={handleCheckedIn}
+                            onUnchecked={handleUnchecked}
+                          />
                         </td>
                         <td className="p-4 text-right">
                           <button
@@ -405,18 +568,30 @@ function AdminVolunteersPage() {
                   <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Event</p>
-                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.shifts?.events?.title || '—'}</p>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.shifts?.events?.date || ''}</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.events?.title || '—'}</p>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.events?.date || ''}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Shift</p>
-                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.shifts?.name || '—'}</p>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.shifts?.start_time || ''} – {volunteer.shifts?.end_time || ''}</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.shift_id ? (volunteer.shifts?.name || '—') : 'Direct registration'}</p>
+                      {volunteer.shift_id && (
+                        <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.shifts?.start_time || ''} – {volunteer.shifts?.end_time || ''}</p>
+                      )}
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                    Registered {new Date(volunteer.registered_at).toLocaleDateString()}
-                  </p>
+                  <div className="mt-2 flex items-center justify-between">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      Registered {new Date(volunteer.registered_at).toLocaleDateString()}
+                    </p>
+                    <CheckInStatus
+                      registrationId={volunteer.id}
+                      checkedInAt={volunteer.checked_in_at}
+                      isOverride={volunteer.is_override}
+                      eventDate={volunteer.events?.date}
+                      onCheckedIn={handleCheckedIn}
+                      onUnchecked={handleUnchecked}
+                    />
+                  </div>
                 </Card>
               ))}
             </div>
