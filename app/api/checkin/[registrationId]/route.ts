@@ -38,27 +38,35 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Load registration via service role (bypasses RLS — we control what we return)
   const { data: reg } = await service
     .from('volunteer_registrations')
-    .select('id, name, email, shift_id, registered_at')
+    .select('id, name, email, shift_id, event_id, registered_at')
     .eq('id', registrationId)
     .single();
 
   if (!reg) return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
 
-  // Load shift + event info
-  const { data: shift } = await service
-    .from('shifts')
-    .select('id, name, start_time, end_time, event_id, events!inner(id, title, event_id, organization_id, date)')
-    .eq('id', reg.shift_id)
+  // Shiftless registrations have shift_id === null, so the event can't be
+  // reached via a shifts join — go through the registration's own event_id
+  // (always populated on every insert path) instead.
+  const { data: event } = await service
+    .from('events')
+    .select('id, title, event_id, organization_id, date')
+    .eq('id', reg.event_id)
     .single();
 
-  if (!shift) return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
+  if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
-  const event = (shift as any).events;
+  const { data: shift } = reg.shift_id
+    ? await service
+        .from('shifts')
+        .select('id, name, start_time, end_time')
+        .eq('id', reg.shift_id)
+        .single()
+    : { data: null };
 
   // Check existing check-in
   const { data: checkIn } = await service
     .from('check_ins')
-    .select('id, checked_in_at, checked_in_by')
+    .select('id, checked_in_at, checked_in_by, is_override')
     .eq('registration_id', registrationId)
     .maybeSingle();
 
@@ -95,14 +103,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
       event_id: event.event_id,
       date:     event.date,
     },
-    shift: {
-      id:         shift.id,
-      name:       (shift as any).name,
-      start_time: (shift as any).start_time,
-      end_time:   (shift as any).end_time,
-    },
+    shift: shift
+      ? {
+          id:         shift.id,
+          name:       shift.name,
+          start_time: shift.start_time,
+          end_time:   shift.end_time,
+        }
+      : {
+          id:         '',
+          name:       'General Registration',
+          start_time: null,
+          end_time:   null,
+        },
     checked_in:     !!checkIn,
     checked_in_at:  checkIn?.checked_in_at ?? null,
+    is_override:    checkIn?.is_override ?? false,
   };
 
   if (isStaff) {
@@ -121,32 +137,36 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // POST /api/checkin/[registrationId]
 // Staff only — marks a volunteer as checked in.
 // Creates a check_in record (unique per registration_id).
-export async function POST(_req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, { params }: Params) {
   const { registrationId } = await params;
   const { session, service } = await buildClients();
 
   const { data: { user } } = await session.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Optional — set true when this call comes from the "mark as checked in"
+  // override action on a no-show, rather than a normal scan/link check-in.
+  const body = await req.json().catch(() => ({}));
+  const isOverride = body?.override === true;
+
   // Load registration
   const { data: reg } = await service
     .from('volunteer_registrations')
-    .select('id, name, shift_id')
+    .select('id, name, email, shift_id, event_id')
     .eq('id', registrationId)
     .single();
 
   if (!reg) return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
 
-  // Load event for auth check
-  const { data: shift } = await service
-    .from('shifts')
-    .select('event_id, events!inner(id, organization_id)')
-    .eq('id', reg.shift_id)
+  // Shiftless registrations have shift_id === null — resolve the event via
+  // the registration's own event_id rather than a shifts join (see GET above).
+  const { data: event } = await service
+    .from('events')
+    .select('id, organization_id, event_id')
+    .eq('id', reg.event_id)
     .single();
 
-  if (!shift) return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
-
-  const event = (shift as any).events;
+  if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
   // Verify staff access
   const [{ data: orgMembership }, { data: eventAdmin }] = await Promise.all([
@@ -173,7 +193,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   // Already checked in?
   const { data: existing } = await service
     .from('check_ins')
-    .select('id, checked_in_at')
+    .select('id, checked_in_at, is_override')
     .eq('registration_id', registrationId)
     .maybeSingle();
 
@@ -181,6 +201,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     return NextResponse.json({
       already_checked_in: true,
       checked_in_at: existing.checked_in_at,
+      is_override: existing.is_override,
     });
   }
 
@@ -191,6 +212,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       registration_id: registrationId,
       event_id:        event.id,
       checked_in_by:   user.id,
+      is_override:     isOverride,
     })
     .select()
     .single();
@@ -198,27 +220,106 @@ export async function POST(_req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Send in-app notification to the registrant if they have a user account
-  // (best-effort — no account required to register)
-  const { data: userByEmail } = await service.auth.admin.listUsers();
-  const matchedUser = userByEmail?.users?.find(
-    (u: any) => u.email?.toLowerCase() === (reg as any).email?.toLowerCase()
-  );
-  if (matchedUser) {
-    // Load event title for notification
-    const { data: fullEvent } = await service
+  // (best-effort — no account required to register). Not awaited: this
+  // previously blocked every check-in response on a full
+  // auth.admin.listUsers() call just to find one user by email — real
+  // latency added to a nice-to-have side effect, not the check-in itself.
+  service.auth.admin.listUsers().then(({ data: userByEmail }) => {
+    const matchedUser = userByEmail?.users?.find(
+      (u: any) => u.email?.toLowerCase() === reg.email?.toLowerCase()
+    );
+    if (!matchedUser) return;
+
+    return service
       .from('events')
       .select('title')
       .eq('id', event.id)
-      .single();
+      .single()
+      .then(({ data: fullEvent }) =>
+        service.from('notifications').insert({
+          user_id: matchedUser.id,
+          type:    'check_in_confirmed',
+          title:   'Check-in confirmed',
+          body:    `You've been checked in for "${fullEvent?.title ?? 'the event'}".`,
+          link:    `/events/${event.event_id ?? ''}/r/${registrationId}`,
+        })
+      );
+  }).catch(() => {});
 
-    await service.from('notifications').insert({
-      user_id: matchedUser.id,
-      type:    'check_in_confirmed',
-      title:   'Check-in confirmed',
-      body:    `You've been checked in for "${fullEvent?.title ?? 'the event'}".`,
-      link:    `/events/${(shift as any).event_id ?? ''}/r/${registrationId}`,
-    }).then(() => {}); // fire-and-forget
+  return NextResponse.json(
+    { checked_in: true, checked_in_at: checkIn.checked_in_at, is_override: checkIn.is_override },
+    { status: 201 }
+  );
+}
+
+// DELETE /api/checkin/[registrationId]
+// Staff only — reverses a check-in (e.g. someone marked as checked in by
+// mistake, or a manual override that shouldn't have happened). check_ins is
+// otherwise an append-only ledger, so this is intentionally a narrow,
+// staff-gated corrective action rather than something registrants can do.
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const { registrationId } = await params;
+  const { session, service } = await buildClients();
+
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { data: reg } = await service
+    .from('volunteer_registrations')
+    .select('id, event_id')
+    .eq('id', registrationId)
+    .single();
+
+  if (!reg) return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
+
+  const { data: event } = await service
+    .from('events')
+    .select('id, organization_id')
+    .eq('id', reg.event_id)
+    .single();
+
+  if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+
+  const [{ data: orgMembership }, { data: eventAdmin }] = await Promise.all([
+    service
+      .from('organization_admins')
+      .select('role')
+      .eq('organization_id', event.organization_id)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    service
+      .from('event_admin_assignments')
+      .select('id')
+      .eq('event_id', event.id)
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle(),
+  ]);
+
+  const isStaff =
+    (orgMembership && ['owner', 'admin'].includes(orgMembership.role)) || !!eventAdmin;
+
+  if (!isStaff) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  // Only manual overrides can be undone. A natural check-in (real scan/link
+  // tap) stays on the permanent ledger — no "undo" for that.
+  const { data: existing } = await service
+    .from('check_ins')
+    .select('id, is_override')
+    .eq('registration_id', registrationId)
+    .maybeSingle();
+
+  if (!existing) return NextResponse.json({ error: 'Not checked in' }, { status: 404 });
+  if (!existing.is_override) {
+    return NextResponse.json({ error: 'Only manual overrides can be undone.' }, { status: 403 });
   }
 
-  return NextResponse.json({ checked_in: true, checked_in_at: checkIn.checked_in_at }, { status: 201 });
+  const { error } = await service
+    .from('check_ins')
+    .delete()
+    .eq('registration_id', registrationId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ checked_in: false });
 }
