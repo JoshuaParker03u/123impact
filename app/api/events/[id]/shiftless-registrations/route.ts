@@ -70,5 +70,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .order('registered_at', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+
+  const registrationIds = (data ?? []).map((r) => r.id);
+  const { data: checkIns } = registrationIds.length
+    ? await service
+        .from('check_ins')
+        .select('registration_id, checked_in_at, is_override')
+        .in('registration_id', registrationIds)
+    : { data: [] };
+
+  const checkInMap = new Map((checkIns ?? []).map((c) => [c.registration_id, c]));
+  const withCheckIn = (data ?? []).map((r) => ({
+    ...r,
+    checked_in_at: checkInMap.get(r.id)?.checked_in_at ?? null,
+    is_override: checkInMap.get(r.id)?.is_override ?? false,
+  }));
+
+  return NextResponse.json(withCheckIn);
 }

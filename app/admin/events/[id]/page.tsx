@@ -14,6 +14,7 @@ import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
 import EventbriteAttendeesTab from './EventbriteAttendeesTab';
+import CheckInQRModal from './CheckInQRModal';
 import ShiftModal from '@/components/admin/ShiftModal';
 import EventModal from '@/components/admin/EventModal';
 import MessageComposer from '@/components/MessageComposer';
@@ -37,6 +38,7 @@ interface Volunteer {
   phone: string | null;
   registered_at: string;
   is_waitlisted?: boolean;
+  checked_in_at?: string | null;
 }
 
 interface Shift {
@@ -1002,7 +1004,7 @@ export default function AdminEventDetailPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
-  const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string }[]>([]);
+  const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
@@ -1011,6 +1013,7 @@ export default function AdminEventDetailPage() {
   const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [duplicating, setDuplicating] = useState(false);
+  const [checkInModal, setCheckInModal] = useState<{ registrationId: string; name: string } | null>(null);
 
   const { currentOrganization } = useOrganization() as any;
 
@@ -1088,6 +1091,14 @@ export default function AdminEventDetailPage() {
     const res = await fetch(`/api/events/${eventId}/shiftless-registrations`);
     if (res.ok) setShiftlessRegs(await res.json());
     setLoadingShiftlessRegs(false);
+  }
+
+  function checkInUrl(registrationId: string): string {
+    if (!event) return '';
+    const base = customDomain
+      ? `https://${customDomain}`
+      : typeof window !== 'undefined' ? window.location.origin : '';
+    return `${base}/events/${event.event_id}/r/${registrationId}`;
   }
 
   async function toggleShift(shiftId: string) {
@@ -1536,6 +1547,7 @@ export default function AdminEventDetailPage() {
                         <th className="pb-2 font-medium">Email</th>
                         <th className="pb-2 font-medium">Phone</th>
                         <th className="pb-2 font-medium">Registered</th>
+                        <th className="pb-2 font-medium">Check-in</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1550,7 +1562,32 @@ export default function AdminEventDetailPage() {
                             )}
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
-                          <td className="py-2 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                          <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                          <td className="py-2">
+                            {r.checked_in_at ? (
+                              <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={checkInUrl(r.id)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                >
+                                  Check-in link
+                                </a>
+                                <button
+                                  onClick={() => setCheckInModal({ registrationId: r.id, name: r.name })}
+                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                  title="Show QR code"
+                                >
+                                  <QrCode className="w-3.5 h-3.5 text-gray-500" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1691,6 +1728,7 @@ export default function AdminEventDetailPage() {
                                         <th className="pb-2 font-medium">Email</th>
                                         <th className="pb-2 font-medium">Phone</th>
                                         <th className="pb-2 font-medium">Registered</th>
+                                        <th className="pb-2 font-medium">Check-in</th>
                                         <th className="pb-2 font-medium"></th>
                                       </tr>
                                     </thead>
@@ -1709,6 +1747,31 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
                                           </td>
+                                          <td className="py-2 pr-4">
+                                            {v.checked_in_at ? (
+                                              <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+                                                <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+                                              </span>
+                                            ) : (
+                                              <div className="flex items-center gap-2">
+                                                <a
+                                                  href={checkInUrl(v.id)}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                                >
+                                                  Check-in link
+                                                </a>
+                                                <button
+                                                  onClick={() => setCheckInModal({ registrationId: v.id, name: v.name })}
+                                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                                  title="Show QR code"
+                                                >
+                                                  <QrCode className="w-3.5 h-3.5 text-gray-500" />
+                                                </button>
+                                              </div>
+                                            )}
+                                          </td>
                                           <td className="py-2 text-right">
                                             <button
                                               onClick={() => removeVolunteer(v.id, shift.id, false)}
@@ -1722,7 +1785,7 @@ export default function AdminEventDetailPage() {
                                       ))}
                                       {waitlisting.length > 0 && (
                                         <tr>
-                                          <td colSpan={5} className="pt-3 pb-2 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                                          <td colSpan={6} className="pt-3 pb-2 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
                                             Waitlist ({waitlisting.length})
                                           </td>
                                         </tr>
@@ -1740,6 +1803,31 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 pr-4">
+                                            {v.checked_in_at ? (
+                                              <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+                                                <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+                                              </span>
+                                            ) : (
+                                              <div className="flex items-center gap-2">
+                                                <a
+                                                  href={checkInUrl(v.id)}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                                >
+                                                  Check-in link
+                                                </a>
+                                                <button
+                                                  onClick={() => setCheckInModal({ registrationId: v.id, name: v.name })}
+                                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                                  title="Show QR code"
+                                                >
+                                                  <QrCode className="w-3.5 h-3.5 text-gray-500" />
+                                                </button>
+                                              </div>
+                                            )}
                                           </td>
                                           <td className="py-2 text-right">
                                             <div className="flex items-center justify-end gap-2">
@@ -1812,6 +1900,14 @@ export default function AdminEventDetailPage() {
         volunteerEmail={messageVolunteer?.email}
         volunteerName={messageVolunteer?.name}
       />
+
+      {checkInModal && (
+        <CheckInQRModal
+          registrantName={checkInModal.name}
+          checkInUrl={checkInUrl(checkInModal.registrationId)}
+          onClose={() => setCheckInModal(null)}
+        />
+      )}
     </>
   );
 }
