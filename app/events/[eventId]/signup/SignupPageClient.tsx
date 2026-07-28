@@ -151,7 +151,17 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
   const [submitting, setSubmitting]         = useState(false)
   const [errors, setErrors]                 = useState<Record<string, string>>({})
 
-  const isPast       = event ? new Date(event.end_date ?? event.date) < new Date(new Date().toDateString()) : false
+  // Compare plain "YYYY-MM-DD" strings directly rather than through Date
+  // objects — new Date("2026-07-28") parses as UTC midnight, which shifts a
+  // day earlier than local midnight in timezones behind UTC and closed
+  // registration a day too soon.
+  const isPast = (() => {
+    if (!event) return false
+    const eventEndDateStr = event.end_date ?? event.date
+    const today = new Date()
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    return eventEndDateStr < todayStr
+  })()
   const isCancelled  = event?.status === 'cancelled'
   const isClosed     = event ? (!['active', 'ongoing'].includes(event.status) || isPast) : false
 
