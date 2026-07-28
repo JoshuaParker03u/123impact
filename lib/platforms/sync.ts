@@ -128,8 +128,12 @@ export async function importEvents(
       // Generate a URL-safe slug
       const slug = `${mapped.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${Date.now()}`;
 
+      // removed_status is an internal signal for syncEvent(), not a real
+      // events column — strip it before inserting.
+      const { removed_status: _removedStatus, ...insertableFields } = mapped;
+
       const { error } = await service.from('events').insert({
-        ...mapped,
+        ...insertableFields,
         event_id:        slug,
         organization_id: orgId,
         status:          'active',
@@ -138,12 +142,19 @@ export async function importEvents(
         last_synced_at:  new Date().toISOString(),
       });
 
-      // Conflict = already imported — skip silently
-      if (!error || error.code === '23505') {
-        if (!error) imported++;
+      if (!error) {
+        imported++;
+      } else if (error.code === '23505') {
+        // Conflict = already imported — skip silently, not a real failure
+      } else {
+        // Record why, rather than silently dropping it — this exact class of
+        // bug (an insert failing for an unrelated reason, e.g. a stray field
+        // that isn't a real column) is what made a prior regression here
+        // hard to notice at all.
+        skipped.push({ externalId, reason: error.message });
       }
-    } catch {
-      // Skip individual failures — don't abort the batch
+    } catch (err: any) {
+      skipped.push({ externalId, reason: err?.message ?? 'Unknown error' });
     }
   }
 

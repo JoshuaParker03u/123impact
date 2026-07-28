@@ -65,14 +65,24 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('platform', platform);
   }
 
-  const multiDayBlocked = skipped.filter(s => s.reason === 'multi_day_requires_paid').length;
+  const multiDayBlocked = skipped.filter(s => s.reason === 'multi_day_requires_paid');
+  const failed = skipped.filter(s => s.reason !== 'multi_day_requires_paid');
+
+  const warnings: string[] = [];
+  if (multiDayBlocked.length > 0) {
+    warnings.push(`${multiDayBlocked.length} multi-day event${multiDayBlocked.length !== 1 ? 's were' : ' was'} not imported. Multi-day events require a paid plan.`);
+  }
+  if (failed.length > 0) {
+    // Surface the actual reason rather than a bare count — a silent/generic
+    // failure here is exactly what made a prior import-breaking bug hard to
+    // notice at all.
+    warnings.push(`${failed.length} event${failed.length !== 1 ? 's' : ''} failed to import: ${failed.map(s => s.reason).join('; ')}`);
+  }
 
   return NextResponse.json({
     imported,
     skipped: skipped.length,
-    multiDayBlocked,
-    ...(multiDayBlocked > 0 && {
-      warning: `${multiDayBlocked} multi-day event${multiDayBlocked !== 1 ? 's were' : ' was'} not imported. Multi-day events require a paid plan.`,
-    }),
+    multiDayBlocked: multiDayBlocked.length,
+    ...(warnings.length > 0 && { warning: warnings.join(' ') }),
   });
 }
