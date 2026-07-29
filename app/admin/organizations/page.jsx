@@ -23,7 +23,7 @@ const MAX_SIZE = 5 * 1024 * 1024;
 
 // ── Logo editor ────────────────────────────────────────────────────────────────
 
-function LogoEditor({ currentLogoUrl, onChange }) {
+function LogoEditor({ currentLogoUrl, onChange, disabled }) {
   const [tab, setTab]                 = useState('upload');
   const [file, setFile]               = useState(null);
   const [filePreview, setFilePreview] = useState('');
@@ -31,6 +31,19 @@ function LogoEditor({ currentLogoUrl, onChange }) {
   const [dragOver, setDragOver]       = useState(false);
   const [fileError, setFileError]     = useState('');
   const fileInputRef = useRef(null);
+
+  if (disabled) {
+    return (
+      <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg opacity-50">
+        {currentLogoUrl ? (
+          <img src={currentLogoUrl} alt="Current logo" className="w-12 h-12 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-gray-200 dark:bg-gray-700" />
+        )}
+        <p className="text-sm text-gray-600 dark:text-gray-400">{currentLogoUrl ? 'Current logo' : 'No logo set'}</p>
+      </div>
+    );
+  }
 
   function handleFile(f) {
     setFileError('');
@@ -1577,7 +1590,7 @@ function OrganizationsPageContent() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Logo <span className="text-gray-400 font-normal">(optional)</span></label>
-                    <LogoEditor currentLogoUrl={logoChange.type === 'clear' ? null : org?.logo_url} onChange={setLogoChange} />
+                    <LogoEditor currentLogoUrl={logoChange.type === 'clear' ? null : org?.logo_url} onChange={setLogoChange} disabled={submitting || !canManageSettings} />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
