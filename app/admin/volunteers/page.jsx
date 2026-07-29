@@ -42,7 +42,7 @@ function isPastDate(dateStr) {
   return dateStr < todayStr;
 }
 
-function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onCheckedIn, onUnchecked }) {
+function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onCheckedIn, onUnchecked, canOverride }) {
   const [open, setOpen]     = useState(false);
   const [saving, setSaving] = useState(false);
   const [coords, setCoords] = useState(null);
@@ -116,10 +116,14 @@ function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onC
   if (checkedInAt) {
     // Only a manual override can be undone — a natural check-in (real
     // scan/link tap) is a permanent ledger entry, not just a static badge.
-    if (!isOverride) {
+    // Undo is also admin-only (see canOverride below), so non-admins only
+    // ever see the plain badge even for an overridden check-in.
+    if (!isOverride || !canOverride) {
       return (
         <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
-          <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Checked in
+          {isOverride && <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500">(override)</span>}
         </span>
       );
     }
@@ -159,8 +163,15 @@ function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onC
     return <span className="text-xs text-gray-400 dark:text-gray-500">Not yet</span>;
   }
 
-  // No-show — clickable, lets staff manually override with a real check-in
-  // (e.g. someone who showed up but scanning/link check-in didn't happen).
+  if (!canOverride) {
+    return <span className="text-xs font-medium text-amber-600 dark:text-amber-400">No-show</span>;
+  }
+
+  // No-show — clickable, lets org admins manually override with a real
+  // check-in (e.g. someone who showed up but scanning/link check-in didn't
+  // happen). Restricted to org admins, not event admins — this reaches
+  // across the whole org-wide volunteers list, unlike the natural
+  // scan/link check-in an event admin handles day-of.
   return (
     <div className="relative inline-block">
       <button
@@ -196,7 +207,7 @@ const supabase = getBrowserClient();
 import { Suspense } from 'react';
 
 function AdminVolunteersPage() {
-  const { currentOrganization, loading: orgLoading } = useOrganization();
+  const { currentOrganization, loading: orgLoading, isAdmin: isOrgAdmin } = useOrganization();
   const { streamerMode } = useStreamerMode();
   const [messageVolunteer, setMessageVolunteer] = useState(null);
   const searchParams = useSearchParams();
@@ -549,16 +560,19 @@ function AdminVolunteersPage() {
                             eventDate={volunteer.events?.date}
                             onCheckedIn={handleCheckedIn}
                             onUnchecked={handleUnchecked}
+                            canOverride={isOrgAdmin}
                           />
                         </td>
                         <td className="p-4 text-right">
-                          <button
-                            onClick={() => removeVolunteer(volunteer)}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                            title="Remove from shift"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          {isOrgAdmin && (
+                            <button
+                              onClick={() => removeVolunteer(volunteer)}
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                              title="Remove from shift"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -586,13 +600,15 @@ function AdminVolunteersPage() {
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => removeVolunteer(volunteer)}
-                      className="ml-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors flex-shrink-0"
-                      title="Remove from shift"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                    {isOrgAdmin && (
+                      <button
+                        onClick={() => removeVolunteer(volunteer)}
+                        className="ml-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors flex-shrink-0"
+                        title="Remove from shift"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                   <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -619,6 +635,7 @@ function AdminVolunteersPage() {
                       eventDate={volunteer.events?.date}
                       onCheckedIn={handleCheckedIn}
                       onUnchecked={handleUnchecked}
+                      canOverride={isOrgAdmin}
                     />
                   </div>
                 </Card>

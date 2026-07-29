@@ -1773,13 +1773,15 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 text-right">
-                                            <button
-                                              onClick={() => removeVolunteer(v.id, shift.id, false)}
-                                              className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
-                                              title="Remove volunteer"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                            </button>
+                                            {canManage && (
+                                              <button
+                                                onClick={() => removeVolunteer(v.id, shift.id, false)}
+                                                className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                                title="Remove volunteer"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                              </button>
+                                            )}
                                           </td>
                                         </tr>
                                       ))}
@@ -1830,21 +1832,23 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                              <button
-                                                onClick={() => promoteVolunteer(v.id, shift.id)}
-                                                className="text-xs px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
-                                              >
-                                                Promote
-                                              </button>
-                                              <button
-                                                onClick={() => removeVolunteer(v.id, shift.id, true)}
-                                                className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
-                                                title="Remove volunteer"
-                                              >
-                                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                              </button>
-                                            </div>
+                                            {canManage && (
+                                              <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                  onClick={() => promoteVolunteer(v.id, shift.id)}
+                                                  className="text-xs px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                                >
+                                                  Promote
+                                                </button>
+                                                <button
+                                                  onClick={() => removeVolunteer(v.id, shift.id, true)}
+                                                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                                  title="Remove volunteer"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                                </button>
+                                              </div>
+                                            )}
                                           </td>
                                         </tr>
                                       ))}

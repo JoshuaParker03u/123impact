@@ -186,10 +186,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       .maybeSingle(),
   ]);
 
-  const isStaff =
-    (orgMembership && ['owner', 'admin'].includes(orgMembership.role)) || !!eventAdmin;
+  const isOrgAdmin = !!(orgMembership && ['owner', 'admin'].includes(orgMembership.role));
+  const isStaff = isOrgAdmin || !!eventAdmin;
 
   if (!isStaff) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  // Overriding a no-show is a corrective admin action, distinct from a
+  // normal scan/link check-in — event admins handle day-of check-in but
+  // shouldn't be able to reach into the org-wide volunteers list and mark
+  // arbitrary people checked in.
+  if (isOverride && !isOrgAdmin) {
+    return NextResponse.json({ error: 'Only org admins can override a check-in.' }, { status: 403 });
+  }
 
   // Already checked in?
   const { data: existing } = await service
@@ -276,26 +284,18 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
-  const [{ data: orgMembership }, { data: eventAdmin }] = await Promise.all([
-    service
-      .from('organization_admins')
-      .select('role')
-      .eq('organization_id', event.organization_id)
-      .eq('user_id', user.id)
-      .maybeSingle(),
-    service
-      .from('event_admin_assignments')
-      .select('id')
-      .eq('event_id', event.id)
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .maybeSingle(),
-  ]);
+  // Undo only ever applies to overrides (checked below), so — same as
+  // creating an override — this is restricted to org admins, not event
+  // admins, unlike the normal staff check-in flow.
+  const { data: orgMembership } = await service
+    .from('organization_admins')
+    .select('role')
+    .eq('organization_id', event.organization_id)
+    .eq('user_id', user.id)
+    .maybeSingle();
 
-  const isStaff =
-    (orgMembership && ['owner', 'admin'].includes(orgMembership.role)) || !!eventAdmin;
-
-  if (!isStaff) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const isOrgAdmin = !!(orgMembership && ['owner', 'admin'].includes(orgMembership.role));
+  if (!isOrgAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Only manual overrides can be undone. A natural check-in (real scan/link
   // tap) stays on the permanent ledger — no "undo" for that.
