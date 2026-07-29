@@ -29,11 +29,9 @@ export default function ScheduledMessagesList() {
   const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
 
   const load = useCallback((showSpinner = false) => {
+    if (!currentOrganization?.id) return;
     if (showSpinner) setLoading(true);
-    const url = currentOrganization?.id
-      ? `/api/messages?scheduled=true&org_id=${currentOrganization.id}`
-      : '/api/messages?scheduled=true';
-    fetch(url)
+    fetch(`/api/messages?scheduled=true&org_id=${currentOrganization.id}`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -44,7 +42,7 @@ export default function ScheduledMessagesList() {
       })
       .catch(() => setError('Failed to load scheduled messages'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentOrganization?.id]);
 
   useEffect(() => {
     load(true);

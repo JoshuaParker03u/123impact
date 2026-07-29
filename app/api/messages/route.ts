@@ -40,20 +40,22 @@ export async function GET(request: Request) {
   const scheduled = searchParams.get('scheduled') === 'true';
   const orgId     = searchParams.get('org_id');
 
-  if (orgId) {
-    const { data: membership } = await service.from('organization_admins')
-      .select('role').eq('organization_id', orgId).eq('user_id', user.id).single();
-    if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // org_id is required — without it there's nothing to scope the query to,
+  // and every organization's messages (including recipient_emails) would be
+  // returned to any logged-in user.
+  if (!orgId) {
+    return NextResponse.json({ error: 'org_id required' }, { status: 400 });
   }
+
+  const { data: membership } = await service.from('organization_admins')
+    .select('role').eq('organization_id', orgId).eq('user_id', user.id).single();
+  if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   let query = service
     .from('messages')
     .select('*, events(title), shifts(name, start_time)')
+    .eq('organization_id', orgId)
     .limit(limit);
-
-  if (orgId) {
-    query = query.eq('organization_id', orgId);
-  }
 
   if (scheduled) {
     query = query.eq('delivery_status', 'scheduled').order('scheduled_for', { ascending: true });

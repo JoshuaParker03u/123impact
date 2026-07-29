@@ -25,10 +25,8 @@ export default function SentMessagesHistory() {
   const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
 
   useEffect(() => {
-    const url = currentOrganization?.id
-      ? `/api/messages?org_id=${currentOrganization.id}`
-      : '/api/messages';
-    fetch(url)
+    if (!currentOrganization?.id) return;
+    fetch(`/api/messages?org_id=${currentOrganization.id}`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -39,7 +37,7 @@ export default function SentMessagesHistory() {
       })
       .catch(() => setError('Failed to load messages'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentOrganization?.id]);
 
   if (loading) {
     return <p className="text-gray-500 py-8 text-center">Loading message history...</p>;
