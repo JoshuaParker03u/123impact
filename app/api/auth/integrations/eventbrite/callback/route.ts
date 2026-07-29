@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 import { eventbriteExchangeCode, eventbriteGetOrgId } from '@/lib/platforms/eventbrite';
 
 // GET /api/auth/integrations/eventbrite/callback
@@ -25,11 +27,45 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=invalid_state`);
   }
 
+  // state isn't signed, so it's only a hint of intent — re-verify the
+  // current caller actually has admin rights on the org it names before
+  // writing anything. Without this, anyone who completes Eventbrite's OAuth
+  // consent for their own account could hand-craft state with any orgId and
+  // hijack that org's Eventbrite connection.
+  const cookieStore = await cookies();
+  const session = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (list) => {
+          try { list.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
+        },
+      },
+    }
+  );
   const service = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
+
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) {
+    return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=eventbrite_denied`);
+  }
+
+  const { data: membership } = await service
+    .from('organization_admins')
+    .select('role')
+    .eq('organization_id', orgId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=eventbrite_denied`);
+  }
 
   try {
     const { access_token } = await eventbriteExchangeCode(code);
