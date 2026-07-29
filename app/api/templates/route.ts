@@ -59,12 +59,19 @@ export async function GET(request: Request) {
   return NextResponse.json(data);
 }
 
-async function verifyTemplateAccess(userId: string, eventId: string, service: ReturnType<typeof createServiceRoleClient>) {
+async function verifyTemplateAccess(
+  userId: string,
+  eventId: string,
+  service: ReturnType<typeof createServiceRoleClient>,
+  requireAdminRole = false
+) {
   const { data: event } = await service.from('events').select('organization_id').eq('id', eventId).single();
   if (!event) return 'event_not_found';
   const { data: membership } = await service.from('organization_admins')
     .select('role').eq('organization_id', event.organization_id).eq('user_id', userId).single();
-  return membership ? null : 'forbidden';
+  if (!membership) return 'forbidden';
+  if (requireAdminRole && !['owner', 'admin'].includes(membership.role)) return 'forbidden';
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -74,7 +81,7 @@ export async function POST(request: Request) {
 
   const service = createServiceRoleClient();
   const body = await request.json();
-  const accessError = await verifyTemplateAccess(user.id, body.event_id, service);
+  const accessError = await verifyTemplateAccess(user.id, body.event_id, service, true);
   if (accessError === 'event_not_found') return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   if (accessError === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -100,7 +107,7 @@ export async function PUT(request: Request) {
   const { data: template } = await service.from('automated_email_templates').select('event_id').eq('id', id).single();
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
 
-  const accessError = await verifyTemplateAccess(user.id, template.event_id, service);
+  const accessError = await verifyTemplateAccess(user.id, template.event_id, service, true);
   if (accessError === 'event_not_found') return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   if (accessError === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -128,7 +135,7 @@ export async function DELETE(request: Request) {
   const { data: template } = await service.from('automated_email_templates').select('event_id').eq('id', id).single();
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
 
-  const accessError = await verifyTemplateAccess(user.id, template.event_id, service);
+  const accessError = await verifyTemplateAccess(user.id, template.event_id, service, true);
   if (accessError === 'event_not_found') return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   if (accessError === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
