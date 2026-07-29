@@ -62,7 +62,7 @@ export default function EventTemplatesPage() {
     return (
       <>
         <AdminNavigation />
-        <div className="flex justify-center items-center h-64">Loading...</div>
+        <div className="flex justify-center items-center h-64 text-gray-500 dark:text-gray-400">Loading...</div>
       </>
     );
   }
@@ -108,8 +108,8 @@ export default function EventTemplatesPage() {
       </Link>
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Email Templates</h1>
-          <p className="text-gray-600">{event?.title}</p>
+          <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-gray-100">Email Templates</h1>
+          <p className="text-gray-600 dark:text-gray-400">{event?.title}</p>
         </div>
         <button
           onClick={() => {
@@ -123,11 +123,11 @@ export default function EventTemplatesPage() {
       </div>
 
       {templates.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-600 mb-4">No email templates yet</p>
+        <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+          <p className="text-gray-600 dark:text-gray-400 mb-4">No email templates yet</p>
           <button
             onClick={() => setShowEditor(true)}
-            className="text-blue-600 hover:text-blue-700"
+            className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
           >
             Create your first template
           </button>
@@ -135,28 +135,28 @@ export default function EventTemplatesPage() {
       ) : (
         <div className="grid gap-4">
           {templates.map((template) => (
-            <div key={template.id} className="bg-white border rounded-lg p-4">
+            <div key={template.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <h3 className="font-semibold text-lg">{template.name}</h3>
-                  <p className="text-sm text-gray-600">
+                  <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">{template.name}</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     Sends: {getTriggerLabel(template.trigger_type)}
                   </p>
                 </div>
                 <span className={`px-2 py-1 rounded text-xs font-medium ${
-                  template.enabled 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-gray-100 text-gray-800'
+                  template.enabled
+                    ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-400'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-400'
                 }`}>
                   {template.enabled ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
-              
+
               <div className="mb-4">
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-gray-700 dark:text-gray-300">
                   <strong>Subject:</strong> {template.subject}
                 </p>
-                <p className="text-sm text-gray-700 mt-2">
+                <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
                   <strong>Preview:</strong> {template.body.substring(0, 150)}...
                 </p>
               </div>
@@ -167,13 +167,13 @@ export default function EventTemplatesPage() {
                     setEditingTemplate(template);
                     setShowEditor(true);
                   }}
-                  className="text-sm text-blue-600 hover:text-blue-700"
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => handleDelete(template.id)}
-                  className="text-sm text-red-600 hover:text-red-700"
+                  className="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
                 >
                   Delete
                 </button>
