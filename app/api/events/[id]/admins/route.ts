@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { sendEmail } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
+import { getUsersByIds, findUserByEmail } from '@/lib/adminUsers';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -80,9 +81,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const { data: allUsers } = await service.auth.admin.listUsers();
-  const userMap: Record<string, any> = {};
-  (allUsers?.users ?? []).forEach((u: any) => { userMap[u.id] = u; });
+  const relevantIds = [...new Set(
+    (assignments ?? []).flatMap((a: any) => [a.user_id, a.invited_by].filter(Boolean))
+  )] as string[];
+  const userMap = await getUsersByIds(service, relevantIds);
 
   const enriched = (assignments ?? []).map((a: any) => {
     const assignedUser = a.user_id ? userMap[a.user_id] : null;
@@ -214,8 +216,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }).catch((e) => console.error('Event admin invite email error:', e));
 
     // Notify existing user via in-app bell
-    const { data: allInvitees } = await service.auth.admin.listUsers();
-    const inviteeUser = (allInvitees?.users ?? []).find((u: any) => (u.email ?? '').toLowerCase() === normalizedEmail);
+    const inviteeUser = await findUserByEmail(service, normalizedEmail);
     if (inviteeUser) {
       await service.from('notifications').insert({
         user_id: inviteeUser.id,

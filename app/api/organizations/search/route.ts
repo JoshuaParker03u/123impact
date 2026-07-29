@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { findUserByEmail } from '@/lib/adminUsers';
 
 // GET /api/organizations/search?q=<name>
 // Auth required. Searches org names on the platform — does NOT expose any user memberships.
@@ -37,8 +38,7 @@ export async function GET(req: NextRequest) {
 
   // If an invitee email is provided, restrict results to orgs they actually belong to
   if (filterEmail) {
-    const { data: users } = await service.auth.admin.listUsers();
-    const target = (users?.users ?? []).find((u: any) => u.email?.toLowerCase() === filterEmail);
+    const target = await findUserByEmail(service, filterEmail);
     if (!target) return NextResponse.json([]);
 
     let memberQuery = service

@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { sendEmail } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
+import { findUserByEmail } from '@/lib/adminUsers';
 
 type Params = { params: Promise<{ id: string; assignmentId: string }> };
 
@@ -131,9 +132,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }).catch((e) => console.error('Resend event admin invite error:', e));
 
     // Notify existing user via in-app bell
-    const { data: allInvitees } = await service.auth.admin.listUsers();
     const searchEmail = (assignment.email ?? '').toLowerCase().trim();
-    const inviteeUser = (allInvitees?.users ?? []).find((u: any) => (u.email ?? '').toLowerCase().trim() === searchEmail);
+    const inviteeUser = await findUserByEmail(service, searchEmail);
     if (inviteeUser) {
       await service.from('notifications').insert({
         user_id: inviteeUser.id,

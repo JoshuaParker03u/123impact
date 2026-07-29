@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { getUsersByIds } from '@/lib/adminUsers';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -56,10 +57,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Fetch user display info
-  const { data: allUsers } = await service.auth.admin.listUsers();
-  const userMap: Record<string, any> = {};
-  (allUsers?.users ?? []).forEach((u: any) => { userMap[u.id] = u; });
+  // Fetch user display info directly by id — listUsers() is paginated
+  // (50/page by default) and was silently dropping members past the first
+  // page on orgs with many accumulated users.
+  const userMap = await getUsersByIds(service, (members ?? []).map((m: any) => m.user_id));
 
   const enriched = (members ?? []).map((m: any) => {
     const u = userMap[m.user_id];

@@ -7,12 +7,14 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import EmailTemplateEditor from '@/components/EmailTemplateEditor';
 import AdminNavigation from '@/components/admin/AdminNavigation';
+import { useOrganization } from '@/contexts/OrganizationContext';
 
 const supabase = getBrowserClient();
 
 export default function EventTemplatesPage() {
   const params = useParams();
   const eventId = params.id as string;
+  const { isAdmin: canManage } = useOrganization() as { isAdmin: boolean };
   const [event, setEvent] = useState<any>(null);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,26 +113,30 @@ export default function EventTemplatesPage() {
           <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-gray-100">Email Templates</h1>
           <p className="text-gray-600 dark:text-gray-400">{event?.title}</p>
         </div>
-        <button
-          onClick={() => {
-            setEditingTemplate(null);
-            setShowEditor(true);
-          }}
-          className="bg-gradient-to-br from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg hover:opacity-90"
-        >
-          + Create Template
-        </button>
+        {canManage && (
+          <button
+            onClick={() => {
+              setEditingTemplate(null);
+              setShowEditor(true);
+            }}
+            className="bg-gradient-to-br from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg hover:opacity-90"
+          >
+            + Create Template
+          </button>
+        )}
       </div>
 
       {templates.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
           <p className="text-gray-600 dark:text-gray-400 mb-4">No email templates yet</p>
-          <button
-            onClick={() => setShowEditor(true)}
-            className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-          >
-            Create your first template
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setShowEditor(true)}
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+            >
+              Create your first template
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid gap-4">
@@ -161,23 +167,25 @@ export default function EventTemplatesPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setEditingTemplate(template);
-                    setShowEditor(true);
-                  }}
-                  className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(template.id)}
-                  className="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
-                >
-                  Delete
-                </button>
-              </div>
+              {canManage && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingTemplate(template);
+                      setShowEditor(true);
+                    }}
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(template.id)}
+                    className="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

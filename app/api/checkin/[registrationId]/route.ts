@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { findUserByEmail } from '@/lib/adminUsers';
 
 type Params = { params: Promise<{ registrationId: string }> };
 
@@ -220,31 +221,26 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Send in-app notification to the registrant if they have a user account
-  // (best-effort — no account required to register). Not awaited: this
+  // (best-effort — no account required to register). Not awaited — this
   // previously blocked every check-in response on a full
-  // auth.admin.listUsers() call just to find one user by email — real
-  // latency added to a nice-to-have side effect, not the check-in itself.
-  service.auth.admin.listUsers().then(({ data: userByEmail }) => {
-    const matchedUser = userByEmail?.users?.find(
-      (u: any) => u.email?.toLowerCase() === reg.email?.toLowerCase()
-    );
+  // auth.admin.listUsers() call just to find one user by email, adding real
+  // latency to a nice-to-have side effect, not the check-in itself.
+  // findUserByEmail also avoids a correctness bug listUsers() had: it's
+  // paginated (50/page by default), so a straight listUsers() call was
+  // silently missing this lookup on projects with many accumulated users.
+  (async () => {
+    const matchedUser = reg.email ? await findUserByEmail(service, reg.email) : null;
     if (!matchedUser) return;
 
-    return service
-      .from('events')
-      .select('title')
-      .eq('id', event.id)
-      .single()
-      .then(({ data: fullEvent }) =>
-        service.from('notifications').insert({
-          user_id: matchedUser.id,
-          type:    'check_in_confirmed',
-          title:   'Check-in confirmed',
-          body:    `You've been checked in for "${fullEvent?.title ?? 'the event'}".`,
-          link:    `/events/${event.event_id ?? ''}/r/${registrationId}`,
-        })
-      );
-  }).catch(() => {});
+    const { data: fullEvent } = await service.from('events').select('title').eq('id', event.id).single();
+    await service.from('notifications').insert({
+      user_id: matchedUser.id,
+      type:    'check_in_confirmed',
+      title:   'Check-in confirmed',
+      body:    `You've been checked in for "${fullEvent?.title ?? 'the event'}".`,
+      link:    `/events/${event.event_id ?? ''}/r/${registrationId}`,
+    });
+  })().catch(() => {});
 
   return NextResponse.json(
     { checked_in: true, checked_in_at: checkIn.checked_in_at, is_override: checkIn.is_override },

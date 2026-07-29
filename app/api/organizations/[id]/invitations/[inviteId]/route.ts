@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
+import { findUserByEmail } from '@/lib/adminUsers';
 
 type Params = { params: Promise<{ id: string; inviteId: string }> };
 
@@ -102,12 +103,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     // Resend email
-    const [orgRow, allUsers] = await Promise.all([
-      service.from('organizations').select('name, logo_url').eq('id', orgId).single(),
-      service.auth.admin.listUsers(),
-    ]);
-    const inviterUser = (allUsers.data?.users ?? []).find((u: any) => u.id === user.id);
-    const inviterName = inviterUser?.user_metadata?.full_name || inviterUser?.email || 'A team member';
+    const orgRow = await service.from('organizations').select('name, logo_url').eq('id', orgId).single();
+    // The caller's own user object already has this — no lookup needed.
+    const inviterName = user.user_metadata?.full_name || user.email || 'A team member';
     const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || '';
 
     const acceptUrl = `${origin}/invite/${invite.token}`;
@@ -132,7 +130,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }).catch((e) => console.error('resend email error:', e));
 
     // Notify existing user via in-app bell
-    const inviteeUser = (allUsers.data?.users ?? []).find((u: any) => (u.email ?? '').toLowerCase() === invite.email);
+    const inviteeUser = await findUserByEmail(service, invite.email);
     if (inviteeUser) {
       await service.from('notifications').insert({
         user_id: inviteeUser.id,

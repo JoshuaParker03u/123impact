@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
+import { getUsersByIds, findUserByEmail } from '@/lib/adminUsers';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -113,14 +114,13 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Fetch inviter names from auth.users
-  const inviterIds = [...new Set((data ?? []).map((inv: any) => inv.invited_by))];
-  let nameMap: Record<string, string> = {};
+  const inviterIds = [...new Set((data ?? []).map((inv: any) => inv.invited_by))] as string[];
+  const nameMap: Record<string, string> = {};
   if (inviterIds.length > 0) {
-    const { data: users } = await service.auth.admin.listUsers();
-    (users?.users ?? []).forEach((u: any) => {
-      if (inviterIds.includes(u.id)) {
-        nameMap[u.id] = u.user_metadata?.full_name || u.email || u.id;
-      }
+    const users = await getUsersByIds(service, inviterIds);
+    inviterIds.forEach((id) => {
+      const u = users[id];
+      if (u) nameMap[id] = u.user_metadata?.full_name || u.email || id;
     });
   }
 
@@ -158,8 +158,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Check if already a member
-  const { data: existingUsers } = await service.auth.admin.listUsers();
-  const existingUser = (existingUsers?.users ?? []).find((u: any) => u.email === email);
+  const existingUser = await findUserByEmail(service, email);
   if (existingUser) {
     const { data: membership } = await service
       .from('organization_admins')
@@ -200,8 +199,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('id', orgId)
     .single();
 
-  const inviterUser = (existingUsers?.users ?? []).find((u: any) => u.id === user.id);
-  const inviterName = inviterUser?.user_metadata?.full_name || inviterUser?.email || 'A team member';
+  // The caller's own user object already has this — no lookup needed.
+  const inviterName = user.user_metadata?.full_name || user.email || 'A team member';
 
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
