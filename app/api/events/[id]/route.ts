@@ -60,7 +60,7 @@ export async function DELETE(
     .eq('user_id', user.id)
     .single();
 
-  if (!adminRow) {
+  if (!adminRow || !['owner', 'admin'].includes(adminRow.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
