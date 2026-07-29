@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase';
@@ -44,12 +45,28 @@ function isPastDate(dateStr) {
 function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onCheckedIn, onUnchecked }) {
   const [open, setOpen]     = useState(false);
   const [saving, setSaving] = useState(false);
-  const ref = useRef(null);
+  const [coords, setCoords] = useState(null);
+  const triggerRef = useRef(null);
+  const menuRef     = useRef(null);
+
+  // The dropdown is portaled to document.body (see below) so it can escape
+  // the admin table's overflow-x-auto wrapper, which otherwise clips any
+  // position: absolute content that overflows the table's bottom edge.
+  function openMenu(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setCoords({ top: rect.bottom + 4, left: rect.left });
+    setOpen((o) => !o);
+  }
 
   useEffect(() => {
     if (!open) return;
     function handleClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) {
+        setOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -108,16 +125,21 @@ function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onC
     }
 
     return (
-      <div className="relative inline-block" ref={ref}>
+      <div className="relative inline-block">
         <button
-          onClick={() => setOpen((o) => !o)}
+          ref={triggerRef}
+          onClick={openMenu}
           className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400 hover:underline"
         >
           <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
           <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500">(override)</span>
         </button>
-        {open && (
-          <div className="absolute z-10 mt-1 left-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+        {open && coords && createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: 'fixed', top: coords.top, left: coords.left }}
+            className="z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]"
+          >
             <button
               onClick={undoCheckIn}
               disabled={saving}
@@ -126,7 +148,8 @@ function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onC
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
               Undo check-in
             </button>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     );
@@ -139,15 +162,20 @@ function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onC
   // No-show — clickable, lets staff manually override with a real check-in
   // (e.g. someone who showed up but scanning/link check-in didn't happen).
   return (
-    <div className="relative inline-block" ref={ref}>
+    <div className="relative inline-block">
       <button
-        onClick={() => setOpen((o) => !o)}
+        ref={triggerRef}
+        onClick={openMenu}
         className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
       >
         No-show
       </button>
-      {open && (
-        <div className="absolute z-10 mt-1 left-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left }}
+          className="z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[160px]"
+        >
           <button
             onClick={markCheckedIn}
             disabled={saving}
@@ -156,7 +184,8 @@ function CheckInStatus({ registrationId, checkedInAt, isOverride, eventDate, onC
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" />}
             Mark as checked in
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
