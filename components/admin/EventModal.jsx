@@ -126,6 +126,7 @@ function EventImageUploader({ value, onChange, organizationId, orgLogoUrl, disab
             {uploading ? 'Uploading...' : <>Drag & drop or <span className="text-blue-600 dark:text-blue-400 font-medium">browse</span></>}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">JPG, PNG, SVG, WebP — max 5 MB</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Recommended: 1200 × 400 px (renders as a wide banner on the signup page)</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -498,7 +499,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Image (optional)</label>
+              <label className="block text-sm font-medium mb-1">Banner Image (optional)</label>
               <EventImageUploader
                 value={formData.image_url}
                 onChange={(url) => setFormData({ ...formData, image_url: url })}
