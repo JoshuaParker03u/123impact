@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import EmailTemplateEditor from '@/components/EmailTemplateEditor';
 import AdminNavigation from '@/components/admin/AdminNavigation';
+import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
 const supabase = getBrowserClient();
@@ -20,6 +21,8 @@ export default function EventTemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -43,10 +46,12 @@ export default function EventTemplatesPage() {
     setLoading(false);
   }
 
-  async function handleDelete(templateId: string) {
-    if (!confirm('Are you sure you want to delete this template?')) return;
-
-    await fetch(`/api/templates?id=${templateId}`, { method: 'DELETE' });
+  async function handleDelete() {
+    if (!deletingTemplate) return;
+    setDeleting(true);
+    await fetch(`/api/templates?id=${deletingTemplate.id}`, { method: 'DELETE' });
+    setDeleting(false);
+    setDeletingTemplate(null);
     loadData();
   }
 
@@ -179,7 +184,7 @@ export default function EventTemplatesPage() {
                     Edit
                   </button>
                   <button
-                    onClick={() => handleDelete(template.id)}
+                    onClick={() => setDeletingTemplate(template)}
                     className="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
                   >
                     Delete
@@ -191,6 +196,20 @@ export default function EventTemplatesPage() {
         </div>
       )}
       </div>
+
+      {deletingTemplate && (
+        <ConfirmDeleteModal
+          title="Delete Template"
+          message={
+            <>
+              This will permanently delete <span className="font-medium text-gray-900 dark:text-gray-100">{deletingTemplate.name}</span>. This cannot be undone.
+            </>
+          }
+          loading={deleting}
+          onCancel={() => setDeletingTemplate(null)}
+          onConfirm={handleDelete}
+        />
+      )}
     </>
   );
 }

@@ -115,6 +115,12 @@ export async function POST(req: NextRequest) {
     ? attendee_type
     : 'volunteer';
 
+  // Attendee/Speaker are RSVP-only roles and never select shifts — Speaker
+  // signups also require an accepted invite (see /api/event-speaker-invites).
+  if (resolvedType !== 'volunteer') {
+    return NextResponse.json({ error: 'This role does not select shifts' }, { status: 400 });
+  }
+
   const supabase = buildServiceClient();
 
   // Fetch all requested shifts

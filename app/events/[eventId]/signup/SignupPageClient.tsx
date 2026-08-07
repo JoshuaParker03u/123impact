@@ -50,6 +50,10 @@ type Event = {
   is_shiftless?: boolean
   shiftless_capacity?: number | null
   shiftless_filled?: number
+  attendee_enabled?: boolean
+  attendee_capacity?: number | null
+  attendee_filled?: number
+  speaker_enabled?: boolean
 }
 
 function EventScheduleDisplay({ event }: { event: Event }) {
@@ -133,10 +137,25 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 type BrandingData = { primary_color: string | null; secondary_color: string | null; banner_image_url: string | null; header_links: { label: string; url: string }[]; org_name: string | null; org_logo: string | null }
 
-export default function SignupPageClient({ params, initialBranding }: { params: Promise<{ eventId: string }>; initialBranding: BrandingData | null }) {
+type Role = 'volunteer' | 'attendee' | 'speaker'
+
+const ROLE_LABEL: Record<Role, string> = {
+  volunteer: 'Volunteer',
+  attendee:  'Attendee',
+  speaker:   'Speaker',
+}
+
+const ROLE_TAGLINE: Record<Role, string> = {
+  volunteer: "You're signing up to volunteer for this event.",
+  attendee:  "You're RSVPing to attend this event.",
+  speaker:   "You're confirming your speaking slot for this event.",
+}
+
+export default function SignupPageClient({ params, initialBranding, role }: { params: Promise<{ eventId: string }>; initialBranding: BrandingData | null; role: Role }) {
   const { eventId } = use(params)
   const searchParams = useSearchParams()
   const refToken = searchParams.get('ref')
+  const inviteToken = searchParams.get('token')
 
   const [event, setEvent]                 = useState<Event | null>(null)
   const [shifts, setShifts]               = useState<Shift[]>([])
@@ -145,11 +164,17 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
   const [pageError, setPageError]         = useState<string | null>(null)
   const branding = initialBranding
   const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set())
-  const [formData, setFormData]             = useState({ name: '', email: '', phone: '', attendee_type: 'volunteer' })
+  const [formData, setFormData]             = useState({ name: '', email: '', phone: '', bio: '', topic: '' })
   const [submitted, setSubmitted]           = useState(false)
   const [submittedShifts, setSubmittedShifts] = useState<{ id: string; name: string; start_time: string; end_time: string; waitlisted: boolean }[]>([])
   const [submitting, setSubmitting]         = useState(false)
   const [errors, setErrors]                 = useState<Record<string, string>>({})
+  const [inviteError, setInviteError]       = useState<string | null>(null)
+  // True when the inviter already specified a topic — locks the field so
+  // the invitee isn't asked to fill it in themselves. False for legacy
+  // invites created before topics were set at invite time.
+  const [topicLocked, setTopicLocked]       = useState(false)
+  const [sessionTime, setSessionTime]       = useState<string | null>(null)
 
   // Compare plain "YYYY-MM-DD" strings directly rather than through Date
   // objects — new Date("2026-07-28") parses as UTC midnight, which shifts a
@@ -177,9 +202,11 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
         const eventData = await apiFetch<Event>(`events/slug/${eventId}`)
         setEvent(eventData)
 
-        // GET /api/events/:id/shifts  — public
-        const shiftsData = await apiFetch<Shift[]>(`events/${eventData.id}/shifts`)
-        setShifts(shiftsData)
+        if (role === 'volunteer') {
+          // GET /api/events/:id/shifts  — public
+          const shiftsData = await apiFetch<Shift[]>(`events/${eventData.id}/shifts`)
+          setShifts(shiftsData)
+        }
 
         // Fetch co-sponsors (fire-and-forget, non-blocking)
         fetch(`/api/events/${eventData.id}/co-sponsors`)
@@ -196,6 +223,37 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
             body: JSON.stringify({ ref_token: refToken, event_id: eventData.id }),
           }).catch(() => {}) // fire-and-forget, never block registration
         }
+
+        // Speaker signup is invite-only — validate the token and lock the
+        // email to whoever was invited (no account/login involved).
+        if (role === 'speaker') {
+          if (!inviteToken) {
+            setInviteError('This link is missing an invitation token.')
+          } else {
+            const res = await fetch(`/api/event-speaker-invites/${inviteToken}`)
+            const data = await res.json()
+            if (!res.ok) {
+              setInviteError(data.error ?? 'Invalid invitation link')
+            } else if (data.status !== 'pending') {
+              setInviteError(
+                data.status === 'accepted' ? 'This invitation has already been used.' :
+                data.status === 'expired'  ? 'This invitation has expired.' :
+                'This invitation is no longer valid.'
+              )
+            } else {
+              setFormData(prev => ({
+                ...prev,
+                email: data.email,
+                name:  prev.name || data.prefill?.name || prev.name,
+                phone: prev.phone || data.prefill?.phone || prev.phone,
+                bio:   prev.bio || data.prefill?.bio || prev.bio,
+                topic: data.topic || prev.topic,
+              }))
+              setTopicLocked(!!data.topic)
+              setSessionTime(data.session_time ?? null)
+            }
+          }
+        }
       } catch (err) {
         setPageError(err instanceof Error ? err.message : 'Failed to load event')
       } finally {
@@ -204,11 +262,19 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
     }
 
     load()
-  }, [eventId])
+  }, [eventId, role, inviteToken])
 
   // ── Pre-fill form for logged-in users ───────────────────────────────────────
+  // Speaker is excluded: its email/name/phone/bio come from the invite's
+  // email server-side (see the load() effect above), not from whoever
+  // happens to be logged into this browser. Using the logged-in session here
+  // too would (a) require sign-in, which Speaker signup explicitly doesn't,
+  // and (b) silently fill in the wrong person's data if the visitor is
+  // logged in as an account other than the one that was invited.
 
   useEffect(() => {
+    if (role === 'speaker') return
+
     async function prefill() {
       const { data: { user } } = await getBrowserClient().auth.getUser()
       if (!user) return
@@ -227,7 +293,7 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
     }
 
     prefill()
-  }, [])
+  }, [role])
 
   // ── Toggle shift selection ────────────────────────────────────────────────
 
@@ -245,6 +311,10 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
     })
   }
 
+  // Only Volunteer signups (on events that aren't shiftless) pick a shift —
+  // Attendee/Speaker are always RSVP-style.
+  const requiresShift = role === 'volunteer' && !event?.is_shiftless
+
   // ── Validation ───────────────────────────────────────────────────────────
 
   const validate = (): boolean => {
@@ -253,15 +323,17 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
     if (!formData.name.trim())
       next.name = 'Name is required'
 
-    if (!formData.email.trim())
-      next.email = 'Email is required'
-    else if (!/\S+@\S+\.\S+/.test(formData.email))
-      next.email = 'Email is invalid'
+    if (role !== 'speaker') {
+      if (!formData.email.trim())
+        next.email = 'Email is required'
+      else if (!/\S+@\S+\.\S+/.test(formData.email))
+        next.email = 'Email is invalid'
+    }
 
     if (formData.phone.trim() && !/^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/.test(formData.phone))
       next.phone = 'Phone number format is invalid (e.g., 555-123-4567)'
 
-    if (!event?.is_shiftless && selectedShifts.size === 0)
+    if (requiresShift && selectedShifts.size === 0)
       next.shift = 'Please select at least one shift'
 
     setErrors(next)
@@ -272,25 +344,44 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate() || (!event?.is_shiftless && selectedShifts.size === 0) || !event) return
+    if (!validate() || (requiresShift && selectedShifts.size === 0) || !event) return
 
     setSubmitting(true)
     setErrors({})
 
     try {
-      const payload: Record<string, unknown> = {
-        name:          formData.name,
-        email:         formData.email.toLowerCase(),
-        phone:         formData.phone.trim() || null,
-        attendee_type: formData.attendee_type,
-      }
-
-      if (event?.is_shiftless) {
-        payload.event_id = event.id
+      if (role === 'speaker') {
+        const res = await fetch(`/api/event-speaker-invites/${inviteToken}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name:  formData.name,
+            phone: formData.phone.trim() || null,
+            bio:   formData.bio.trim() || null,
+            topic: formData.topic.trim() || null,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`)
+        setSubmittedShifts([])
+      } else if (role === 'attendee' || event.is_shiftless) {
+        const payload = {
+          event_id:      event.id,
+          name:          formData.name,
+          email:         formData.email.toLowerCase(),
+          phone:         formData.phone.trim() || null,
+          attendee_type: role,
+        }
         await apiFetch('volunteer-registrations', { method: 'POST', body: JSON.stringify(payload) })
         setSubmittedShifts([])
       } else {
-        payload.shift_ids = [...selectedShifts]
+        const payload = {
+          name:          formData.name,
+          email:         formData.email.toLowerCase(),
+          phone:         formData.phone.trim() || null,
+          attendee_type: role,
+          shift_ids:     [...selectedShifts],
+        }
         const res = await fetch('/api/volunteer-registrations/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -363,6 +454,25 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
     )
   }
 
+  // ── Invalid/expired speaker invite ──────────────────────────────────────
+
+  if (role === 'speaker' && inviteError) {
+    return (
+      <>
+        <Header />
+        <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-12 px-4">
+          <div className="max-w-4xl mx-auto">
+            <Card className="p-8 text-center">
+              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Invitation Not Valid</h1>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">{inviteError}</p>
+            </Card>
+          </div>
+        </main>
+      </>
+    )
+  }
+
   // ── Success ──────────────────────────────────────────────────────────────
 
   const accentColor    = branding?.primary_color ?? null
@@ -375,7 +485,7 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
   if (submitted) {
     const anyWaitlisted = submittedShifts.some(s => s.waitlisted)
     const allWaitlisted = submittedShifts.length > 0 && submittedShifts.every(s => s.waitlisted)
-    const isShiftless   = event.is_shiftless
+    const isShiftless   = role !== 'volunteer' || event.is_shiftless
 
     return (
       <>
@@ -412,7 +522,7 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
               )}
 
               <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-                {allWaitlisted ? "You're on the Waitlist!" : "You're All Set!"}
+                {allWaitlisted ? "You're on the Waitlist!" : role === 'speaker' ? "You're Confirmed to Speak!" : "You're All Set!"}
               </h1>
               <p className="text-gray-600 dark:text-gray-400 mb-6">
                 {isShiftless
@@ -509,7 +619,16 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
               }}
             />
             <div className="p-6">
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">{event.title}</h1>
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide text-white"
+                  style={btnStyle ?? { background: 'linear-gradient(to right, #2563eb, #9333ea)' }}
+                >
+                  {ROLE_LABEL[role]} Sign-Up
+                </span>
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">{event.title}</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{ROLE_TAGLINE[role]}</p>
               <div className="flex flex-wrap gap-4 text-gray-600 dark:text-gray-400 mb-4">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5" />
@@ -565,8 +684,17 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
             </div>
           </Card>
 
-          {/* Shift selection — hidden for shiftless events */}
-          {event.is_shiftless ? (
+          {/* Shift selection — only for Volunteer signups on non-shiftless events */}
+          {role === 'attendee' ? (
+            event.attendee_capacity ? (
+              <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
+                <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <p className="text-sm text-blue-900 dark:text-blue-200">
+                  {Math.max(0, event.attendee_capacity - (event.attendee_filled ?? 0))} of {event.attendee_capacity} spots remaining
+                </p>
+              </div>
+            ) : null
+          ) : role === 'speaker' ? null : event.is_shiftless ? (
             event.shiftless_capacity ? (
               <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
                 <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
@@ -662,7 +790,7 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
 
           {/* Registration form */}
           <Card className="p-6">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Your Information</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">{ROLE_LABEL[role]} Information</h2>
             {isCancelled ? (
               <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
@@ -685,29 +813,6 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label>I am registering as a *</Label>
-                <div className="flex gap-2 mt-1">
-                  {[['volunteer', 'Volunteer'], ['attendee', 'Attendee'], ['speaker', 'Speaker']].map(([val, label]) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => handleInputChange('attendee_type', val)}
-                      className={`flex-1 py-2 rounded-md text-sm font-medium border transition-colors ${
-                        formData.attendee_type === val
-                          ? 'text-white border-transparent'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
-                      }`}
-                      style={formData.attendee_type === val
-                        ? (btnStyle ?? { backgroundColor: '#2563eb', borderColor: '#2563eb' })
-                        : undefined}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
                 <Label htmlFor="name">Full Name *</Label>
                 <Input
                   id="name"
@@ -729,8 +834,11 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   placeholder="john@example.com"
                   className={errors.email ? 'border-red-500' : ''}
-                  disabled={submitting}
+                  disabled={submitting || role === 'speaker'}
                 />
+                {role === 'speaker' && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">This invitation is tied to your invited email.</p>
+                )}
                 {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
               </div>
 
@@ -746,10 +854,47 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
                   disabled={submitting}
                 />
                 {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Get SMS reminders for your shift (feature coming soon!)
-                </p>
+                {role === 'volunteer' && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Get SMS reminders for your shift (feature coming soon!)
+                  </p>
+                )}
               </div>
+
+              {role === 'speaker' && (
+                <>
+                  <div>
+                    <Label htmlFor="topic">Session Topic{topicLocked ? '' : ' (optional)'}</Label>
+                    <Input
+                      id="topic"
+                      value={formData.topic}
+                      onChange={(e) => handleInputChange('topic', e.target.value)}
+                      placeholder="What will you be speaking about?"
+                      disabled={submitting || topicLocked}
+                    />
+                    {topicLocked && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">This topic was set by the event organizer.</p>
+                    )}
+                    {sessionTime && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> Scheduled for {formatEventTime(sessionTime)}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="bio">Speaker Bio (optional)</Label>
+                    <textarea
+                      id="bio"
+                      value={formData.bio}
+                      onChange={(e) => handleInputChange('bio', e.target.value)}
+                      placeholder="A short bio for the event program"
+                      disabled={submitting}
+                      rows={3}
+                      className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                    />
+                  </div>
+                </>
+              )}
 
               <Button
                 type="submit"
@@ -760,7 +905,7 @@ export default function SignupPageClient({ params, initialBranding }: { params: 
               >
                 {submitting
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting...</>
-                  : isCancelled ? 'Event Cancelled' : isClosed ? 'Registration Closed' : 'Confirm Signup'
+                  : isCancelled ? 'Event Cancelled' : isClosed ? 'Registration Closed' : `Confirm ${ROLE_LABEL[role]} Sign-Up`
                 }
               </Button>
             </form>

@@ -185,6 +185,9 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     recording_url:       event?.recording_url       || '',
     is_shiftless:        event?.is_shiftless        ?? false,
     shiftless_capacity:  event?.shiftless_capacity  ?? '',
+    attendee_enabled:    event?.attendee_enabled    ?? false,
+    attendee_capacity:   event?.attendee_capacity   ?? '',
+    speaker_enabled:     event?.speaker_enabled     ?? false,
   });
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
   const [dayHours, setDayHours] = useState(() =>
@@ -249,11 +252,16 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
         is_shiftless:       formData.is_shiftless,
         shiftless_capacity: formData.shiftless_capacity ? parseInt(formData.shiftless_capacity) : null,
       };
+      const rolePayload = {
+        attendee_enabled:   formData.attendee_enabled,
+        attendee_capacity:  formData.attendee_capacity ? parseInt(formData.attendee_capacity) : null,
+        speaker_enabled:    formData.speaker_enabled,
+      };
       const imageUrl = formData.image_url || organizationLogoUrl || '';
       if (event) {
         const { error } = await supabase
           .from('events')
-          .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload })
+          .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload, ...rolePayload })
           .eq('id', event.id);
         if (error) throw error;
         await saveDayHours(event.id);
@@ -275,6 +283,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
             recording_url: formData.recording_url || null,
             organization_id: organizationId,
             ...shiftlessPayload,
+            ...rolePayload,
           })
           .select('id')
           .single();
@@ -549,6 +558,49 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                 />
               </div>
             )}
+
+            <div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-600 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={formData.attendee_enabled}
+                  onChange={(e) => setFormData({ ...formData, attendee_enabled: e.target.checked, attendee_capacity: '' })}
+                  className="rounded"
+                />
+                Enable Attendee registration (RSVP, no shift selection)
+              </label>
+            </div>
+
+            {formData.attendee_enabled && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Attendee Capacity (optional)</label>
+                <input
+                  type="number"
+                  value={formData.attendee_capacity}
+                  onChange={(e) => setFormData({ ...formData, attendee_capacity: e.target.value })}
+                  className={inputCls}
+                  placeholder="Leave blank for unlimited"
+                  min={1}
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-600 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={formData.speaker_enabled}
+                  onChange={(e) => setFormData({ ...formData, speaker_enabled: e.target.checked })}
+                  className="rounded"
+                />
+                Enable Speaker signups (invite-only)
+              </label>
+              {formData.speaker_enabled && event && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Manage speaker invites from the &quot;Speakers&quot; tab after saving.
+                </p>
+              )}
+            </div>
 
             {event && (
               <div>

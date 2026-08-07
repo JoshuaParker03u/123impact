@@ -37,6 +37,7 @@ export async function GET(
       id, event_id, title, description, date, end_date, time,
       location, image_url, status, organization_id,
       is_shiftless, shiftless_capacity,
+      attendee_enabled, attendee_capacity, speaker_enabled,
       platform_source, external_id, last_synced_at, sync_status, is_private_on_platform,
       shifts (id, shift_id, name, description, start_time, end_time, capacity, shift_date, allow_waitlist),
       event_day_hours (id, event_date, start_time, end_time)

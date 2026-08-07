@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import MessageComposer from '@/components/MessageComposer';
+import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X, CheckCircle2 } from 'lucide-react';
@@ -21,6 +22,22 @@ const AVATAR_COLORS = [
   'from-pink-500 to-pink-700',
   'from-teal-500 to-teal-700',
 ];
+
+// Matches the colors used for attendee_type breakdowns on the Analytics tab
+const ROLE_BADGE = {
+  volunteer: { label: 'Volunteer', className: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
+  attendee:  { label: 'Attendee',  className: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
+  speaker:   { label: 'Speaker',   className: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+};
+
+function RoleBadge({ type }) {
+  const role = ROLE_BADGE[type] ?? ROLE_BADGE.volunteer;
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${role.className}`}>
+      {role.label}
+    </span>
+  );
+}
 
 function VolunteerAvatar({ name }) {
   const initials = name ? name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() : '?';
@@ -210,12 +227,14 @@ function AdminVolunteersPage() {
   const { currentOrganization, loading: orgLoading, isAdmin: isOrgAdmin } = useOrganization();
   const { streamerMode } = useStreamerMode();
   const [messageVolunteer, setMessageVolunteer] = useState(null);
+  const [removingVolunteer, setRemovingVolunteer] = useState(null);
+  const [removing, setRemoving] = useState(false);
   const searchParams = useSearchParams();
   const [volunteers, setVolunteers] = useState([]);
-  const [filteredVolunteers, setFilteredVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [eventFilter, setEventFilter] = useState(searchParams.get('event') ?? 'all');
+  const [eventFilter, setEventFilter] = useState(searchParams.get('event') ?? 'current');
+  const [roleFilter, setRoleFilter] = useState(searchParams.get('role') ?? 'all');
   const [events, setEvents] = useState([]);
 
   useEffect(() => {
@@ -223,10 +242,6 @@ function AdminVolunteersPage() {
       fetchData();
     }
   }, [currentOrganization?.id]);
-
-  useEffect(() => {
-    filterVolunteers();
-  }, [searchTerm, eventFilter, volunteers]);
 
   const fetchData = async () => {
     if (!currentOrganization) return;
@@ -237,7 +252,7 @@ function AdminVolunteersPage() {
       // Fetch all events for this organization
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('id, title, event_id')
+        .select('id, title, event_id, status')
         .eq('organization_id', currentOrganization.id)
         .order('date', { ascending: false });
 
@@ -252,7 +267,6 @@ function AdminVolunteersPage() {
       
       if (eventIds.length === 0) {
         setVolunteers([]);
-        setFilteredVolunteers([]);
         setLoading(false);
         return;
       }
@@ -272,6 +286,7 @@ function AdminVolunteersPage() {
           registered_at,
           shift_id,
           event_id,
+          attendee_type,
           shifts (
             id,
             name,
@@ -291,7 +306,6 @@ function AdminVolunteersPage() {
       if (volunteersError) {
         console.error('Error fetching volunteers:', volunteersError);
         setVolunteers([]);
-        setFilteredVolunteers([]);
         setLoading(false);
         return;
       }
@@ -314,8 +328,11 @@ function AdminVolunteersPage() {
         is_override: checkInMap.get(v.id)?.is_override ?? false,
       }));
 
+      // Don't set filteredVolunteers here — leave it to the effect that
+      // watches `volunteers` (below), which applies the current filters.
+      // Setting it directly to the unfiltered list caused a one-frame flash
+      // of every registration before narrowing down to "current" events.
       setVolunteers(withCheckIn);
-      setFilteredVolunteers(withCheckIn);
     } catch (error) {
       console.error('Unexpected error in fetchData:', error);
     } finally {
@@ -323,9 +340,10 @@ function AdminVolunteersPage() {
     }
   };
 
-  const removeVolunteer = async (volunteer) => {
-    const context = volunteer.shift_id ? volunteer.shifts?.name : (volunteer.events?.title || 'this event');
-    if (!confirm(`Remove ${volunteer.name} from ${context}?`)) return;
+  const removeVolunteer = async () => {
+    const volunteer = removingVolunteer;
+    if (!volunteer) return;
+    setRemoving(true);
 
     const { error } = await supabase
       .from('volunteer_registrations')
@@ -334,6 +352,7 @@ function AdminVolunteersPage() {
 
     if (error) {
       alert('Failed to remove volunteer: ' + error.message);
+      setRemoving(false);
       return;
     }
 
@@ -351,6 +370,8 @@ function AdminVolunteersPage() {
     );
 
     setVolunteers((prev) => prev.filter((v) => v.id !== volunteer.id));
+    setRemoving(false);
+    setRemovingVolunteer(null);
   };
 
   const handleCheckedIn = (registrationId, checkedInAt, isOverride) => {
@@ -365,25 +386,48 @@ function AdminVolunteersPage() {
     );
   };
 
-  const filterVolunteers = () => {
-    let filtered = volunteers;
+  // Derived directly from state on every render (not a separate state
+  // variable updated via effect) so there's no in-between render where it
+  // still holds the previous/unfiltered list — that lag was causing a
+  // visible flash of every registration before narrowing to "current".
+  let filteredVolunteers = volunteers;
 
-    // Search filter
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(v =>
-        v.name.toLowerCase().includes(search) ||
-        v.email.toLowerCase().includes(search)
-      );
-    }
+  if (searchTerm) {
+    const search = searchTerm.toLowerCase();
+    filteredVolunteers = filteredVolunteers.filter(v =>
+      v.name.toLowerCase().includes(search) ||
+      v.email.toLowerCase().includes(search)
+    );
+  }
 
-    // Event filter
-    if (eventFilter !== 'all') {
-      filtered = filtered.filter(v => v.event_id === eventFilter);
-    }
+  // Event filter — grouped by status rather than listing every event by
+  // name, which got unwieldy once an org has more than a handful.
+  if (eventFilter === 'current') {
+    const currentIds = new Set(events.filter(e => ['active', 'ongoing'].includes(e.status)).map(e => e.id));
+    filteredVolunteers = filteredVolunteers.filter(v => currentIds.has(v.event_id));
+  } else if (eventFilter === 'past') {
+    const pastIds = new Set(events.filter(e => ['completed', 'cancelled'].includes(e.status)).map(e => e.id));
+    filteredVolunteers = filteredVolunteers.filter(v => pastIds.has(v.event_id));
+  }
 
-    setFilteredVolunteers(filtered);
-  };
+  // Role filter
+  if (roleFilter !== 'all') {
+    filteredVolunteers = filteredVolunteers.filter(v => (v.attendee_type ?? 'volunteer') === roleFilter);
+  }
+
+  // Events stat: only active/ongoing events count as "active" — completed
+  // and cancelled events are enumerated separately rather than folded in.
+  const activeEventsCount    = events.filter(e => ['active', 'ongoing'].includes(e.status)).length;
+  const completedEventsCount = events.filter(e => e.status === 'completed').length;
+  const cancelledEventsCount = events.filter(e => e.status === 'cancelled').length;
+
+  // Registrations stat: aggregates all three roles, broken out individually
+  // rather than left implicit under the "Volunteers" label.
+  const roleCounts = volunteers.reduce((acc, v) => {
+    const type = v.attendee_type ?? 'volunteer';
+    acc[type] = (acc[type] ?? 0) + 1;
+    return acc;
+  }, {});
 
   if (orgLoading) {
     return (
@@ -423,7 +467,7 @@ function AdminVolunteersPage() {
 
         {/* Filters */}
         <Card className="p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
@@ -439,12 +483,19 @@ function AdminVolunteersPage() {
               onChange={(e) => setEventFilter(e.target.value)}
               className="border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
             >
+              <option value="current">Current Events</option>
               <option value="all">All Events</option>
-              {events.map(event => (
-                <option key={event.id} value={event.id}>
-                  {event.title}
-                </option>
-              ))}
+              <option value="past">Past Events</option>
+            </select>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+            >
+              <option value="all">All Roles</option>
+              <option value="volunteer">Volunteer</option>
+              <option value="attendee">Attendee</option>
+              <option value="speaker">Speaker</option>
             </select>
           </div>
         </Card>
@@ -457,8 +508,13 @@ function AdminVolunteersPage() {
                 <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Volunteers</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Registrations</p>
                 <p className="text-2xl font-bold">{volunteers.length}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {roleCounts.volunteer ?? 0} volunteer{(roleCounts.volunteer ?? 0) !== 1 ? 's' : ''} &middot;{' '}
+                  {roleCounts.attendee ?? 0} attendee{(roleCounts.attendee ?? 0) !== 1 ? 's' : ''} &middot;{' '}
+                  {roleCounts.speaker ?? 0} speaker{(roleCounts.speaker ?? 0) !== 1 ? 's' : ''}
+                </p>
               </div>
             </div>
           </Card>
@@ -469,7 +525,12 @@ function AdminVolunteersPage() {
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Active Events</p>
-                <p className="text-2xl font-bold">{events.length}</p>
+                <p className="text-2xl font-bold">{activeEventsCount}</p>
+                {(completedEventsCount > 0 || cancelledEventsCount > 0) && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    {completedEventsCount} completed &middot; {cancelledEventsCount} cancelled
+                  </p>
+                )}
               </div>
             </div>
           </Card>
@@ -527,7 +588,10 @@ function AdminVolunteersPage() {
                           <div className="flex items-center gap-3">
                             <VolunteerAvatar name={volunteer.name} />
                             <div>
-                              <p className="font-medium text-gray-900 dark:text-gray-100">{redact(volunteer.name, 'name', streamerMode)}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-gray-900 dark:text-gray-100">{redact(volunteer.name, 'name', streamerMode)}</p>
+                                <RoleBadge type={volunteer.attendee_type} />
+                              </div>
                               <div className="flex items-center gap-3 mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                                 {streamerMode
                                   ? <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{redact(volunteer.email, 'email', streamerMode)}</span>
@@ -566,7 +630,7 @@ function AdminVolunteersPage() {
                         <td className="p-4 text-right">
                           {isOrgAdmin && (
                             <button
-                              onClick={() => removeVolunteer(volunteer)}
+                              onClick={() => setRemovingVolunteer(volunteer)}
                               className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                               title="Remove from shift"
                             >
@@ -589,7 +653,10 @@ function AdminVolunteersPage() {
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <VolunteerAvatar name={volunteer.name} />
                       <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{redact(volunteer.name, 'name', streamerMode)}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{redact(volunteer.name, 'name', streamerMode)}</p>
+                          <RoleBadge type={volunteer.attendee_type} />
+                        </div>
                         <div className="flex flex-col gap-0.5 mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                           {streamerMode
                             ? <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 flex-shrink-0" />{redact(volunteer.email, 'email', streamerMode)}</span>
@@ -602,7 +669,7 @@ function AdminVolunteersPage() {
                     </div>
                     {isOrgAdmin && (
                       <button
-                        onClick={() => removeVolunteer(volunteer)}
+                        onClick={() => setRemovingVolunteer(volunteer)}
                         className="ml-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors flex-shrink-0"
                         title="Remove from shift"
                       >
@@ -658,6 +725,21 @@ function AdminVolunteersPage() {
           onClose={() => setMessageVolunteer(null)}
           volunteerEmail={messageVolunteer.email}
           volunteerName={messageVolunteer.name}
+        />
+      )}
+
+      {removingVolunteer && (
+        <ConfirmDeleteModal
+          title="Remove Volunteer"
+          message={
+            <>
+              Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removingVolunteer.name}</span> from {removingVolunteer.shift_id ? removingVolunteer.shifts?.name : (removingVolunteer.events?.title || 'this event')}?
+            </>
+          }
+          confirmLabel="Remove"
+          loading={removing}
+          onCancel={() => setRemovingVolunteer(null)}
+          onConfirm={removeVolunteer}
         />
       )}
     </>
