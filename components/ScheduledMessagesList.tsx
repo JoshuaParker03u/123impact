@@ -5,6 +5,7 @@ import { Clock, Trash2, Users, Calendar } from 'lucide-react';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
+import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 
 interface ScheduledMessage {
   id: string;
@@ -25,6 +26,7 @@ export default function ScheduledMessagesList() {
   const [error, setError]           = useState<string | null>(null);
   const [expanded, setExpanded]     = useState<string | null>(null);
   const [deleting, setDeleting]     = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; subject: string } | null>(null);
 
   const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
 
@@ -50,8 +52,9 @@ export default function ScheduledMessagesList() {
     return () => clearInterval(interval);
   }, [load]);
 
-  async function handleCancel(id: string, subject: string) {
-    if (!confirm(`Cancel the scheduled message "${subject}"? This cannot be undone.`)) return;
+  async function handleCancel() {
+    if (!cancelTarget) return;
+    const { id } = cancelTarget;
 
     setDeleting(id);
     try {
@@ -60,6 +63,7 @@ export default function ScheduledMessagesList() {
       if (res.ok) {
         setMessages((prev) => prev.filter((m) => m.id !== id));
         if (expanded === id) setExpanded(null);
+        setCancelTarget(null);
       } else {
         alert(`Error: ${data.error}`);
       }
@@ -130,7 +134,7 @@ export default function ScheduledMessagesList() {
 
             {/* Cancel button */}
             <button
-              onClick={() => handleCancel(msg.id, msg.subject)}
+              onClick={() => setCancelTarget({ id: msg.id, subject: msg.subject })}
               disabled={deleting === msg.id}
               title="Cancel scheduled message"
               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
@@ -159,6 +163,21 @@ export default function ScheduledMessagesList() {
           )}
         </div>
       ))}
+
+      {cancelTarget && (
+        <ConfirmDeleteModal
+          title="Cancel Scheduled Message"
+          message={
+            <>
+              Cancel the scheduled message <span className="font-medium text-gray-900 dark:text-gray-100">&quot;{cancelTarget.subject}&quot;</span>? This cannot be undone.
+            </>
+          }
+          confirmLabel="Cancel Message"
+          loading={deleting === cancelTarget.id}
+          onCancel={() => setCancelTarget(null)}
+          onConfirm={handleCancel}
+        />
+      )}
     </div>
   );
 }

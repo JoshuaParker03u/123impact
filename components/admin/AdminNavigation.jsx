@@ -80,6 +80,16 @@ export default function AdminNavigation() {
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
   const [settingsOpen, setSettingsOpen]       = useState(false);
   const dropdownRef = useRef(null);
+
+  // streamerMode is read from localStorage on the client (see
+  // StreamerModeContext), so it can legitimately differ from the server's
+  // always-false render on first paint. The desktop toggle button below
+  // renders unconditionally (unlike the mobile-menu copy and the redact()
+  // calls, which are gated behind state that's empty until after mount), so
+  // it needs to stay on the SSR-safe default until mounted to avoid a
+  // hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const notifRef    = useRef(null);
   const settingsRef = useRef(null);
   const router = useRouter();
@@ -289,15 +299,15 @@ export default function AdminNavigation() {
             {/* Streamer mode toggle — desktop only */}
             <button
               onClick={toggleStreamerMode}
-              title={streamerMode ? 'Disable streamer mode' : 'Enable streamer mode'}
+              title={mounted && streamerMode ? 'Disable streamer mode' : 'Enable streamer mode'}
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                streamerMode
+                mounted && streamerMode
                   ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
             >
-              {streamerMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              {streamerMode ? 'Streaming' : 'Stream'}
+              {mounted && streamerMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {mounted && streamerMode ? 'Streaming' : 'Stream'}
             </button>
 
             {/* Theme toggle — desktop only */}

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
   Sparkles, CheckCircle2, ShieldCheck, Calendar, Clock, Users,
-  UserPlus, AlertTriangle, TrendingUp, ArrowRight, QrCode, Mail, Loader2,
+  UserPlus, AlertTriangle, TrendingUp, ArrowRight, QrCode, Mail, Loader2, Mic,
 } from 'lucide-react'
 import AdminNavigation from '@/components/admin/AdminNavigation'
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal'
@@ -17,6 +17,14 @@ import { useStreamerMode } from '@/contexts/StreamerModeContext'
 import { redact } from '@/lib/redact'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
+
+function formatSessionTime(time: string | null): string | null {
+  if (!time || !/^\d{2}:\d{2}$/.test(time)) return null
+  const [h, m] = time.split(':').map(Number)
+  const p = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${m.toString().padStart(2, '0')} ${p}`
+}
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -53,6 +61,9 @@ function DashboardContent() {
   const [authProvider, setAuthProvider]         = useState<string>('Unknown')
   const [showVerifiedBanner, setShowVerifiedBanner] = useState(false)
   const [eventAdminAssignments, setEventAdminAssignments] = useState<any[]>([])
+  const [speakerAppointments, setSpeakerAppointments] = useState<any[]>([])
+  const [pendingSpeakerInvites, setPendingSpeakerInvites] = useState<any[]>([])
+  const [acceptingInviteId, setAcceptingInviteId] = useState<string | null>(null)
   const [hasOrg, setHasOrg]                     = useState<boolean | null>(null)
   const [orgId, setOrgId]                       = useState<string | null>(null)
   const [summary, setSummary]                   = useState<any>(null)
@@ -118,14 +129,18 @@ function DashboardContent() {
         const accountAge  = Date.now() - new Date(user.created_at).getTime()
         setIsFirstLogin(accountAge < 5 * 60 * 1000)
 
-        const [assignmentsRes, orgsRes, invitesRes] = await Promise.all([
+        const [assignmentsRes, orgsRes, invitesRes, speakerRes, speakerInvitesRes] = await Promise.all([
           fetch('/api/users/me/event-admin-assignments'),
           fetch('/api/organizations/user'),
           fetch('/api/users/me/invitations'),
+          fetch('/api/users/me/speaker-appointments'),
+          fetch('/api/users/me/speaker-invites'),
         ])
 
         if (assignmentsRes.ok) setEventAdminAssignments(await assignmentsRes.json())
         if (invitesRes.ok) setPendingInvitations(await invitesRes.json())
+        if (speakerRes.ok) setSpeakerAppointments(await speakerRes.json())
+        if (speakerInvitesRes.ok) setPendingSpeakerInvites(await speakerInvitesRes.json())
 
         if (orgsRes.ok) {
           const { data } = await orgsRes.json()
@@ -189,6 +204,51 @@ function DashboardContent() {
       }
     } finally {
       setActingInviteToken(null)
+    }
+  }
+
+  // One-click accept for a speaker invite already addressed to this
+  // account's email. Reuses the same public accept endpoint the emailed
+  // link uses, prefilled from account/org history exactly like the manual
+  // signup form. If there's no name on file to submit (no account name, no
+  // past registration with this org), falls back to sending them to the
+  // real signup page instead of accepting with a blank name.
+  async function acceptSpeakerInvite(invite: any) {
+    setAcceptingInviteId(invite.id)
+    try {
+      const prefillRes = await fetch(`/api/event-speaker-invites/${invite.token}`)
+      const prefillData = await prefillRes.json()
+      if (!prefillRes.ok) {
+        alert(prefillData.error ?? 'This invitation is no longer valid.')
+        setPendingSpeakerInvites((prev) => prev.filter((i: any) => i.id !== invite.id))
+        return
+      }
+
+      const name = prefillData.prefill?.name
+      if (!name) {
+        window.location.href = `/events/${invite.event.event_id}/signup/speaker?token=${invite.token}`
+        return
+      }
+
+      const res = await fetch(`/api/event-speaker-invites/${invite.token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          phone: prefillData.prefill?.phone ?? null,
+          bio:   prefillData.prefill?.bio ?? null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error ?? 'Failed to accept invitation.')
+        return
+      }
+
+      setPendingSpeakerInvites((prev) => prev.filter((i: any) => i.id !== invite.id))
+      setSpeakerAppointments((prev) => [...prev, { id: data.id, topic: invite.topic, session_time: invite.session_time, event: invite.event, org: invite.org }])
+    } finally {
+      setAcceptingInviteId(null)
     }
   }
 
@@ -330,8 +390,64 @@ function DashboardContent() {
           </Card>
         )}
 
+        {/* Pending Speaker Invitations */}
+        {pendingSpeakerInvites.length > 0 && (
+          <Card className="shadow-sm border-amber-200 dark:border-amber-900/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <Mic className="w-4 h-4" /> Speaker Invitation{pendingSpeakerInvites.length !== 1 ? 's' : ''}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pendingSpeakerInvites.map((inv: any) => (
+                <div key={inv.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-amber-100 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {inv.org.logo_url ? (
+                      <img src={inv.org.logo_url} alt={inv.org.name} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {inv.org.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {inv.org.name} invited you to speak at {inv.event.title}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {inv.topic}
+                        {formatSessionTime(inv.session_time) && (
+                          <span className="inline-flex items-center gap-1 ml-2">
+                            <Clock className="w-3 h-3" /> {formatSessionTime(inv.session_time)}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {acceptingInviteId === inv.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                    ) : (
+                      <>
+                        <Link
+                          href={`/events/${inv.event.event_id}/signup/speaker?token=${inv.token}`}
+                          className="text-sm text-gray-600 dark:text-gray-400 hover:underline"
+                        >
+                          Review
+                        </Link>
+                        <Button size="sm" onClick={() => acceptSpeakerInvite(inv)} className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
+                          Accept
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* No-org hint */}
-        {!hasOrg && eventAdminAssignments.length === 0 && (
+        {!hasOrg && eventAdminAssignments.length === 0 && speakerAppointments.length === 0 && pendingSpeakerInvites.length === 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400 px-1">You don't belong to any organization yet — see below to get started.</p>
         )}
 
@@ -668,8 +784,56 @@ function DashboardContent() {
           </Card>
         )}
 
+        {/* Speaker appointments */}
+        {speakerAppointments.length > 0 && (
+          <Card className="shadow-sm border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <Mic className="w-5 h-5 text-amber-600" />
+                Your Speaking Engagements
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {speakerAppointments.map((a: any) => (
+                <Link key={a.id} href={`/events/${a.event.event_id}/signup`} className="block">
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      {a.org.logo_url ? (
+                        <img src={a.org.logo_url} alt={a.org.name} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {a.org.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{a.event.title}</p>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Speaker</span>
+                        </div>
+                        <p className="text-xs text-gray-500">{a.org.name}{a.topic ? ` · ${a.topic}` : ''}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <div className="flex items-center gap-1 text-xs text-gray-400">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {new Date(a.event.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                      {formatSessionTime(a.session_time) && (
+                        <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          {formatSessionTime(a.session_time)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* No org — getting started */}
-        {hasOrg === false && eventAdminAssignments.length === 0 && (
+        {hasOrg === false && eventAdminAssignments.length === 0 && speakerAppointments.length === 0 && pendingSpeakerInvites.length === 0 && (
           <Card className="shadow-sm border-gray-200 dark:border-gray-700">
             <CardHeader className="pb-2">
               <CardTitle className="text-base text-gray-800 dark:text-gray-200 flex items-center gap-2">

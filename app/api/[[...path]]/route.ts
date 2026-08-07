@@ -372,6 +372,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .select(`
           id, event_id, title, description, date, end_date, time, location,
           image_url, status, organization_id, is_shiftless, shiftless_capacity,
+          attendee_enabled, attendee_capacity, speaker_enabled,
           created_at, updated_at,
           event_day_hours (event_date, start_time, end_time),
           organizations (id, name, logo_url)
@@ -389,11 +390,22 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           .from('volunteer_registrations')
           .select('*', { count: 'exact', head: true })
           .eq('event_id', data.id)
-          .is('shift_id', null);
+          .is('shift_id', null)
+          .eq('attendee_type', 'volunteer');
         shiftless_filled = count ?? 0;
       }
 
-      return ok({ ...data, shiftless_filled });
+      let attendee_filled = 0;
+      if (data.attendee_enabled) {
+        const { count } = await buildServiceClient()
+          .from('volunteer_registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', data.id)
+          .eq('attendee_type', 'attendee');
+        attendee_filled = count ?? 0;
+      }
+
+      return ok({ ...data, shiftless_filled, attendee_filled });
     }
 
     // ── PUBLIC: GET /api/events/:id/shifts ──────────────────────────────────
@@ -572,25 +584,43 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       const validTypes = ['volunteer', 'attendee', 'speaker'];
       const resolvedType = validTypes.includes(attendee_type) ? attendee_type : 'volunteer';
 
+      // Speaker registration only happens via an accepted invite token
+      // (see /api/event-speaker-invites/[token]), never this public endpoint.
+      if (resolvedType === 'speaker') return fail('Speaker registration requires an invitation', 403);
+
       const supabase = buildServiceClient();
 
-      // ── Shiftless path ──────────────────────────────────────────────────────
+      // ── Shiftless / RSVP path (Volunteer via is_shiftless, or Attendee) ─────
       if (!shift_id) {
         const { data: ev } = await supabase
           .from('events')
-          .select('id, is_shiftless, shiftless_capacity')
+          .select('id, is_shiftless, shiftless_capacity, attendee_enabled, attendee_capacity')
           .eq('id', event_id)
           .single();
 
-        if (!ev || !ev.is_shiftless) return fail('Event does not allow shiftless registration', 400);
+        if (!ev) return fail('Event not found', 404);
 
-        if (ev.shiftless_capacity) {
-          const { count } = await supabase
-            .from('volunteer_registrations')
-            .select('*', { count: 'exact', head: true })
-            .eq('event_id', event_id)
-            .is('shift_id', null);
-          if ((count ?? 0) >= ev.shiftless_capacity) return fail('This event is full', 409);
+        if (resolvedType === 'attendee') {
+          if (!ev.attendee_enabled) return fail('Event does not allow attendee registration', 400);
+          if (ev.attendee_capacity) {
+            const { count } = await supabase
+              .from('volunteer_registrations')
+              .select('*', { count: 'exact', head: true })
+              .eq('event_id', event_id)
+              .eq('attendee_type', 'attendee');
+            if ((count ?? 0) >= ev.attendee_capacity) return fail('This event is full', 409);
+          }
+        } else {
+          if (!ev.is_shiftless) return fail('Event does not allow shiftless registration', 400);
+          if (ev.shiftless_capacity) {
+            const { count } = await supabase
+              .from('volunteer_registrations')
+              .select('*', { count: 'exact', head: true })
+              .eq('event_id', event_id)
+              .is('shift_id', null)
+              .eq('attendee_type', 'volunteer');
+            if ((count ?? 0) >= ev.shiftless_capacity) return fail('This event is full', 409);
+          }
         }
 
         const { data: registration, error: regError } = await supabase
@@ -607,7 +637,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         return ok(registration, 201);
       }
 
-      // ── Shift-based path ────────────────────────────────────────────────────
+      // ── Shift-based path (Volunteer only — Attendee/Speaker never pick shifts) ─
+      if (resolvedType !== 'volunteer') return fail('This role does not select shifts', 400);
+
       const { data: shift } = await supabase
         .from('shifts')
         .select('id, capacity, allow_waitlist, event_id')

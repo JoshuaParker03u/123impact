@@ -48,6 +48,7 @@ export async function GET() {
     full_name: user.user_metadata?.full_name ?? null,
     email: user.email ?? null,
     phone,
+    bio: user.user_metadata?.bio ?? null,
   });
 }
 
@@ -58,11 +59,12 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const { full_name, timezone } = body;
+  const { full_name, timezone, bio } = body;
 
   const updates: Record<string, any> = { ...user.user_metadata };
   if (full_name !== undefined) updates.full_name = full_name;
   if (timezone  !== undefined) updates.timezone  = timezone;
+  if (bio       !== undefined) updates.bio       = bio;
 
   const { error } = await service.auth.admin.updateUserById(user.id, { user_metadata: updates });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

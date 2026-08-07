@@ -166,17 +166,17 @@ export default function EmailTemplateEditor({
 
       <div className="flex gap-3 pt-4">
         <button
+          onClick={onCancel}
+          className="flex-1 px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+        >
+          Cancel
+        </button>
+        <button
           onClick={handleSave}
           disabled={saving}
           className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg hover:opacity-90 disabled:opacity-50"
         >
           {saving ? 'Saving...' : 'Save Template'}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-        >
-          Cancel
         </button>
       </div>
     </div>

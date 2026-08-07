@@ -7,9 +7,10 @@ import AdminNavigation from '@/components/admin/AdminNavigation';
 import EventModal from '@/components/admin/EventModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, Link2, Check, QrCode, Download, X, ArrowRight, Copy } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail } from 'lucide-react';
 import Link from 'next/link';
+import MessageComposer from '@/components/MessageComposer';
+import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 
 const supabase = getBrowserClient();
 
@@ -37,20 +38,17 @@ export default function AdminEventsPage() {
   const [selectedEventForShift, setSelectedEventForShift] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [copiedEventId, setCopiedEventId] = useState(null);
   const [duplicatingEventId, setDuplicatingEventId] = useState(null);
-  const [qrEvent, setQrEvent] = useState(null);
+  const [deletingEvent, setDeletingEvent] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [resolvingEventId, setResolvingEventId] = useState(null);
+  const [messagingEvent, setMessagingEvent] = useState(null);
   const [orgPlan, setOrgPlan] = useState('free');
-  const [customDomain, setCustomDomain] = useState(null);
 
   // Fetch events when organization changes
   useEffect(() => {
     if (currentOrganization?.id) {
       fetchEvents();
-      fetch(`/api/organizations/${currentOrganization.id}/custom-domain`)
-        .then((r) => r.json())
-        .then((d) => setCustomDomain(d?.status === 'active' ? d.subdomain : null))
-        .catch(() => {});
     }
   }, [currentOrganization?.id]);
 
@@ -99,6 +97,23 @@ export default function AdminEventsPage() {
       }, {});
     }
 
+    // Count attendee/speaker registrations per event (these are shiftless,
+    // so they aren't covered by the shift_id-scoped query above)
+    const eventIds = (data || []).map(e => e.id);
+    let roleCountMap = {};
+    if (eventIds.length > 0) {
+      const { data: roleRows } = await supabase
+        .from('volunteer_registrations')
+        .select('event_id, attendee_type')
+        .in('event_id', eventIds)
+        .in('attendee_type', ['attendee', 'speaker']);
+      roleCountMap = (roleRows || []).reduce((acc, r) => {
+        if (!acc[r.event_id]) acc[r.event_id] = { attendee: 0, speaker: 0 };
+        acc[r.event_id][r.attendee_type]++;
+        return acc;
+      }, {});
+    }
+
     const enriched = (data || []).map(event => ({
       ...event,
       shifts: (event.shifts || []).map(shift => ({
@@ -106,6 +121,8 @@ export default function AdminEventsPage() {
         filled:    countMap[shift.id]?.filled    ?? 0,
         waitlisted: countMap[shift.id]?.waitlisted ?? 0,
       })),
+      attendeeCount: roleCountMap[event.id]?.attendee ?? 0,
+      speakerCount:  roleCountMap[event.id]?.speaker ?? 0,
     }));
 
     setEvents(enriched);
@@ -131,16 +148,28 @@ export default function AdminEventsPage() {
   };
 
   const handleDeleteEvent = async (eventId) => {
-    if (!confirm('This will delete the event, all its shifts, and all volunteer registrations. Continue?')) return;
-
+    setDeleting(true);
     const res = await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
     const data = await res.json();
+    setDeleting(false);
 
     if (!res.ok) {
       alert('Error deleting event: ' + (data.error ?? 'Unknown error'));
     } else {
+      setDeletingEvent(null);
       fetchEvents();
     }
+  };
+
+  const resolveEventStatus = async (eventId, newStatus) => {
+    setResolvingEventId(eventId);
+    const { error } = await supabase.from('events').update({ status: newStatus }).eq('id', eventId);
+    if (error) {
+      alert('Error updating event status: ' + error.message);
+    } else {
+      setEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, status: newStatus } : e)));
+    }
+    setResolvingEventId(null);
   };
 
   const handleDuplicateEvent = async (eventId) => {
@@ -155,14 +184,6 @@ export default function AdminEventsPage() {
     } finally {
       setDuplicatingEventId(null);
     }
-  };
-
-  const copyEventLink = (event) => {
-    const base = customDomain ? `https://${customDomain}` : window.location.origin;
-    const url = `${base}/events/${event.event_id}/signup`;
-    navigator.clipboard.writeText(url);
-    setCopiedEventId(event.id);
-    setTimeout(() => setCopiedEventId(null), 2000);
   };
 
   const handleAddShift = (event) => {
@@ -221,6 +242,7 @@ export default function AdminEventsPage() {
   }
 
   const STATUS_ORDER = { ongoing: 0, active: 1, completed: 2, cancelled: 3 };
+  const today = new Date().toISOString().split('T')[0];
 
   const visibleEvents = events
     .filter((e) => {
@@ -325,6 +347,7 @@ export default function AdminEventsPage() {
               const totalVolunteers = event.shifts?.reduce((sum, shift) => sum + (shift.filled || 0), 0) || 0;
               const totalCapacity   = event.shifts?.reduce((sum, shift) => sum + shift.capacity, 0) || 0;
               const totalWaitlisted = event.shifts?.reduce((sum, shift) => sum + (shift.waitlisted || 0), 0) || 0;
+              const isStale = ['active', 'ongoing'].includes(event.status) && (event.end_date ?? event.date) < today;
 
               return (
                 <Card key={event.id} className="overflow-hidden">
@@ -370,37 +393,42 @@ export default function AdminEventsPage() {
                               </span>
                             )}
                           </span>
+                          {event.attendee_enabled && (
+                            <span className="flex items-center gap-1">
+                              <Users className="w-4 h-4" />
+                              {event.attendeeCount} attendee{event.attendeeCount === 1 ? '' : 's'}
+                            </span>
+                          )}
+                          {event.speaker_enabled && (
+                            <span className="flex items-center gap-1">
+                              <Users className="w-4 h-4" />
+                              {event.speakerCount} speaking session{event.speakerCount === 1 ? '' : 's'}
+                            </span>
+                          )}
                         </div>
                         {event.description && (
                           <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
                         )}
                       </div>
                       <div className="flex gap-2 mt-3 sm:mt-0 sm:ml-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyEventLink(event)}
-                          title="Copy signup link"
-                        >
-                          {copiedEventId === event.id
-                            ? <Check className="w-4 h-4 text-green-600" />
-                            : <Link2 className="w-4 h-4" />}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setQrEvent(event)}
-                          title="Show QR code"
-                        >
-                          <QrCode className="w-4 h-4" />
-                        </Button>
                         {isAdmin && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleEditEvent(event)}
+                            title="Edit event"
                           >
                             <Edit className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {isAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setMessagingEvent(event)}
+                            title="Message registrants"
+                          >
+                            <Mail className="w-4 h-4" />
                           </Button>
                         )}
                         {isAdmin && (
@@ -416,8 +444,44 @@ export default function AdminEventsPage() {
                               : <Copy className="w-4 h-4" />}
                           </Button>
                         )}
+                        {isAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeletingEvent(event)}
+                            title="Delete event"
+                            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/20"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
+
+                    {isAdmin && isStale && (
+                      <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                        <span className="flex-1">This event&apos;s date has passed but it&apos;s still marked {event.status}.</span>
+                        {resolvingEventId === event.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => resolveEventStatus(event.id, 'completed')}
+                              className="text-xs px-2 py-1 rounded border border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors"
+                            >
+                              Complete
+                            </button>
+                            <button
+                              onClick={() => resolveEventStatus(event.id, 'cancelled')}
+                              className="text-xs px-2 py-1 rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     {/* Shifts Toggle / Manage footer */}
                     <div className="flex items-center justify-between pt-4 border-t dark:border-gray-700">
@@ -500,11 +564,24 @@ export default function AdminEventsPage() {
           />
         )}
 
-        {qrEvent && (
-          <QRModal
-            event={qrEvent}
-            customDomain={customDomain}
-            onClose={() => setQrEvent(null)}
+        <MessageComposer
+          isOpen={!!messagingEvent}
+          eventId={messagingEvent?.id}
+          onClose={() => setMessagingEvent(null)}
+        />
+
+        {deletingEvent && (
+          <ConfirmDeleteModal
+            title="Delete Event"
+            message={
+              <>
+                This will permanently delete <span className="font-medium text-gray-900 dark:text-gray-100">{deletingEvent.title}</span>, all its shifts, and all volunteer registrations. This cannot be undone.
+              </>
+            }
+            confirmLabel="Delete Event"
+            loading={deleting}
+            onCancel={() => setDeletingEvent(null)}
+            onConfirm={() => handleDeleteEvent(deletingEvent.id)}
           />
         )}
 
@@ -522,54 +599,6 @@ export default function AdminEventsPage() {
         )}
       </div>
     </>
-  );
-}
-
-// QR Code Modal
-function QRModal({ event, customDomain, onClose }) {
-  const base = customDomain ? `https://${customDomain}` : window.location.origin;
-  const url = `${base}/events/${event.event_id}/signup`;
-
-  const downloadQR = () => {
-    const svg = document.getElementById('event-qr-svg');
-    const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(svg);
-    const canvas = document.createElement('canvas');
-    canvas.width = 300;
-    canvas.height = 300;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 300, 300);
-      ctx.drawImage(img, 0, 0, 300, 300);
-      const a = document.createElement('a');
-      a.download = `${event.event_id}-qr.png`;
-      a.href = canvas.toDataURL('image/png');
-      a.click();
-    };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <Card className="p-6 w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{event.title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="flex justify-center mb-4 bg-white p-4 rounded-lg">
-          <QRCodeSVG id="event-qr-svg" value={url} size={220} />
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 break-all">{url}</p>
-        <Button onClick={downloadQR} variant="outline" className="w-full">
-          <Download className="w-4 h-4 mr-2" />
-          Download PNG
-        </Button>
-      </Card>
-    </div>
   );
 }
 

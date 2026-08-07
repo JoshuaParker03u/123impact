@@ -336,6 +336,12 @@ export default function MessageComposer({
 
             <div className="flex gap-3 pt-2">
               <button
+                onClick={onClose}
+                className="flex-1 px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
                 onClick={handleSend}
                 disabled={sending || recipientCount === 0}
                 className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90 text-white py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
@@ -343,12 +349,6 @@ export default function MessageComposer({
                 {sending
                   ? (sendMode === 'scheduled' ? 'Scheduling...' : 'Sending...')
                   : (sendMode === 'scheduled' ? 'Schedule Message' : 'Send Message')}
-              </button>
-              <button
-                onClick={onClose}
-                className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-              >
-                Cancel
               </button>
             </div>
           </div>

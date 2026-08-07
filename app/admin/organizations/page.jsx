@@ -8,6 +8,7 @@ import { getBrowserClient } from '@/lib/supabase';
 import AdminNavigation from '@/components/admin/AdminNavigation';
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal';
 import CheckoutModal from '@/components/admin/CheckoutModal';
+import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -375,6 +376,7 @@ function CustomDomainTab({ orgId }) {
   const [sending, setSending]       = useState(false);
   const [verifying, setVerifying]   = useState(false);
   const [removing, setRemoving]     = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [error, setError]           = useState('');
   const [verifyErrors, setVerifyErrors] = useState([]);
   const [primaryColor, setPrimaryColor]     = useState('#2563EB');
@@ -448,11 +450,11 @@ function CustomDomainTab({ orgId }) {
   }
 
   async function handleRemove() {
-    if (!confirm('Remove this custom domain? Event pages will revert to 123impact.org URLs.')) return;
     setRemoving(true);
     await fetch(`/api/organizations/${orgId}/custom-domain`, { method: 'DELETE' });
     setDomain(null); setSubdomain(''); setDnsEmail('');
     setRemoving(false);
+    setShowRemoveModal(false);
     load();
   }
 
@@ -569,7 +571,7 @@ function CustomDomainTab({ orgId }) {
                 </p>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={handleRemove} disabled={removing}
+            <Button variant="outline" size="sm" onClick={() => setShowRemoveModal(true)} disabled={removing}
               className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20">
               {removing ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Removing…</> : 'Remove Custom Domain'}
             </Button>
@@ -631,6 +633,17 @@ function CustomDomainTab({ orgId }) {
             {savingBranding ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : 'Save Branding'}
           </Button>
         </div>
+      )}
+
+      {showRemoveModal && (
+        <ConfirmDeleteModal
+          title="Remove Custom Domain"
+          message="Event pages will revert to 123impact.org URLs."
+          confirmLabel="Remove"
+          loading={removing}
+          onCancel={() => setShowRemoveModal(false)}
+          onConfirm={handleRemove}
+        />
       )}
     </div>
   );
@@ -1091,6 +1104,9 @@ function MembersTab({ org, currentUserId, userRole }) {
   const [changingRoleId, setChangingRoleId] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
   const [transferring, setTransferring]     = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState(null);
+  const [inviteToCancel, setInviteToCancel] = useState(null);
+  const [cancellingInvite, setCancellingInvite] = useState(false);
 
   const canManage = ['owner', 'admin'].includes(userRole);
   const isOwner   = userRole === 'owner';
@@ -1109,12 +1125,14 @@ function MembersTab({ org, currentUserId, userRole }) {
 
   useEffect(() => { load(); }, [load]);
 
-  async function removeMember(userId, name) {
-    if (!confirm(`Remove ${name || userId} from the organization?`)) return;
+  async function removeMember() {
+    if (!memberToRemove) return;
+    const { userId } = memberToRemove;
     setRemovingId(userId);
     const res = await fetch(`/api/organizations/${org.id}/members?user_id=${userId}`, { method: 'DELETE' });
     if (res.ok) {
       setMembers((prev) => prev.filter((m) => m.user_id !== userId));
+      setMemberToRemove(null);
     } else {
       const data = await res.json();
       alert(data.error ?? 'Failed to remove member');
@@ -1181,8 +1199,10 @@ function MembersTab({ org, currentUserId, userRole }) {
     }
   }
 
-  async function cancelInvite(inviteId, email) {
-    if (!confirm(`Cancel this invitation to ${email}? They will no longer be able to use the invitation link.`)) return;
+  async function cancelInvite() {
+    if (!inviteToCancel) return;
+    const { id: inviteId } = inviteToCancel;
+    setCancellingInvite(true);
     const res = await fetch(`/api/organizations/${org.id}/invitations/${inviteId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1191,7 +1211,9 @@ function MembersTab({ org, currentUserId, userRole }) {
     if (res.ok) {
       const updated = await res.json();
       setInvites((prev) => prev.map((i) => i.id === inviteId ? { ...i, ...updated } : i));
+      setInviteToCancel(null);
     }
+    setCancellingInvite(false);
   }
 
   const activeInvites  = invites.filter((i) => ['pending'].includes(i.status));
@@ -1259,7 +1281,7 @@ function MembersTab({ org, currentUserId, userRole }) {
                 )}
                 {canRemove && (
                   <button
-                    onClick={() => removeMember(m.user_id, m.name || m.email)}
+                    onClick={() => setMemberToRemove({ userId: m.user_id, name: m.name || m.email })}
                     disabled={removingId === m.user_id}
                     className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
                     title="Remove member"
@@ -1317,7 +1339,7 @@ function MembersTab({ org, currentUserId, userRole }) {
                           <Shield className="w-3.5 h-3.5" />
                         </button>
                         {(isOwner || canAct) && (
-                          <button onClick={() => cancelInvite(inv.id, inv.email)} title="Cancel" className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
+                          <button onClick={() => setInviteToCancel({ id: inv.id, email: inv.email })} title="Cancel" className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -1377,6 +1399,36 @@ function MembersTab({ org, currentUserId, userRole }) {
           onConfirm={confirmTransfer}
           onClose={() => setTransferTarget(null)}
           transferring={transferring}
+        />
+      )}
+
+      {memberToRemove && (
+        <ConfirmDeleteModal
+          title="Remove Member"
+          message={
+            <>
+              Remove <span className="font-medium text-gray-900 dark:text-gray-100">{memberToRemove.name}</span> from the organization?
+            </>
+          }
+          confirmLabel="Remove"
+          loading={removingId === memberToRemove.userId}
+          onCancel={() => setMemberToRemove(null)}
+          onConfirm={removeMember}
+        />
+      )}
+
+      {inviteToCancel && (
+        <ConfirmDeleteModal
+          title="Cancel Invitation"
+          message={
+            <>
+              Cancel this invitation to <span className="font-medium text-gray-900 dark:text-gray-100">{inviteToCancel.email}</span>? They will no longer be able to use the invitation link.
+            </>
+          }
+          confirmLabel="Cancel Invitation"
+          loading={cancellingInvite}
+          onCancel={() => setInviteToCancel(null)}
+          onConfirm={cancelInvite}
         />
       )}
     </div>

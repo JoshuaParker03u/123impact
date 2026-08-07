@@ -15,6 +15,8 @@ import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
 import EventbriteAttendeesTab from './EventbriteAttendeesTab';
 import CheckInQRModal from './CheckInQRModal';
+import InviteSpeakerModal from './InviteSpeakerModal';
+import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import ShiftModal from '@/components/admin/ShiftModal';
 import EventModal from '@/components/admin/EventModal';
 import MessageComposer from '@/components/MessageComposer';
@@ -24,7 +26,7 @@ import {
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
   AlertTriangle, QrCode, Download, BarChart2, Radio, Link2, Copy,
-  CheckCircle2, WifiOff, RotateCcw,
+  CheckCircle2, WifiOff, RotateCcw, UserPlus,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -72,6 +74,9 @@ interface Event {
   event_day_hours?: { id: string; event_date: string; start_time: string; end_time: string }[];
   is_shiftless?: boolean;
   shiftless_capacity?: number | null;
+  attendee_enabled?: boolean;
+  attendee_capacity?: number | null;
+  speaker_enabled?: boolean;
   platform_source?: 'luma' | 'eventbrite' | null;
   external_id?: string | null;
   platform_image?: string | null;
@@ -725,6 +730,351 @@ function EventAdminsTab({
 }
 
 // ---------------------------------------------------------------------------
+// Speaker Invites Tab
+// ---------------------------------------------------------------------------
+
+interface SpeakerInvite {
+  id: string;
+  event_id: string;
+  email: string;
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+  expires_at: string;
+  invited_by: string;
+  inviter_name: string | null;
+  created_at: string;
+  token: string;
+  speaker_bio: string | null;
+  speaker_topic: string | null;
+  topic: string | null;
+  session_time: string | null;
+}
+
+function speakerStatusBadge(status: SpeakerInvite['status']) {
+  const map: Record<string, string> = {
+    pending:  'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
+    accepted: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    expired:  'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+    revoked:  'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+  };
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${map[status] ?? ''}`}>
+      {status}
+    </span>
+  );
+}
+
+function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug: string }) {
+  const { streamerMode } = useStreamerMode();
+  const [invites, setInvites]   = useState<SpeakerInvite[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [prefillEmail, setPrefillEmail] = useState<string | undefined>(undefined);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBio, setEditBio]     = useState('');
+  const [editTopic, setEditTopic] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
+  const [editTime, setEditTime] = useState('');
+  const [savingTime, setSavingTime] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch(`/api/events/${eventId}/speaker-invites`);
+    if (res.ok) setInvites(await res.json());
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, [eventId]);
+
+  async function invite(email: string, topic: string, sessionTime: string): Promise<string | null> {
+    const res = await fetch(`/api/events/${eventId}/speaker-invites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, topic, session_time: sessionTime || null }),
+    });
+    const data = await res.json();
+    if (!res.ok) return data.error ?? 'Failed to send invite';
+    load();
+    return null;
+  }
+
+  function startEditTime(i: SpeakerInvite) {
+    setEditingTimeId(i.id);
+    setEditTime(i.session_time ?? '');
+  }
+
+  async function saveTime(id: string) {
+    setSavingTime(true);
+    const res = await fetch(`/api/events/${eventId}/speaker-invites/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_time: editTime || null }),
+    });
+    setSavingTime(false);
+    if (!res.ok) { alert((await res.json()).error ?? 'Failed to save time'); return; }
+    setEditingTimeId(null);
+    load();
+  }
+
+  async function revoke(id: string) {
+    setRevoking(id);
+    await fetch(`/api/events/${eventId}/speaker-invites/${id}`, { method: 'DELETE' });
+    setRevoking(null);
+    load();
+  }
+
+  function startEdit(i: SpeakerInvite) {
+    setEditingId(i.id);
+    setEditBio(i.speaker_bio ?? '');
+    setEditTopic(i.speaker_topic ?? '');
+    setEditError('');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError('');
+  }
+
+  async function saveEdit(id: string) {
+    setSavingEdit(true);
+    setEditError('');
+    const res = await fetch(`/api/events/${eventId}/speaker-invites/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speaker_bio: editBio, speaker_topic: editTopic }),
+    });
+    setSavingEdit(false);
+    if (!res.ok) { setEditError((await res.json()).error ?? 'Failed to save'); return; }
+    setEditingId(null);
+    load();
+  }
+
+  function copyLink(invite: SpeakerInvite) {
+    const url = `${window.location.origin}/events/${eventSlug}/signup/speaker?token=${invite.token}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(invite.id);
+    setTimeout(() => setCopiedId(null), 1500);
+  }
+
+  const active = invites
+    .filter((i) => ['pending', 'accepted'].includes(i.status))
+    .sort((a, b) => a.email.localeCompare(b.email) || +new Date(b.created_at) - +new Date(a.created_at));
+  const history = invites.filter((i) => ['expired', 'revoked'].includes(i.status));
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <p className="text-sm text-gray-500 dark:text-gray-400 flex-1 min-w-[240px]">
+          Speaker signups are invite-only — each invite gets a unique link. No account is required to accept.
+        </p>
+        <Button onClick={() => { setPrefillEmail(undefined); setShowInviteModal(true); }} className="gap-2">
+          <Plus className="w-4 h-4" /> Invite Speaker
+        </Button>
+      </div>
+
+      {showInviteModal && (
+        <InviteSpeakerModal
+          onClose={() => { setShowInviteModal(false); setPrefillEmail(undefined); }}
+          onInvite={invite}
+          existingInvites={invites}
+          initialEmail={prefillEmail}
+        />
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+        </div>
+      ) : (
+        <>
+          {active.length === 0 ? (
+            <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
+              No speaker invites sent yet.
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {active.map((i) => (
+                <Card key={i.id} className="px-5 py-4">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {redact(i.email, 'email', streamerMode)}
+                        </p>
+                        {speakerStatusBadge(i.status)}
+                      </div>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        Invited by {i.inviter_name} &middot; Expires {new Date(i.expires_at).toLocaleDateString()}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {editingTimeId === i.id ? (
+                          <>
+                            <input
+                              type="time"
+                              value={editTime}
+                              onChange={(e) => setEditTime(e.target.value)}
+                              autoFocus
+                              className="border rounded-md px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                            />
+                            <button onClick={() => saveTime(i.id)} disabled={savingTime} className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50">
+                              {savingTime ? 'Saving…' : 'Save'}
+                            </button>
+                            <button onClick={() => setEditingTimeId(null)} disabled={savingTime} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => startEditTime(i)}
+                            className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                            title="Set session time"
+                          >
+                            <Clock className="w-3 h-3" />
+                            {i.session_time ? formatEventTime(i.session_time) : 'Set time'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {i.status === 'pending' && (
+                        <button
+                          onClick={() => copyLink(i)}
+                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                          title="Copy invite link"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          {copiedId === i.id ? 'Copied!' : 'Copy Link'}
+                        </button>
+                      )}
+                      {i.status === 'accepted' && (
+                        editingId === i.id ? (
+                          <button
+                            onClick={cancelEdit}
+                            className="p-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            title="Close edit"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => startEdit(i)}
+                            className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            title="Edit bio & topic"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )
+                      )}
+                      {i.status !== 'accepted' && (
+                        <button
+                          onClick={() => revoke(i.id)}
+                          disabled={revoking === i.id}
+                          className="p-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          title="Revoke invite"
+                        >
+                          {revoking === i.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setPrefillEmail(i.email); setShowInviteModal(true); }}
+                        className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        title="Invite for another talk"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {i.status === 'accepted' && editingId === i.id ? (
+                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Session Topic</label>
+                        <input
+                          type="text"
+                          value={editTopic}
+                          onChange={(e) => setEditTopic(e.target.value)}
+                          placeholder="What will they be speaking about?"
+                          className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Speaker Bio</label>
+                        <textarea
+                          value={editBio}
+                          onChange={(e) => setEditBio(e.target.value)}
+                          placeholder="A short bio for the event program"
+                          rows={3}
+                          className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                        />
+                      </div>
+                      {editError && <p className="text-red-600 text-xs">{editError}</p>}
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" onClick={cancelEdit} disabled={savingEdit} className="text-sm h-8 px-3">
+                          Cancel
+                        </Button>
+                        <Button onClick={() => saveEdit(i.id)} disabled={savingEdit} className="gap-1.5 text-sm h-8 px-3">
+                          {savingEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Save
+                        </Button>
+                      </div>
+                    </div>
+                  ) : i.status === 'accepted' && (i.speaker_topic || i.speaker_bio) ? (
+                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                      {i.speaker_topic && (
+                        <p className="text-sm text-gray-700 dark:text-gray-300"><span className="font-medium">Topic:</span> {i.speaker_topic}</p>
+                      )}
+                      {i.speaker_bio && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{i.speaker_bio}</p>
+                      )}
+                    </div>
+                  ) : i.status === 'pending' && i.topic ? (
+                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                      <p className="text-sm text-gray-700 dark:text-gray-300"><span className="font-medium">Topic:</span> {i.topic}</p>
+                    </div>
+                  ) : null}
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {history.length > 0 && (
+            <details className="mt-6">
+              <summary className="text-sm text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300 select-none">
+                Show history ({history.length})
+              </summary>
+              <div className="mt-2 space-y-2">
+                {history.map((i) => (
+                  <Card key={i.id} className="px-5 py-3 opacity-70">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {redact(i.email, 'email', streamerMode)}
+                          </p>
+                          {speakerStatusBadge(i.status)}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Invited by {i.inviter_name} &middot; Expired {new Date(i.expires_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </details>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // QR Codes Tab
 // ---------------------------------------------------------------------------
 
@@ -736,15 +1086,18 @@ interface QRInstance {
   scan_count: number;
   created_at: string;
   type: 'qr' | 'link';
+  target_role: 'volunteer' | 'attendee';
 }
 
 function QRCodesTab({ eventId, organizationId }: { eventId: string; organizationId: string }) {
   const [instances, setInstances]         = useState<QRInstance[]>([]);
   const [eventSlug, setEventSlug]         = useState('');
   const [customDomain, setCustomDomain]   = useState<string | null>(null);
+  const [attendeeEnabled, setAttendeeEnabled] = useState(false);
   const [loading, setLoading]             = useState(true);
   const [adding, setAdding]               = useState(false);
   const [newLabel, setNewLabel]           = useState('');
+  const [newTargetRole, setNewTargetRole] = useState<'volunteer' | 'attendee'>('volunteer');
   const [showAddForm, setShowAddForm]     = useState<'qr' | 'link' | null>(null);
   const [regenerating, setRegenerating]   = useState<string | null>(null);
   const [previewId, setPreviewId]         = useState<string | null>(null);
@@ -759,6 +1112,7 @@ function QRCodesTab({ eventId, organizationId }: { eventId: string; organization
       const json = await qrRes.json();
       setInstances(json.instances ?? []);
       setEventSlug(json.event_slug ?? '');
+      setAttendeeEnabled(!!json.attendee_enabled);
     }
     if (domainRes.ok) {
       const domainJson = await domainRes.json();
@@ -769,11 +1123,11 @@ function QRCodesTab({ eventId, organizationId }: { eventId: string; organization
 
   useEffect(() => { load(); }, [load]);
 
-  function signupUrl(refToken: string) {
+  function signupUrl(refToken: string, targetRole: 'volunteer' | 'attendee' = 'volunteer') {
     const base = customDomain
       ? `https://${customDomain}`
       : typeof window !== 'undefined' ? window.location.origin : '';
-    return `${base}/events/${eventSlug}/signup?ref=${refToken}`;
+    return `${base}/events/${eventSlug}/signup/${targetRole}?ref=${refToken}`;
   }
 
   function downloadPng(refToken: string, label: string) {
@@ -804,11 +1158,12 @@ function QRCodesTab({ eventId, organizationId }: { eventId: string; organization
     const res = await fetch(`/api/events/${eventId}/qr-instances`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: newLabel.trim(), type: showAddForm }),
+      body: JSON.stringify({ label: newLabel.trim(), type: showAddForm, target_role: newTargetRole }),
     });
     setAdding(false);
     if (res.ok) {
       setNewLabel('');
+      setNewTargetRole('volunteer');
       setShowAddForm(null);
       load();
     }
@@ -868,11 +1223,24 @@ function QRCodesTab({ eventId, organizationId }: { eventId: string; organization
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          {attendeeEnabled && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Signs up as</label>
+              <select
+                value={newTargetRole}
+                onChange={(e) => setNewTargetRole(e.target.value as 'volunteer' | 'attendee')}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                <option value="volunteer">Volunteer</option>
+                <option value="attendee">Attendee</option>
+              </select>
+            </div>
+          )}
+          <Button variant="outline" onClick={() => { setShowAddForm(null); setNewLabel(''); setNewTargetRole('volunteer'); }}>
+            Cancel
+          </Button>
           <Button onClick={addInstance} disabled={adding || !newLabel.trim()}>
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
-          </Button>
-          <Button variant="outline" onClick={() => { setShowAddForm(null); setNewLabel(''); }}>
-            Cancel
           </Button>
         </Card>
       )}
@@ -884,7 +1252,7 @@ function QRCodesTab({ eventId, organizationId }: { eventId: string; organization
       ) : (
         <div className="space-y-3">
           {active.map((inst) => {
-            const url    = signupUrl(inst.ref_token);
+            const url    = signupUrl(inst.ref_token, inst.target_role);
             const isLink = inst.type === 'link';
             return (
               <Card key={inst.id} className="p-5">
@@ -924,6 +1292,13 @@ function QRCodesTab({ eventId, organizationId }: { eventId: string; organization
                           : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                       }`}>
                         {isLink ? 'Tracking Link' : 'QR Code'}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        inst.target_role === 'attendee'
+                          ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      }`}>
+                        {inst.target_role === 'attendee' ? 'Attendee' : 'Volunteer'}
                       </span>
                     </div>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
@@ -1003,7 +1378,7 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
+  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
   const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
@@ -1013,6 +1388,10 @@ export default function AdminEventDetailPage() {
   const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [duplicating, setDuplicating] = useState(false);
+  const [showDeleteEventModal, setShowDeleteEventModal] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState(false);
+  const [removeVolunteerTarget, setRemoveVolunteerTarget] = useState<{ registrationId: string; shiftId: string; isWaitlisted: boolean; name: string } | null>(null);
+  const [removingVolunteer, setRemovingVolunteer] = useState(false);
   const [checkInModal, setCheckInModal] = useState<{ registrationId: string; name: string } | null>(null);
 
   const { currentOrganization } = useOrganization() as any;
@@ -1244,11 +1623,15 @@ export default function AdminEventDetailPage() {
     });
   }
 
-  async function removeVolunteer(registrationId: string, shiftId: string, isWaitlisted: boolean) {
-    if (!confirm('Remove this volunteer from the shift?')) return;
+  async function removeVolunteer() {
+    if (!removeVolunteerTarget) return;
+    const { registrationId, shiftId, isWaitlisted } = removeVolunteerTarget;
+    setRemovingVolunteer(true);
     const res = await fetch(`/api/volunteer-registrations/${registrationId}`, { method: 'DELETE' });
+    setRemovingVolunteer(false);
     if (!res.ok) { alert('Failed to remove volunteer.'); return; }
 
+    setRemoveVolunteerTarget(null);
     setEvent((prev) => {
       if (!prev) return prev;
       return {
@@ -1282,10 +1665,14 @@ export default function AdminEventDetailPage() {
 
   async function handleDeleteEvent() {
     if (!event) return;
-    if (!confirm('This will delete the event, all its shifts, and all volunteer registrations. Continue?')) return;
+    setDeletingEvent(true);
     const { error } = await supabase.from('events').delete().eq('id', event.id);
-    if (error) alert('Error deleting event: ' + error.message);
-    else router.push('/admin/events');
+    if (error) {
+      alert('Error deleting event: ' + error.message);
+      setDeletingEvent(false);
+    } else {
+      router.push('/admin/events');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1426,11 +1813,18 @@ export default function AdminEventDetailPage() {
 
             {/* Action buttons */}
             <div className="flex flex-col gap-2 shrink-0">
-              <Link href={customDomain ? `https://${customDomain}/events/${event.event_id}/signup` : `/events/${event.event_id}/signup`} target="_blank" rel="noopener noreferrer">
+              <Link href={customDomain ? `https://${customDomain}/events/${event.event_id}/signup/volunteer` : `/events/${event.event_id}/signup/volunteer`} target="_blank" rel="noopener noreferrer">
                 <Button variant="outline" className="w-full justify-start gap-2">
-                  <Link2 className="w-4 h-4" /> View Signup Page
+                  <Link2 className="w-4 h-4" /> View Volunteer Signup Page
                 </Button>
               </Link>
+              {event.attendee_enabled && (
+                <Link href={customDomain ? `https://${customDomain}/events/${event.event_id}/signup/attendee` : `/events/${event.event_id}/signup/attendee`} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" className="w-full justify-start gap-2">
+                    <Link2 className="w-4 h-4" /> View Attendee Signup Page
+                  </Button>
+                </Link>
+              )}
               <Link href={`/admin/events/${event.id}/templates`}>
                 <Button variant="outline" className="w-full justify-start gap-2">
                   <FileText className="w-4 h-4" /> Email Templates
@@ -1464,7 +1858,7 @@ export default function AdminEventDetailPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={handleDeleteEvent}
+                    onClick={() => setShowDeleteEventModal(true)}
                     className="w-full justify-start gap-2 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20"
                   >
                     <Trash2 className="w-4 h-4" /> Delete Event
@@ -1511,6 +1905,11 @@ export default function AdminEventDetailPage() {
                   <ShieldCheck className="w-4 h-4" />Event Admins
                 </button>
               )}
+              {canManageAdmins && event.speaker_enabled && (
+                <button onClick={() => setActiveTab('speakers')} className={tabClass(activeTab === 'speakers')}>
+                  <Mail className="w-4 h-4" />Speakers
+                </button>
+              )}
             </div>
           );
         })()}
@@ -1523,6 +1922,8 @@ export default function AdminEventDetailPage() {
             orgPlan={orgPlan}
             defaultExpiry={defaultExpiry()}
           />
+        ) : activeTab === 'speakers' && canManageAdmins && event.speaker_enabled ? (
+          <SpeakerInvitesTab eventId={event.id} eventSlug={event.event_id} />
         ) : activeTab === 'analytics' ? (
           <AnalyticsTab eventId={event.id} />
         ) : activeTab === 'live' ? (
@@ -1775,7 +2176,7 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 text-right">
                                             {canManage && (
                                               <button
-                                                onClick={() => removeVolunteer(v.id, shift.id, false)}
+                                                onClick={() => setRemoveVolunteerTarget({ registrationId: v.id, shiftId: shift.id, isWaitlisted: false, name: v.name })}
                                                 className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
                                                 title="Remove volunteer"
                                               >
@@ -1841,7 +2242,7 @@ export default function AdminEventDetailPage() {
                                                   Promote
                                                 </button>
                                                 <button
-                                                  onClick={() => removeVolunteer(v.id, shift.id, true)}
+                                                  onClick={() => setRemoveVolunteerTarget({ registrationId: v.id, shiftId: shift.id, isWaitlisted: true, name: v.name })}
                                                   className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
                                                   title="Remove volunteer"
                                                 >
@@ -1910,6 +2311,36 @@ export default function AdminEventDetailPage() {
           registrantName={checkInModal.name}
           checkInUrl={checkInUrl(checkInModal.registrationId)}
           onClose={() => setCheckInModal(null)}
+        />
+      )}
+
+      {showDeleteEventModal && event && (
+        <ConfirmDeleteModal
+          title="Delete Event"
+          message={
+            <>
+              This will permanently delete <span className="font-medium text-gray-900 dark:text-gray-100">{event.title}</span>, all its shifts, and all volunteer registrations. This cannot be undone.
+            </>
+          }
+          confirmLabel="Delete Event"
+          loading={deletingEvent}
+          onCancel={() => setShowDeleteEventModal(false)}
+          onConfirm={handleDeleteEvent}
+        />
+      )}
+
+      {removeVolunteerTarget && (
+        <ConfirmDeleteModal
+          title="Remove Volunteer"
+          message={
+            <>
+              Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removeVolunteerTarget.name}</span> from this shift? They will need to sign up again to rejoin.
+            </>
+          }
+          confirmLabel="Remove"
+          loading={removingVolunteer}
+          onCancel={() => setRemoveVolunteerTarget(null)}
+          onConfirm={removeVolunteer}
         />
       )}
     </>

@@ -30,7 +30,7 @@ async function buildClients() {
 async function requireAccess(service: any, eventId: string, userId: string) {
   const { data: event } = await service
     .from('events')
-    .select('id, event_id, organization_id')
+    .select('id, event_id, organization_id, attendee_enabled')
     .eq('id', eventId)
     .single();
   if (!event) return { error: 'Event not found', status: 404 };
@@ -110,7 +110,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     scan_count: scanMap[i.id] ?? 0,
   }));
 
-  return NextResponse.json({ instances: enriched, event_slug: event.event_id });
+  return NextResponse.json({ instances: enriched, event_slug: event.event_id, attendee_enabled: event.attendee_enabled });
 }
 
 // POST /api/events/[id]/qr-instances — create a new placement instance
@@ -125,9 +125,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   if ('error' in check) return NextResponse.json({ error: check.error }, { status: check.status as number });
 
   const { event } = check as any;
-  const { label, type } = await req.json();
+  const { label, type, target_role } = await req.json();
   if (!label?.trim()) return NextResponse.json({ error: 'Label is required' }, { status: 400 });
   const instanceType = type === 'link' ? 'link' : 'qr';
+  if (target_role === 'attendee' && !event.attendee_enabled) {
+    return NextResponse.json({ error: 'Attendee registration is not enabled for this event' }, { status: 400 });
+  }
+  const targetRole = target_role === 'attendee' ? 'attendee' : 'volunteer';
 
   const { data: instance, error } = await service
     .from('qr_code_instances')
@@ -136,6 +140,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       organization_id: event.organization_id,
       label:           label.trim(),
       type:            instanceType,
+      target_role:     targetRole,
     })
     .select()
     .single();

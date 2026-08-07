@@ -43,3 +43,4 @@ organizations → events → shifts → registrations, with waitlists and shiftl
 - **Service-role key**: server routes only — never in client-reachable code.
 - **File extensions**: codebase has legacy `.jsx`; all new files should be `.tsx`.
 - **Paid-feature gating**: check the org's plan before exposing multi-day events, custom domains, or platform sync.
+- **Modal/form action buttons**: Cancel always on the left, the confirming action (Save/Create/Send/etc.) on the right. If either button stretches to fill space (e.g. `flex-1`), give both `flex-1` so they split evenly — don't let one stretch while the other stays fixed-width (see `EventModal.jsx`/`ShiftModal.jsx` for the reference pattern).

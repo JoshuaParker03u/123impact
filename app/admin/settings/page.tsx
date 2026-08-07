@@ -57,6 +57,7 @@ export default function SettingsPage() {
 
   // Profile
   const [displayName, setDisplayName]       = useState('')
+  const [bio, setBio]                       = useState('')
   const [profileSaving, setProfileSaving]   = useState(false)
   const [profileResult, setProfileResult]   = useState<{ ok?: string; err?: string }>({})
 
@@ -94,6 +95,7 @@ export default function SettingsPage() {
     supabase.auth.getUser().then((res: any) => { const user = res.data?.user;
       if (!user) { router.push('/login'); return }
       setDisplayName(user.user_metadata?.full_name ?? '')
+      setBio(user.user_metadata?.bio ?? '')
       setTimezone(user.user_metadata?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)
       setIdentities(user.identities ?? [])
       setLoading(false)
@@ -123,9 +125,9 @@ export default function SettingsPage() {
     const res = await fetch('/api/users/me', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ full_name: displayName.trim() }),
+      body: JSON.stringify({ full_name: displayName.trim(), bio: bio.trim() }),
     })
-    setProfileResult(res.ok ? { ok: 'Display name saved.' } : { err: (await res.json()).error })
+    setProfileResult(res.ok ? { ok: 'Profile saved.' } : { err: (await res.json()).error })
     setProfileSaving(false)
   }
 
@@ -251,6 +253,27 @@ export default function SettingsPage() {
                   onChange={e => setDisplayName(e.target.value)}
                   placeholder="How you'd like to appear"
                   maxLength={60}
+                />
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="bio">Speaker Bio</Label>
+              <CardDescription className="!mt-0 mb-1">
+                Only used when you sign up as a Speaker for an event — it pre-fills your bio on the speaker signup form, the same way your name does.
+              </CardDescription>
+              {streamerMode ? (
+                <p className="px-3 py-2 text-sm rounded-md border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 font-mono tracking-wider">
+                  {REDACTED_NAME}
+                </p>
+              ) : (
+                <textarea
+                  id="bio"
+                  value={bio}
+                  onChange={e => setBio(e.target.value)}
+                  placeholder="A short bio event organizers can use in their program"
+                  maxLength={500}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               )}
             </div>
@@ -384,6 +407,7 @@ export default function SettingsPage() {
                       {isConfirming ? (
                         <>
                           <span className="text-xs text-gray-600 dark:text-gray-400">Leave {org.name}?</span>
+                          <Button size="sm" variant="outline" onClick={() => setLeavingOrgId(null)} className="text-xs">Cancel</Button>
                           <Button size="sm" variant="outline"
                             onClick={() => leaveOrg(org.id)}
                             disabled={leavingInProgress === org.id}
@@ -391,7 +415,6 @@ export default function SettingsPage() {
                           >
                             {leavingInProgress === org.id ? 'Leaving…' : 'Yes, leave'}
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => setLeavingOrgId(null)} className="text-xs">Cancel</Button>
                         </>
                       ) : (
                         <Button
@@ -494,15 +517,15 @@ export default function SettingsPage() {
                 />
                 {deleteError && <p className="text-sm text-red-600 dark:text-red-400">{deleteError}</p>}
                 <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setShowDelete(false); setDeleteInput(''); setDeleteError(null) }}>
+                    Cancel
+                  </Button>
                   <Button
                     onClick={deleteAccount}
                     disabled={deleteInput !== 'DELETE' || deleting}
                     className="bg-red-600 hover:bg-red-700 text-white"
                   >
                     {deleting ? 'Deleting…' : 'Permanently Delete Account'}
-                  </Button>
-                  <Button variant="outline" onClick={() => { setShowDelete(false); setDeleteInput(''); setDeleteError(null) }}>
-                    Cancel
                   </Button>
                 </div>
               </div>
