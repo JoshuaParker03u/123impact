@@ -5,7 +5,6 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
 import { getBrowserClient } from '@/lib/supabase';
-import AdminNavigation from '@/components/admin/AdminNavigation';
 import CreateOrganizationModal from '@/components/admin/CreateOrganizationModal';
 import CheckoutModal from '@/components/admin/CheckoutModal';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
@@ -1471,31 +1470,22 @@ function OrganizationsPageContent() {
     setError('');
     setLogoChange({ type: 'none' });
 
-    Promise.all([
-      fetch(`/api/organizations/${currentOrganization.id}`).then((r) => r.json()),
-      fetch('/api/organizations/user').then((r) => r.json()),
-    ]).then(([orgResult, userResult]) => {
-      if (orgResult.error || !orgResult.data) { setError(orgResult.error ?? 'Failed to load organization'); return; }
-      setOrg(orgResult.data);
-      setForm({
-        name:          orgResult.data.name          ?? '',
-        description:   orgResult.data.description   ?? '',
-        contact_email: orgResult.data.contact_email ?? '',
-        contact_phone: orgResult.data.contact_phone ?? '',
-        website:       orgResult.data.website       ?? '',
-        status:        orgResult.data.status        ?? 'active',
-      });
-      // Get current user id from org user list
-      if (Array.isArray(userResult)) {
-        // We can get the user id from the supabase browser client - handled below
-      }
-    }).catch((err) => setError(err.message)).finally(() => setFetching(false));
+    fetch(`/api/organizations/${currentOrganization.id}`).then((r) => r.json())
+      .then((orgResult) => {
+        if (orgResult.error || !orgResult.data) { setError(orgResult.error ?? 'Failed to load organization'); return; }
+        setOrg(orgResult.data);
+        setForm({
+          name:          orgResult.data.name          ?? '',
+          description:   orgResult.data.description   ?? '',
+          contact_email: orgResult.data.contact_email ?? '',
+          contact_phone: orgResult.data.contact_phone ?? '',
+          website:       orgResult.data.website       ?? '',
+          status:        orgResult.data.status        ?? 'active',
+        });
+      }).catch((err) => setError(err.message)).finally(() => setFetching(false));
 
     // Get current user id
-    import('@supabase/ssr').then(({ createBrowserClient }) => {
-      const sb = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-      sb.auth.getUser().then(({ data: { user } }) => { if (user) setCurrentUserId(user.id); });
-    });
+    getBrowserClient().auth.getUser().then(({ data: { user } }) => { if (user) setCurrentUserId(user.id); });
   }, [currentOrganization?.id]);
 
   async function handleSubmit(e) {
@@ -1545,7 +1535,6 @@ function OrganizationsPageContent() {
   if (orgLoading) {
     return (
       <>
-        <AdminNavigation />
         <div className="flex items-center justify-center min-h-screen">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
         </div>
@@ -1557,7 +1546,6 @@ function OrganizationsPageContent() {
     const wantsBilling = searchParams.get('tab') === 'billing';
     return (
       <>
-        <AdminNavigation />
         <div className="container mx-auto px-4 py-8">
           <Card className="p-8 text-center max-w-md mx-auto">
             <Zap className="w-10 h-10 text-blue-500 mx-auto mb-3" />
@@ -1594,7 +1582,6 @@ function OrganizationsPageContent() {
 
   return (
     <>
-      <AdminNavigation />
       <div className="container mx-auto px-4 py-8 max-w-2xl">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Organization</h1>

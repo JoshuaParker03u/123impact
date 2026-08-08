@@ -1,33 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { Heart } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
 import { getBrowserClient } from '@/lib/supabase'
-import type { AuthChangeEvent } from '@supabase/supabase-js'
+import { useOrganization } from '@/contexts/OrganizationContext'
 
 export default function Header() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  // isLoggedIn comes from OrganizationContext — a single shared getUser() at
+  // the app root instead of a separate one here that used to reset to empty
+  // and re-fetch on every remount.
+  const { isLoggedIn } = useOrganization() as any
   const supabase = getBrowserClient()
-
-  useEffect(() => {
-    // Initial state comes from an explicit validated check; the listener only
-    // reacts to SIGNED_OUT (project convention — avoids churn on
-    // INITIAL_SESSION/TOKEN_REFRESHED and stale getSession() reads).
-    ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setIsLoggedIn(!!user)
-    })()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event: AuthChangeEvent) => {
-        if (event === 'SIGNED_OUT') setIsLoggedIn(false)
-      }
-    )
-    return () => subscription.unsubscribe()
-  }, [])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

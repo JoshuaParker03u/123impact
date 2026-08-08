@@ -36,7 +36,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: event } = await service
     .from('events')
-    .select('id, organization_id, external_id, platform_source, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform')
+    .select('id, event_id, organization_id, external_id, platform_source, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform')
     .eq('id', eventId)
     .single();
 
@@ -101,7 +101,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
           type:    'event_synced',
           title:   `"${event.title}" was updated`,
           body,
-          link:    `/admin/events/${eventId}`,
+          link:    `/admin/events/${event.event_id}`,
         }))
       );
     }

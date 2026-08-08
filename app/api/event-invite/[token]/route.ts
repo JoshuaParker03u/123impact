@@ -34,7 +34,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: assignment } = await service
     .from('event_admin_assignments')
-    .select('*, events!inner(id, title, date, location, organization_id, organizations!inner(name, logo_url)), co_sponsor_organization:organizations!event_admin_assignments_co_sponsor_org_id_fkey(id, name, logo_url)')
+    .select('*, events!inner(id, event_id, title, date, location, organization_id, organizations!inner(name, logo_url)), co_sponsor_organization:organizations!event_admin_assignments_co_sponsor_org_id_fkey(id, name, logo_url)')
     .eq('token', token)
     .single();
 
@@ -66,6 +66,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     co_sponsor_org: coSponsorOrg ? { name: coSponsorOrg.name, logo_url: coSponsorOrg.logo_url } : null,
     event: {
       id:       event.id,
+      event_id: event.event_id,
       title:    event.title,
       date:     event.date,
       location: event.location,

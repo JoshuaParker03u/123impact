@@ -6,7 +6,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import EmailTemplateEditor from '@/components/EmailTemplateEditor';
-import AdminNavigation from '@/components/admin/AdminNavigation';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
@@ -68,7 +67,6 @@ export default function EventTemplatesPage() {
   if (loading) {
     return (
       <>
-        <AdminNavigation />
         <div className="flex justify-center items-center h-64 text-gray-500 dark:text-gray-400">Loading...</div>
       </>
     );
@@ -77,7 +75,6 @@ export default function EventTemplatesPage() {
   if (showEditor) {
     return (
       <>
-        <AdminNavigation />
         <div className="container mx-auto p-6">
           <Link
             href={event?.event_id ? `/admin/events/${event.event_id}` : '/admin/events'}
@@ -105,7 +102,6 @@ export default function EventTemplatesPage() {
 
   return (
     <>
-      <AdminNavigation />
       <div className="container mx-auto p-6">
       <Link
         href={event?.event_id ? `/admin/events/${event.event_id}` : '/admin/events'}

@@ -66,7 +66,7 @@ export default function AdminNavigation() {
     switchOrganization,
   } = useOrganizationSwitch();
 
-  const { refreshOrganization, userRole } = useOrganization();
+  const { refreshOrganization, userRole, user, userName, userEmail } = useOrganization();
   const canViewAnalytics = ['owner', 'admin'].includes(userRole);
   const { streamerMode, toggleStreamerMode } = useStreamerMode();
 
@@ -75,8 +75,6 @@ export default function AdminNavigation() {
   const [notifOpen, setNotifOpen]             = useState(false);
   const [notifications, setNotifications]     = useState([]);
   const [notifLoading, setNotifLoading]       = useState(false);
-  const [userName, setUserName]               = useState('');
-  const [userEmail, setUserEmail]             = useState('');
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
   const [settingsOpen, setSettingsOpen]       = useState(false);
   const dropdownRef = useRef(null);
@@ -108,32 +106,13 @@ export default function AdminNavigation() {
     }
   }, []);
 
+  // user (name/email) comes from OrganizationContext — a single shared
+  // getUser() at the app root instead of a separate one here that used to
+  // reset to empty and re-fetch on every remount (e.g. dashboard <-> /admin).
   useEffect(() => {
-    const setName = (user) => {
-      if (!user) return;
-      const name = user.user_metadata?.full_name;
-      const email = user.email || '';
-      setUserName(name || '');
-      setUserEmail(email);
-    };
-
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setName(user);
-      if (user) fetchNotifications();
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setName(session?.user ?? null);
-      }
-      if (event === 'SIGNED_OUT') {
-        setUserName('');
-        setUserEmail('');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    if (user) fetchNotifications();
+    else setNotifications([]);
+  }, [user, fetchNotifications]);
 
   const markAllRead = async () => {
     await fetch('/api/notifications', { method: 'PATCH' });
@@ -212,7 +191,7 @@ export default function AdminNavigation() {
             </Link>
 
             {/* Desktop nav links */}
-            <div className="hidden md:flex items-center space-x-8">
+            <div className="hidden xl:flex items-center space-x-8">
               <Link href="/dashboard" className={navLinkClass}>Dashboard</Link>
               <Link href="/admin/events" className={navLinkClass}>Events</Link>
               <Link href="/admin/volunteers" className={navLinkClass}>Volunteers</Link>
@@ -230,10 +209,10 @@ export default function AdminNavigation() {
           </div>
 
           {/* Right */}
-          <div className="flex items-center gap-2">
+          <div className="relative flex items-center gap-2">
 
             {/* Org Switcher — desktop only */}
-            <div className="relative hidden md:block" ref={dropdownRef}>
+            <div className="relative hidden xl:block" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen((o) => !o)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -300,7 +279,7 @@ export default function AdminNavigation() {
             <button
               onClick={toggleStreamerMode}
               title={mounted && streamerMode ? 'Disable streamer mode' : 'Enable streamer mode'}
-              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 mounted && streamerMode
                   ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -311,12 +290,17 @@ export default function AdminNavigation() {
             </button>
 
             {/* Theme toggle — desktop only */}
-            <div className="hidden md:block">
+            <div className="hidden xl:block">
               <ThemeToggle />
             </div>
 
-            {/* Notification Bell — always visible */}
-            <div className="relative" ref={notifRef}>
+            {/* Notification Bell — always visible. No `relative` here — the
+                dropdown below anchors to the outer right-side cluster
+                instead, so it right-aligns to the bar's true edge rather
+                than the bell's own narrow wrapper (which sat left of the
+                account widget and caused the panel to overlap the
+                streamer/theme toggle icons when opened). */}
+            <div ref={notifRef}>
               <button
                 onClick={() => { setNotifOpen((o) => !o); if (!notifOpen) fetchNotifications(); }}
                 className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -331,7 +315,7 @@ export default function AdminNavigation() {
               </button>
 
               {notifOpen && (
-                <div className="fixed top-16 left-2 right-2 md:absolute md:top-full md:left-auto md:right-0 md:mt-2 md:w-96 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
+                <div className="fixed top-16 left-2 right-2 xl:absolute xl:top-full xl:left-auto xl:right-0 xl:mt-2 xl:w-96 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</p>
                     {unreadCount > 0 && (
@@ -375,7 +359,7 @@ export default function AdminNavigation() {
             </div>
 
             {/* Settings + sign-out dropdown — desktop only */}
-            <div className="relative hidden md:block" ref={settingsRef}>
+            <div className="relative hidden xl:block" ref={settingsRef}>
               <button
                 onClick={() => setSettingsOpen((o) => !o)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -416,7 +400,7 @@ export default function AdminNavigation() {
             {/* Hamburger — mobile only */}
             <button
               onClick={() => setMobileMenuOpen((o) => !o)}
-              className="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="xl:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               aria-label="Menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5 text-gray-600 dark:text-gray-400" /> : <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />}
@@ -427,7 +411,7 @@ export default function AdminNavigation() {
 
       {/* Mobile menu panel */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-4 py-3 space-y-1">
+        <div className="xl:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-4 py-3 space-y-1">
 
           {/* Nav links */}
           {[

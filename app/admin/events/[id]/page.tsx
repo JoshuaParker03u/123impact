@@ -7,7 +7,6 @@ import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
-import AdminNavigation from '@/components/admin/AdminNavigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
@@ -1089,10 +1088,9 @@ interface QRInstance {
   target_role: 'volunteer' | 'attendee';
 }
 
-function QRCodesTab({ eventId, organizationId }: { eventId: string; organizationId: string }) {
+function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: string | null }) {
   const [instances, setInstances]         = useState<QRInstance[]>([]);
   const [eventSlug, setEventSlug]         = useState('');
-  const [customDomain, setCustomDomain]   = useState<string | null>(null);
   const [attendeeEnabled, setAttendeeEnabled] = useState(false);
   const [loading, setLoading]             = useState(true);
   const [adding, setAdding]               = useState(false);
@@ -1104,22 +1102,15 @@ function QRCodesTab({ eventId, organizationId }: { eventId: string; organization
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [qrRes, domainRes] = await Promise.all([
-      fetch(`/api/events/${eventId}/qr-instances`),
-      fetch(`/api/organizations/${organizationId}/custom-domain`),
-    ]);
+    const qrRes = await fetch(`/api/events/${eventId}/qr-instances`);
     if (qrRes.ok) {
       const json = await qrRes.json();
       setInstances(json.instances ?? []);
       setEventSlug(json.event_slug ?? '');
       setAttendeeEnabled(!!json.attendee_enabled);
     }
-    if (domainRes.ok) {
-      const domainJson = await domainRes.json();
-      setCustomDomain(domainJson?.status === 'active' ? domainJson.subdomain : null);
-    }
     setLoading(false);
-  }, [eventId, organizationId]);
+  }, [eventId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1682,7 +1673,6 @@ export default function AdminEventDetailPage() {
   if (loading) {
     return (
       <>
-        <AdminNavigation />
         <div className="flex items-center justify-center min-h-screen">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
         </div>
@@ -1693,7 +1683,6 @@ export default function AdminEventDetailPage() {
   if (!event) {
     return (
       <>
-        <AdminNavigation />
         <div className="container mx-auto px-4 py-8">
           <Card className="p-8 text-center">
             <p className="text-gray-600">Event not found.</p>
@@ -1716,7 +1705,6 @@ export default function AdminEventDetailPage() {
 
   return (
     <>
-      <AdminNavigation />
       <div className="container mx-auto px-4 py-8">
 
         {/* Back link */}
@@ -1929,7 +1917,7 @@ export default function AdminEventDetailPage() {
         ) : activeTab === 'live' ? (
           <LiveTab eventId={event.id} />
         ) : activeTab === 'qr' ? (
-          <QRCodesTab eventId={event.id} organizationId={event.organization_id} />
+          <QRCodesTab eventId={event.id} customDomain={customDomain} />
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
         ) : event.is_shiftless ? (

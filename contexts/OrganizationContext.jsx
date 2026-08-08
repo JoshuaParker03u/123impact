@@ -12,6 +12,13 @@ export function OrganizationProvider({ children }) {
   const [currentOrganization, setCurrentOrganization] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Single shared source of "who's logged in", used by AdminNavigation and
+  // the public Header so neither has to run its own getUser() on mount —
+  // that used to mean the account name/menu flickered empty-then-populated
+  // every time either component remounted across a top-level navigation
+  // (e.g. dashboard <-> /admin/*), since each was independently re-fetching
+  // instead of reading an already-resolved value.
+  const [user, setUser] = useState(null);
 
   const hasLoadedRef = useRef(false);
 
@@ -22,6 +29,7 @@ export function OrganizationProvider({ children }) {
       setError(null);
 
       const { data: { user }, error: authError } = await getBrowserClient().auth.getUser();
+      setUser(user ?? null);
       // Only short-circuit when we're *certain* there's no user. A transient
       // auth/network error also yields user:null — treating that as logged-out
       // would wipe a still-valid session's orgs mid-flight, so fall through to
@@ -79,6 +87,7 @@ export function OrganizationProvider({ children }) {
       if (event === 'SIGNED_OUT') {
         setOrganizations([]);
         setCurrentOrganization(null);
+        setUser(null);
         // Don't redirect here — the middleware handles protecting routes on next navigation.
         // Redirecting here causes spurious "session expired" messages during OAuth sign-in
         // when Supabase fires SIGNED_OUT to replace the old session with the new one.
@@ -113,6 +122,10 @@ export function OrganizationProvider({ children }) {
     isAdmin: ['owner', 'admin'].includes(currentOrganization?.role),
     userRole: currentOrganization?.role ?? null,
     userPermissions: currentOrganization?.permissions ?? {},
+    user,
+    isLoggedIn: !!user,
+    userName: user?.user_metadata?.full_name ?? '',
+    userEmail: user?.email ?? '',
   };
 
   return (

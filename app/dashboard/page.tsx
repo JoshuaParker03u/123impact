@@ -52,7 +52,11 @@ function FillBar({ filled, capacity }: { filled: number; capacity: number }) {
 }
 
 function DashboardContent() {
-  const { refreshOrganization, currentOrganization } = useOrganization() as any
+  const { refreshOrganization, currentOrganization, organizations, loading: orgContextLoading } = useOrganization() as any
+  // Derived from OrganizationContext (already loaded once at the app root)
+  // rather than a separate page-level fetch of the same /api/organizations/user
+  // data — avoids a redundant Supabase auth round-trip on every dashboard load.
+  const hasOrg = orgContextLoading ? null : organizations.length > 0
   const { streamerMode } = useStreamerMode()
   const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string } | null>(null)
   const [user, setUser]                         = useState<User | null>(null)
@@ -64,8 +68,6 @@ function DashboardContent() {
   const [speakerAppointments, setSpeakerAppointments] = useState<any[]>([])
   const [pendingSpeakerInvites, setPendingSpeakerInvites] = useState<any[]>([])
   const [acceptingInviteId, setAcceptingInviteId] = useState<string | null>(null)
-  const [hasOrg, setHasOrg]                     = useState<boolean | null>(null)
-  const [orgId, setOrgId]                       = useState<string | null>(null)
   const [summary, setSummary]                   = useState<any>(null)
   const [showCreateOrg, setShowCreateOrg]       = useState(false)
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
@@ -129,33 +131,13 @@ function DashboardContent() {
         const accountAge  = Date.now() - new Date(user.created_at).getTime()
         setIsFirstLogin(accountAge < 5 * 60 * 1000)
 
-        const [assignmentsRes, orgsRes, invitesRes, speakerRes, speakerInvitesRes] = await Promise.all([
-          fetch('/api/users/me/event-admin-assignments'),
-          fetch('/api/organizations/user'),
-          fetch('/api/users/me/invitations'),
-          fetch('/api/users/me/speaker-appointments'),
-          fetch('/api/users/me/speaker-invites'),
-        ])
-
-        if (assignmentsRes.ok) setEventAdminAssignments(await assignmentsRes.json())
-        if (invitesRes.ok) setPendingInvitations(await invitesRes.json())
-        if (speakerRes.ok) setSpeakerAppointments(await speakerRes.json())
-        if (speakerInvitesRes.ok) setPendingSpeakerInvites(await speakerInvitesRes.json())
-
-        if (orgsRes.ok) {
-          const { data } = await orgsRes.json()
-          const orgs = data ?? []
-          if (orgs.length > 0) {
-            setHasOrg(true)
-            const storedId = typeof window !== 'undefined'
-              ? localStorage.getItem('123impact_current_org_id') : null
-            const matched  = orgs.find((o: any) => o.id === storedId) ?? orgs[0]
-            setOrgId(matched.id)
-          } else {
-            setHasOrg(false)
-          }
-        } else {
-          setHasOrg(false)
+        const bootstrapRes = await fetch('/api/dashboard/bootstrap')
+        if (bootstrapRes.ok) {
+          const boot = await bootstrapRes.json()
+          setEventAdminAssignments(boot.assignments ?? [])
+          setPendingInvitations(boot.invitations ?? [])
+          setSpeakerAppointments(boot.speakerAppointments ?? [])
+          setPendingSpeakerInvites(boot.speakerInvites ?? [])
         }
 
         setIsLoading(false)
@@ -167,7 +149,7 @@ function DashboardContent() {
     handleAuthCallback()
   }, [supabase, router, searchParams])
 
-  const summaryOrgId = currentOrganization?.id ?? orgId
+  const summaryOrgId = currentOrganization?.id
   useEffect(() => {
     if (!summaryOrgId) return
     fetch(`/api/dashboard/summary?org_id=${summaryOrgId}`)
@@ -190,17 +172,9 @@ function DashboardContent() {
       }
       setPendingInvitations((prev) => prev.filter((i: any) => i.token !== token))
       if (action === 'accept') {
+        // hasOrg/summaryOrgId are derived from OrganizationContext, so
+        // refreshing it here is enough — no separate re-fetch needed.
         await refreshOrganization()
-        const orgsRes = await fetch('/api/organizations/user')
-        if (orgsRes.ok) {
-          const { data: orgs } = await orgsRes.json()
-          if ((orgs ?? []).length > 0) {
-            setHasOrg(true)
-            const storedId = typeof window !== 'undefined' ? localStorage.getItem('123impact_current_org_id') : null
-            const matched = (orgs ?? []).find((o: any) => o.id === storedId) ?? orgs[0]
-            setOrgId(matched.id)
-          }
-        }
       }
     } finally {
       setActingInviteToken(null)
@@ -875,8 +849,6 @@ function DashboardContent() {
           onSuccess={(newOrg: any) => {
             setShowCreateOrg(false)
             localStorage.setItem('123impact_current_org_id', newOrg.id)
-            setHasOrg(true)
-            setOrgId(newOrg.id)
             refreshOrganization()
           }}
         />
