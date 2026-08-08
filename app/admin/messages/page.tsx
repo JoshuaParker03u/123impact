@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import AdminNavigation from '@/components/admin/AdminNavigation';
 import MessageComposer from '@/components/MessageComposer';
 import SentMessagesHistory from '@/components/SentMessagesHistory';
 import ScheduledMessagesList from '@/components/ScheduledMessagesList';
@@ -20,7 +19,6 @@ export default function MessagesPage() {
 
   return (
     <>
-      <AdminNavigation />
       <div className="container mx-auto p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Messages</h1>

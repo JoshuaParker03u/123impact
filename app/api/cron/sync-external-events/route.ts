@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const { data: importedEvents } = await service
         .from('events')
-        .select('id, organization_id, external_id, platform_source, status, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
+        .select('id, event_id, organization_id, external_id, platform_source, status, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
         .eq('organization_id', conn.organization_id)
         .eq('platform_source', conn.platform)
         .not('status', 'in', '(cancelled,deleted)')
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
       // Also include single-day events not yet passed
       const { data: singleDayEvents } = await service
         .from('events')
-        .select('id, organization_id, external_id, platform_source, status, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
+        .select('id, event_id, organization_id, external_id, platform_source, status, title, date, end_date, time, location, description, online_url, platform_image, is_private_on_platform, sync_fail_count')
         .eq('organization_id', conn.organization_id)
         .eq('platform_source', conn.platform)
         .not('status', 'in', '(cancelled,deleted)')
@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
                 body:    removedOnPlatform === 'deleted'
                   ? `We've marked it "deleted" here too — its public signup page is now hidden.`
                   : `We've marked it "cancelled" here too — its signup page stays visible but new signups are closed.`,
-                link:    `/admin/events/${event.id}`,
+                link:    `/admin/events/${event.event_id}`,
               }))
             );
           }
@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
                   type:    'event_sync_failed',
                   title:   `Sync failed for "${event.title}"`,
                   body:    `We've been unable to sync this event from ${conn.platform} for 3 consecutive attempts. Check your connection in org settings.`,
-                  link:    `/admin/events/${event.id}`,
+                  link:    `/admin/events/${event.event_id}`,
                 }))
               );
             }
@@ -186,7 +186,7 @@ export async function GET(req: NextRequest) {
                 type:    'event_synced',
                 title:   `"${event.title}" was updated`,
                 body:    `Synced from ${conn.platform}: ${fieldList}`,
-                link:    `/admin/events/${event.id}`,
+                link:    `/admin/events/${event.event_id}`,
               }))
             );
           }

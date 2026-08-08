@@ -6,7 +6,6 @@ import { getBrowserClient } from '@/lib/supabase'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useStreamerMode } from '@/contexts/StreamerModeContext'
 import { REDACTED_NAME, REDACTED_EMAIL } from '@/lib/redact'
-import AdminNavigation from '@/components/admin/AdminNavigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,7 +49,10 @@ function SectionResult({ success, error }: { success: string | null; error: stri
 export default function SettingsPage() {
   const router = useRouter()
   const supabase = getBrowserClient()
-  const { refreshOrganizations } = useOrganization() as any
+  // organizations comes from OrganizationContext (already loaded at the app
+  // root) rather than a separate page-level fetch of the same data.
+  const { refreshOrganizations, organizations } = useOrganization() as any
+  const orgs: any[] = organizations ?? []
   const { streamerMode } = useStreamerMode()
 
   const [loading, setLoading] = useState(true)
@@ -80,7 +82,6 @@ export default function SettingsPage() {
   const [unlinkResult, setUnlinkResult] = useState<{ ok?: string; err?: string }>({})
 
   // Organizations
-  const [orgs, setOrgs]               = useState<any[]>([])
   const [leavingOrgId, setLeavingOrgId] = useState<string | null>(null)
   const [leaveResult, setLeaveResult] = useState<{ ok?: string; err?: string }>({})
   const [leavingInProgress, setLeavingInProgress] = useState<string | null>(null)
@@ -100,10 +101,6 @@ export default function SettingsPage() {
       setIdentities(user.identities ?? [])
       setLoading(false)
     })
-
-    fetch('/api/organizations/user')
-      .then(r => r.ok ? r.json() : { data: [] })
-      .then(({ data }) => setOrgs(data ?? []))
 
     try {
       setTimezones(Intl.supportedValuesOf('timeZone'))
@@ -190,7 +187,6 @@ export default function SettingsPage() {
     setLeaveResult({})
     const res = await fetch(`/api/organizations/${orgId}/leave`, { method: 'DELETE' })
     if (res.ok) {
-      setOrgs(prev => prev.filter(o => o.id !== orgId))
       setLeaveResult({ ok: 'You have left the organization.' })
       await refreshOrganizations()
     } else {
@@ -227,7 +223,6 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-background dark:bg-gray-950">
-      <AdminNavigation />
       <main className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Account Settings</h1>
 

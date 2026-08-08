@@ -31,6 +31,13 @@ export async function GET(
   const { data: { user } } = await session.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // `slug` is normally the public event_id, but links/URLs occasionally carry
+  // the raw database id (UUID) instead — e.g. pasted from elsewhere or an
+  // older link. Match on whichever column actually fits the value's shape
+  // rather than 404ing, and avoid comparing a non-UUID string against the
+  // UUID `id` column (which errors at the Postgres level).
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+
   const { data: event } = await service
     .from('events')
     .select(`
@@ -42,7 +49,7 @@ export async function GET(
       shifts (id, shift_id, name, description, start_time, end_time, capacity, shift_date, allow_waitlist),
       event_day_hours (id, event_date, start_time, end_time)
     `)
-    .eq('event_id', slug)
+    .eq(isUuid ? 'id' : 'event_id', slug)
     .single();
 
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });

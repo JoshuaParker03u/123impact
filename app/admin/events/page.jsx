@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { getBrowserClient } from '@/lib/supabase';
-import AdminNavigation from '@/components/admin/AdminNavigation';
 import EventModal from '@/components/admin/EventModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -220,7 +219,6 @@ export default function AdminEventsPage() {
   if (orgLoading) {
     return (
       <>
-        <AdminNavigation />
         <div className="flex items-center justify-center min-h-screen">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
         </div>
@@ -231,7 +229,6 @@ export default function AdminEventsPage() {
   if (!currentOrganization) {
     return (
       <>
-        <AdminNavigation />
         <div className="container mx-auto px-4 py-8">
           <Card className="p-8 text-center">
             <p className="text-gray-600">No organization selected</p>
@@ -265,7 +262,6 @@ export default function AdminEventsPage() {
 
   return (
     <>
-      <AdminNavigation />
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-start mb-6">

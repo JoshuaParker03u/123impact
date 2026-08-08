@@ -32,6 +32,16 @@ export async function middleware(req: NextRequest) {
     if (!pathname.startsWith('/admin')) return response;
   }
 
+  // Only /admin routes are actually protected below — /dashboard handles its
+  // own auth client-side, and every other path never consulted `user` at
+  // all. Bail out before touching Supabase so every non-admin request (and
+  // every automatic Next.js Link prefetch, which runs through this same
+  // middleware) doesn't pay for an auth round-trip whose result would just
+  // be discarded.
+  if (!pathname.startsWith('/admin')) {
+    return response;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -51,8 +61,7 @@ export async function middleware(req: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Only hard-protect /admin routes — /dashboard handles its own auth client-side
-  if (pathname.startsWith('/admin') && !user) {
+  if (!user) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('reason', 'session_expired')
     loginUrl.searchParams.set('redirect', pathname)

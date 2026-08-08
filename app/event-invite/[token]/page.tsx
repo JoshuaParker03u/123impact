@@ -18,7 +18,7 @@ interface InviteData {
   expires_at:     string;
   is_co_sponsor:  boolean;
   co_sponsor_org: { name: string; logo_url: string | null } | null;
-  event: { id: string; title: string; date: string; location: string };
+  event: { id: string; event_id: string; title: string; date: string; location: string };
   org:   { name: string; logo_url: string | null };
   inviter_name: string;
 }
@@ -122,7 +122,7 @@ export default function EventInvitePage() {
 
     if (action === 'accept') {
       setDone('accepted');
-      setTimeout(() => router.push(`/admin/events/${invite!.event.id}`), 2000);
+      setTimeout(() => router.push(`/admin/events/${invite!.event.event_id}`), 2000);
     } else {
       setDone('declined');
     }
