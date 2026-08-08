@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { shiftDurationHours } from '@/lib/hours';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -81,6 +82,7 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
       no_show_rate: 0,
       new_count: 0,
       returning_count: 0,
+      total_hours: 0,
       registrations: [],
     };
   }
@@ -88,7 +90,7 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
   // All registrations for this event
   const { data: regs } = await service
     .from('volunteer_registrations')
-    .select('id, email, attendee_type, registered_at')
+    .select('id, email, attendee_type, registered_at, shift_id, shifts (start_time, end_time)')
     .in('shift_id', shiftIds);
 
   const allRegs = regs ?? [];
@@ -145,11 +147,13 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
   const registrations = allRegs.map((r: any) => {
     const type = r.attendee_type as keyof typeof byType;
     if (type in byType) byType[type]++;
+    const checkedIn = checkedInSet.has(r.id);
     return {
       id:           r.id,
       attendee_type: r.attendee_type,
-      checked_in:   checkedInSet.has(r.id),
+      checked_in:   checkedIn,
       is_returning: returningEmails.has(r.email),
+      hours:        type === 'volunteer' && checkedIn ? shiftDurationHours(r.shifts?.start_time, r.shifts?.end_time) : 0,
     };
   });
 
@@ -160,6 +164,10 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
   const returningCount   = registrations.filter((r: RegRow) => r.is_returning).length;
   const newCount         = total - returningCount;
 
+  // Hours only count for checked-in Volunteer registrations — shift time is
+  // the only reliable scheduled-duration source in this app.
+  const totalHours = registrations.reduce((sum: number, r: { hours: number }) => sum + r.hours, 0);
+
   return {
     event,
     total_registrations: total,
@@ -168,6 +176,7 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
     no_show_rate:        noShowRate,
     new_count:           newCount,
     returning_count:     returningCount,
+    total_hours:         Math.round(totalHours * 100) / 100,
     registrations,
   };
 }

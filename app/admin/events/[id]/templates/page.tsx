@@ -1,15 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getBrowserClient } from '@/lib/supabase';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import EmailTemplateEditor from '@/components/EmailTemplateEditor';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { useOrganization } from '@/contexts/OrganizationContext';
-
-const supabase = getBrowserClient();
 
 export default function EventTemplatesPage() {
   const params = useParams();
@@ -29,18 +26,17 @@ export default function EventTemplatesPage() {
 
   async function loadData() {
     setLoading(true);
-    
-    const { data: eventData } = await supabase
-      .from('events')
-      .select('*')
-      .eq('id', eventId)
-      .single();
-    
+
+    const eventRes = await fetch(`/api/events/by-slug/${eventId}`);
+    const eventJson = await eventRes.json();
+    const eventData = eventJson.event ?? null;
     setEvent(eventData);
 
-    const response = await fetch(`/api/templates?eventId=${eventId}`);
-    const templatesData = await response.json();
-    setTemplates(templatesData);
+    if (eventData) {
+      const response = await fetch(`/api/templates?eventId=${eventData.id}`);
+      const templatesData = await response.json();
+      setTemplates(templatesData);
+    }
 
     setLoading(false);
   }
@@ -83,7 +79,7 @@ export default function EventTemplatesPage() {
             <ArrowLeft className="w-4 h-4" /> Back to Event
           </Link>
           <EmailTemplateEditor
-            eventId={eventId}
+            eventId={event?.id}
             template={editingTemplate}
             onSave={() => {
               setShowEditor(false);

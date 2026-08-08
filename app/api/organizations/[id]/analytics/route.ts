@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { shiftDurationHours } from '@/lib/hours';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -37,7 +38,7 @@ export async function fetchOrgAnalytics(service: any, orgId: string) {
     .order('date', { ascending: true });
 
   if (!events || events.length === 0) {
-    return { new_vs_returning: { new: 0, returning: 0 }, per_event: [], volunteer_base_over_time: [] };
+    return { new_vs_returning: { new: 0, returning: 0 }, per_event: [], volunteer_base_over_time: [], total_hours: 0 };
   }
 
   const eventIds = events.map((e: any) => e.id);
@@ -53,18 +54,37 @@ export async function fetchOrgAnalytics(service: any, orgId: string) {
   const allShiftIds = Object.keys(shiftToEvent);
 
   if (allShiftIds.length === 0) {
-    return { new_vs_returning: { new: 0, returning: 0 }, per_event: [], volunteer_base_over_time: [] };
+    return { new_vs_returning: { new: 0, returning: 0 }, per_event: [], volunteer_base_over_time: [], total_hours: 0 };
   }
 
   // All registrations (volunteers only) across the org
   const { data: allRegs } = await service
     .from('volunteer_registrations')
-    .select('id, email, shift_id, registered_at')
+    .select('id, email, shift_id, registered_at, shifts (start_time, end_time)')
     .in('shift_id', allShiftIds)
     .eq('attendee_type', 'volunteer')
     .order('registered_at', { ascending: true });
 
   const regs = allRegs ?? [];
+
+  // Hours only count for checked-in registrations — shift time is the only
+  // reliable scheduled-duration source in this app.
+  const regIds = regs.map((r: any) => r.id);
+  const { data: checkIns } = regIds.length
+    ? await service.from('check_ins').select('registration_id').in('registration_id', regIds)
+    : { data: [] };
+  const checkedInSet = new Set((checkIns ?? []).map((c: any) => c.registration_id));
+
+  const hoursByEvent: Record<string, number> = {};
+  let totalHours = 0;
+  for (const reg of regs as any[]) {
+    if (!checkedInSet.has(reg.id)) continue;
+    const eventId = shiftToEvent[reg.shift_id];
+    if (!eventId) continue;
+    const hours = shiftDurationHours(reg.shifts?.start_time, reg.shifts?.end_time);
+    hoursByEvent[eventId] = (hoursByEvent[eventId] ?? 0) + hours;
+    totalHours += hours;
+  }
 
   // Build per-event registration lists
   const regsByEvent: Record<string, { email: string; registered_at: string }[]> = {};
@@ -106,6 +126,7 @@ export async function fetchOrgAnalytics(service: any, orgId: string) {
       date:      event.date,
       new:       newCount,
       returning: retCount,
+      hours:     Math.round((hoursByEvent[event.id] ?? 0) * 100) / 100,
     };
   });
 
@@ -139,6 +160,7 @@ export async function fetchOrgAnalytics(service: any, orgId: string) {
     new_vs_returning:        { new: totalNew, returning: totalReturning },
     per_event:               perEvent,
     volunteer_base_over_time: volunteerBaseOverTime,
+    total_hours:             Math.round(totalHours * 100) / 100,
   };
 }
 

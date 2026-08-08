@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Loader2, Download, Users, UserCheck, UserX, TrendingUp } from 'lucide-react';
+import { Loader2, Download, Users, UserCheck, UserX, TrendingUp, Timer } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +15,7 @@ type AnalyticsData = {
   no_show_rate:        number;
   new_count:           number;
   returning_count:     number;
+  total_hours:         number;
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -137,6 +138,12 @@ export default function AnalyticsTab({ eventId }: { eventId: string }) {
               value={data.check_in_summary.not_checked_in}
               sub={`${data.no_show_rate}% no-show rate`}
               icon={<UserX className="w-5 h-5 text-red-500" />}
+            />
+            <StatCard
+              label="Volunteer Hours"
+              value={data.total_hours.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+              sub="Checked-in shifts only"
+              icon={<Timer className="w-5 h-5 text-amber-600" />}
             />
           </>
         )}

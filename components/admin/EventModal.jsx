@@ -190,6 +190,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     speaker_enabled:     event?.speaker_enabled     ?? false,
   });
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
+  const [applyToSeries, setApplyToSeries] = useState(false);
   const [dayHours, setDayHours] = useState(() =>
     (event?.event_day_hours ?? []).reduce((acc, r) => {
       acc[r.event_date] = { start_time: r.start_time, end_time: r.end_time };
@@ -265,6 +266,26 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
           .eq('id', event.id);
         if (error) throw error;
         await saveDayHours(event.id);
+
+        if (applyToSeries && event.series_id) {
+          const res = await fetch(`/api/events/${event.id}/recur`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title:        formData.title,
+              description:  formData.description,
+              location:     formData.location,
+              time:         formData.time || '',
+              image_url:    imageUrl,
+              event_format: formData.event_format,
+              online_url:   formData.online_url || null,
+            }),
+          });
+          if (!res.ok) {
+            const resBody = await res.json().catch(() => ({}));
+            alert(`Event saved, but couldn't update other occurrences: ${resBody.error ?? 'unknown error'}`);
+          }
+        }
       } else {
         const { data: newEvent, error } = await supabase
           .from('events')
@@ -616,6 +637,18 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                   <option value="completed">Completed</option>
                 </select>
               </div>
+            )}
+
+            {event?.series_id && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-600 dark:text-gray-400 pt-2">
+                <input
+                  type="checkbox"
+                  checked={applyToSeries}
+                  onChange={(e) => setApplyToSeries(e.target.checked)}
+                  className="rounded"
+                />
+                Apply title, description, location, time, image, and format changes to all other upcoming occurrences in this series
+              </label>
             )}
 
             <div className="flex gap-3 pt-4">

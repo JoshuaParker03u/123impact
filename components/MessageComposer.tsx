@@ -25,6 +25,12 @@ export default function MessageComposer({
   volunteerEmail,
   volunteerName,
 }: MessageComposerProps) {
+  // When opened with a preset event or shift (e.g. "Message Volunteers" from
+  // an event's manage page, or the message action on a specific shift), the
+  // "Send to" mode is fixed to match — shown for confirmation, not editable.
+  // Only the standalone Messages page (no eventId/shiftId passed) leaves it open.
+  const sendToLocked = !!eventId || !!shiftId;
+
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [recipientType, setRecipientType] = useState<RecipientType>(
@@ -34,6 +40,9 @@ export default function MessageComposer({
   const [selectedShift, setSelectedShift] = useState(shiftId || '');
   const [recipientCount, setRecipientCount] = useState(volunteerEmail ? 1 : 0);
   const [waitlistFilter, setWaitlistFilter] = useState<'all' | 'confirmed' | 'waitlisted'>('all');
+  const [roleFilter, setRoleFilter] = useState<Set<'volunteer' | 'attendee' | 'speaker'>>(
+    new Set(['volunteer', 'attendee', 'speaker'])
+  );
   const [events, setEvents] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [sendMode, setSendMode] = useState<'now' | 'scheduled'>('now');
@@ -76,7 +85,7 @@ export default function MessageComposer({
 
   useEffect(() => {
     if (recipientType !== 'volunteer') updateRecipientCount();
-  }, [recipientType, selectedEvent, selectedShift, waitlistFilter]);
+  }, [recipientType, selectedEvent, selectedShift, waitlistFilter, roleFilter]);
 
   async function loadEvents() {
     let query = supabase.from('events').select('id, title').order('title');
@@ -98,12 +107,14 @@ export default function MessageComposer({
     setLoading(true);
     let count = 0;
     try {
-      if (recipientType === 'event' && selectedEvent) {
+      if (recipientType === 'event' && selectedEvent && roleFilter.size > 0) {
         // Query by event_id directly (set on every registration, shift-based or
         // shiftless) rather than joining through shifts — a purely shiftless
         // event has no shift rows at all, so the old shifts-first join always
         // returned zero recipients for those events.
-        let q = supabase.from('volunteer_registrations').select('email').eq('event_id', selectedEvent);
+        let q = supabase.from('volunteer_registrations').select('email')
+          .eq('event_id', selectedEvent)
+          .in('attendee_type', [...roleFilter]);
         if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
         const { data } = await q;
         count = new Set(data?.map((r: any) => r.email) || []).size;
@@ -146,15 +157,16 @@ export default function MessageComposer({
           volunteerName:  recipientType === 'volunteer' ? volunteerName  : null,
           scheduledFor: sendMode === 'scheduled' ? scheduledFor : null,
           waitlistFilter,
+          roles: recipientType === 'event' ? [...roleFilter] : null,
         }),
       });
 
       const data = await response.json();
       if (response.ok) {
         if (data.scheduled) {
-          alert(`Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} volunteer${data.recipientCount !== 1 ? 's' : ''}.`);
+          alert(`Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}.`);
         } else {
-          alert(`Message sent to ${data.recipientCount} volunteer${data.recipientCount !== 1 ? 's' : ''}!`);
+          alert(`Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}!`);
         }
         onClose();
         setSubject('');
@@ -185,8 +197,11 @@ export default function MessageComposer({
           </div>
 
           <div className="space-y-4">
-            {/* Send to selector — hidden when opened for a specific volunteer */}
-            {!volunteerEmail && (
+            {/* Send to selector — hidden for individual-volunteer sends and
+                whenever opened with a preset event/shift (the mode is
+                already implied by how the composer was opened, so there's
+                nothing to choose). */}
+            {!volunteerEmail && !sendToLocked && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Send to</label>
                 <select
@@ -218,8 +233,11 @@ export default function MessageComposer({
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Event</label>
                 <select
                   value={selectedEvent}
-                  onChange={(e) => setSelectedEvent(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => !sendToLocked && setSelectedEvent(e.target.value)}
+                  disabled={sendToLocked}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 ${
+                    sendToLocked ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
                 >
                   <option value="">Choose an event...</option>
                   {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
@@ -233,8 +251,11 @@ export default function MessageComposer({
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Event</label>
                   <select
                     value={selectedEvent}
-                    onChange={(e) => setSelectedEvent(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => !sendToLocked && setSelectedEvent(e.target.value)}
+                    disabled={sendToLocked}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 ${
+                      sendToLocked ? 'opacity-70 cursor-not-allowed' : ''
+                    }`}
                   >
                     <option value="">Choose an event...</option>
                     {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
@@ -245,8 +266,11 @@ export default function MessageComposer({
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Shift</label>
                     <select
                       value={selectedShift}
-                      onChange={(e) => setSelectedShift(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                      onChange={(e) => !sendToLocked && setSelectedShift(e.target.value)}
+                      disabled={sendToLocked}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 ${
+                        sendToLocked ? 'opacity-70 cursor-not-allowed' : ''
+                      }`}
                     >
                       <option value="">Choose a shift...</option>
                       {shifts.map(s => (
@@ -256,6 +280,36 @@ export default function MessageComposer({
                   </div>
                 )}
               </>
+            )}
+
+            {/* Role filter — only meaningful for event-wide sends; shift
+                registrations are always Volunteers, since Attendees/Speakers
+                never pick a shift. */}
+            {recipientType === 'event' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Roles</label>
+                <div className="flex flex-col gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                  {(['volunteer', 'attendee', 'speaker'] as const).map((role) => (
+                    <label key={role} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={roleFilter.has(role)}
+                        onChange={(e) => {
+                          setRoleFilter((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(role); else next.delete(role);
+                            return next;
+                          });
+                        }}
+                      />
+                      {role === 'volunteer' ? 'Volunteers' : role === 'attendee' ? 'Attendees' : 'Speakers'}
+                    </label>
+                  ))}
+                </div>
+                {roleFilter.size === 0 && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">Select at least one role</p>
+                )}
+              </div>
             )}
 
             {/* Waitlist filter — not relevant for individual sends */}
@@ -275,7 +329,7 @@ export default function MessageComposer({
 
             <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                {loading ? 'Calculating...' : `This message will be sent to ${recipientCount} volunteer${recipientCount !== 1 ? 's' : ''}`}
+                {loading ? 'Calculating...' : `This message will be sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}`}
               </p>
             </div>
 

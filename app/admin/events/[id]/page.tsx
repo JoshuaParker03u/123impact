@@ -18,6 +18,7 @@ import InviteSpeakerModal from './InviteSpeakerModal';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import ShiftModal from '@/components/admin/ShiftModal';
 import EventModal from '@/components/admin/EventModal';
+import SetRecurringModal from '@/components/admin/SetRecurringModal';
 import MessageComposer from '@/components/MessageComposer';
 import ShiftDatePicker from '@/components/admin/ShiftDatePicker';
 import {
@@ -25,7 +26,7 @@ import {
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
   AlertTriangle, QrCode, Download, BarChart2, Radio, Link2, Copy,
-  CheckCircle2, WifiOff, RotateCcw, UserPlus,
+  CheckCircle2, WifiOff, RotateCcw, UserPlus, Repeat,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -82,6 +83,7 @@ interface Event {
   last_synced_at?: string | null;
   sync_status?: 'synced' | 'failed' | 'pending' | null;
   is_private_on_platform?: boolean;
+  series_id?: string | null;
 }
 
 interface OrgMember {
@@ -1555,6 +1557,7 @@ export default function AdminEventDetailPage() {
   const [showShiftModal,  setShowShiftModal]  = useState(false);
   const [editingShift,    setEditingShift]    = useState<any>(null);
   const [showEventModal,  setShowEventModal]  = useState(false);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [showMessageComposer, setShowMessageComposer] = useState(false);
   const [messageShiftId, setMessageShiftId] = useState<string | undefined>(undefined);
   const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string } | null>(null);
@@ -1739,6 +1742,11 @@ export default function AdminEventDetailPage() {
                     Private on platform
                   </span>
                 )}
+                {event.series_id && (
+                  <span title="Part of a recurring series — editing can optionally apply to other upcoming occurrences" className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+                    Recurring
+                  </span>
+                )}
               </div>
 
               {/* Sync status bar — only for imported events */}
@@ -1813,7 +1821,7 @@ export default function AdminEventDetailPage() {
                   </Button>
                 </Link>
               )}
-              <Link href={`/admin/events/${event.id}/templates`}>
+              <Link href={`/admin/events/${event.event_id}/templates`}>
                 <Button variant="outline" className="w-full justify-start gap-2">
                   <FileText className="w-4 h-4" /> Email Templates
                 </Button>
@@ -1844,6 +1852,15 @@ export default function AdminEventDetailPage() {
                       ? <Loader2 className="w-4 h-4 animate-spin" />
                       : <Copy className="w-4 h-4" />} Duplicate Event
                   </Button>
+                  {!event.series_id && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowRecurringModal(true)}
+                      className="w-full justify-start gap-2"
+                    >
+                      <Repeat className="w-4 h-4" /> Set as Recurring
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     onClick={() => setShowDeleteEventModal(true)}
@@ -2276,6 +2293,13 @@ export default function AdminEventDetailPage() {
           isPaid={orgPlan !== 'free'}
           onClose={() => setShowEventModal(false)}
           onSave={() => { setShowEventModal(false); loadEvent(); }}
+        />
+      )}
+      {showRecurringModal && event && (
+        <SetRecurringModal
+          event={event}
+          onClose={() => setShowRecurringModal(false)}
+          onDone={() => { setShowRecurringModal(false); loadEvent(); }}
         />
       )}
       {showMessageComposer && event && (
