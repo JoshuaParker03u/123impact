@@ -9,9 +9,10 @@ import MessageComposer from '@/components/MessageComposer';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X, CheckCircle2 } from 'lucide-react';
+import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X, CheckCircle2, Timer } from 'lucide-react';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
+import { shiftDurationHours } from '@/lib/hours';
 
 const AVATAR_COLORS = [
   'from-blue-500 to-blue-700',
@@ -321,11 +322,21 @@ function AdminVolunteersPage() {
         : { data: [] };
 
       const checkInMap = new Map((checkInsData || []).map(c => [c.registration_id, c]));
-      const withCheckIn = (volunteersData || []).map(v => ({
-        ...v,
-        checked_in_at: checkInMap.get(v.id)?.checked_in_at ?? null,
-        is_override: checkInMap.get(v.id)?.is_override ?? false,
-      }));
+      // Hours only count for shift-based Volunteer registrations that
+      // actually checked in — attendees/speakers aren't volunteering, and
+      // shiftless registrations have no reliable scheduled-duration source.
+      const withCheckIn = (volunteersData || []).map(v => {
+        const checkedInAt = checkInMap.get(v.id)?.checked_in_at ?? null;
+        const hours = v.attendee_type === 'volunteer' && v.shift_id && checkedInAt
+          ? shiftDurationHours(v.shifts?.start_time, v.shifts?.end_time)
+          : 0;
+        return {
+          ...v,
+          checked_in_at: checkedInAt,
+          is_override: checkInMap.get(v.id)?.is_override ?? false,
+          hours,
+        };
+      });
 
       // Don't set filteredVolunteers here — leave it to the effect that
       // watches `volunteers` (below), which applies the current filters.
@@ -428,6 +439,9 @@ function AdminVolunteersPage() {
     return acc;
   }, {});
 
+  // Scoped to the currently filtered set, matching the "Showing" stat.
+  const totalHours = filteredVolunteers.reduce((sum, v) => sum + (v.hours ?? 0), 0);
+
   if (orgLoading) {
     return (
       <>
@@ -497,7 +511,7 @@ function AdminVolunteersPage() {
         </Card>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-4">
             <div className="flex items-center gap-3">
               <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-full">
@@ -538,6 +552,18 @@ function AdminVolunteersPage() {
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Showing</p>
                 <p className="text-2xl font-bold">{filteredVolunteers.length}</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-100 dark:bg-amber-900/30 p-3 rounded-full">
+                <Timer className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Volunteer Hours</p>
+                <p className="text-2xl font-bold">{totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Checked-in shifts only</p>
               </div>
             </div>
           </Card>
@@ -606,7 +632,10 @@ function AdminVolunteersPage() {
                         <td className="p-4">
                           <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.shift_id ? (volunteer.shifts?.name || '—') : 'Direct registration'}</p>
                           {volunteer.shift_id && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.shifts?.start_time || ''} - {volunteer.shifts?.end_time || ''}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {volunteer.shifts?.start_time || ''} - {volunteer.shifts?.end_time || ''}
+                              {volunteer.hours > 0 && ` (${volunteer.hours}h)`}
+                            </p>
                           )}
                         </td>
                         <td className="p-4">
@@ -683,7 +712,10 @@ function AdminVolunteersPage() {
                       <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Shift</p>
                       <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.shift_id ? (volunteer.shifts?.name || '—') : 'Direct registration'}</p>
                       {volunteer.shift_id && (
-                        <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.shifts?.start_time || ''} – {volunteer.shifts?.end_time || ''}</p>
+                        <p className="text-gray-500 dark:text-gray-400 text-xs">
+                          {volunteer.shifts?.start_time || ''} – {volunteer.shifts?.end_time || ''}
+                          {volunteer.hours > 0 && ` (${volunteer.hours}h)`}
+                        </p>
                       )}
                     </div>
                   </div>

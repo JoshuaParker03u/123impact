@@ -47,13 +47,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const data = await fetchOrgAnalytics(service, orgId);
 
   const rows = [
-    ['event_title', 'event_date', 'new_volunteers', 'returning_volunteers', 'total'],
-    ...data.per_event.map((e: { title: string; date: string; new: number; returning: number }) => [
+    ['event_title', 'event_date', 'new_volunteers', 'returning_volunteers', 'total', 'volunteer_hours'],
+    ...data.per_event.map((e: { title: string; date: string; new: number; returning: number; hours: number }) => [
       `"${e.title.replace(/"/g, '""')}"`,
       e.date,
       String(e.new),
       String(e.returning),
       String(e.new + e.returning),
+      String(e.hours),
     ]),
   ];
 

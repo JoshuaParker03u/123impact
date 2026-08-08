@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { Loader2, Users, TrendingUp, Download } from 'lucide-react';
+import { Loader2, Users, TrendingUp, Download, Timer } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
@@ -16,12 +16,14 @@ type PerEvent = {
   date:     string;
   new:      number;
   returning: number;
+  hours:    number;
 };
 
 type OrgAnalytics = {
   new_vs_returning:        { new: number; returning: number };
   per_event:               PerEvent[];
   volunteer_base_over_time: { month: string; total: number }[];
+  total_hours:             number;
 };
 
 function StatCard({ label, value, sub, icon }: { label: string; value: number; sub?: string; icon: React.ReactNode }) {
@@ -118,7 +120,7 @@ export default function AnalyticsPage() {
         ) : (
           <div className="space-y-8">
             {/* Stat cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 label="Total Unique Volunteers"
                 value={data.volunteer_base_over_time.length > 0
@@ -137,6 +139,12 @@ export default function AnalyticsPage() {
                 value={data.new_vs_returning.returning}
                 sub={`${returningPct}% loyalty rate`}
                 icon={<Users className="w-5 h-5 text-indigo-600" />}
+              />
+              <StatCard
+                label="Volunteer Hours"
+                value={data.total_hours}
+                sub="Checked-in shifts only, all time"
+                icon={<Timer className="w-5 h-5 text-amber-600" />}
               />
             </div>
 

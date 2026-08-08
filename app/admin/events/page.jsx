@@ -6,10 +6,11 @@ import { getBrowserClient } from '@/lib/supabase';
 import EventModal from '@/components/admin/EventModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail, CalendarClock } from 'lucide-react';
 import Link from 'next/link';
 import MessageComposer from '@/components/MessageComposer';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
+import SeriesManagerModal from '@/components/admin/SeriesManagerModal';
 
 const supabase = getBrowserClient();
 
@@ -42,6 +43,7 @@ export default function AdminEventsPage() {
   const [deleting, setDeleting] = useState(false);
   const [resolvingEventId, setResolvingEventId] = useState(null);
   const [messagingEvent, setMessagingEvent] = useState(null);
+  const [manageSeriesId, setManageSeriesId] = useState(null);
   const [orgPlan, setOrgPlan] = useState('free');
 
   // Fetch events when organization changes
@@ -364,6 +366,14 @@ export default function AdminEventsPage() {
                               {event.platform_source}
                             </span>
                           )}
+                          {event.series_id && (
+                            <span
+                              title="Part of a recurring series"
+                              className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                            >
+                              Recurring
+                            </span>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                           <span className="flex items-center gap-1">
@@ -425,6 +435,17 @@ export default function AdminEventsPage() {
                             title="Message registrants"
                           >
                             <Mail className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {isAdmin && event.series_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setManageSeriesId(event.series_id)}
+                            title="Manage series"
+                            className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 dark:text-indigo-400 dark:border-indigo-900 dark:hover:bg-indigo-900/20"
+                          >
+                            <CalendarClock className="w-4 h-4" />
                           </Button>
                         )}
                         {isAdmin && (
@@ -581,6 +602,14 @@ export default function AdminEventsPage() {
           />
         )}
 
+        {manageSeriesId && (
+          <SeriesManagerModal
+            seriesId={manageSeriesId}
+            onClose={() => setManageSeriesId(null)}
+            onChanged={fetchEvents}
+          />
+        )}
+
         {showShiftModal && selectedEventForShift && (
           <ShiftModal
             shift={editingShift}
@@ -710,7 +739,10 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
               <input
                 type="number"
                 value={formData.capacity}
-                onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) })}
+                onChange={(e) => {
+                  const parsed = parseInt(e.target.value, 10);
+                  setFormData({ ...formData, capacity: Number.isNaN(parsed) ? '' : parsed });
+                }}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 min={shift?.filled || 1}
               />

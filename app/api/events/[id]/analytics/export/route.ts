@@ -64,11 +64,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!data) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
   const rows = [
-    ['attendee_type', 'checked_in', 'is_returning'],
-    ...data.registrations.map((r: { attendee_type: string; checked_in: boolean; is_returning: boolean }) => [
+    ['attendee_type', 'checked_in', 'is_returning', 'hours'],
+    ...data.registrations.map((r: { attendee_type: string; checked_in: boolean; is_returning: boolean; hours: number }) => [
       r.attendee_type,
       r.checked_in ? 'yes' : 'no',
       r.is_returning ? 'yes' : 'no',
+      String(r.hours),
     ]),
   ];
 

@@ -42,7 +42,7 @@ export async function GET(
     .from('events')
     .select(`
       id, event_id, title, description, date, end_date, time,
-      location, image_url, status, organization_id,
+      location, image_url, status, organization_id, series_id,
       is_shiftless, shiftless_capacity,
       attendee_enabled, attendee_capacity, speaker_enabled,
       platform_source, external_id, last_synced_at, sync_status, is_private_on_platform,

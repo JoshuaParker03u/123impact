@@ -118,7 +118,10 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase }) 
             <div>
               <label className="block text-sm font-medium mb-1">Volunteer Capacity</label>
               <input type="number" value={formData.capacity}
-                onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) })}
+                onChange={(e) => {
+                  const parsed = parseInt(e.target.value, 10);
+                  setFormData({ ...formData, capacity: Number.isNaN(parsed) ? '' : parsed });
+                }}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 min={shift?.filled || 1} />
               {shift && <p className="text-sm text-gray-500 mt-1">Currently {shift.filled} volunteers registered</p>}

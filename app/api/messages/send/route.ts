@@ -38,6 +38,9 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const { subject, message, recipientType, eventId, shiftId, volunteerEmail, volunteerName, scheduledFor, waitlistFilter = 'all' } = body;
+  const roles: string[] = Array.isArray(body.roles) && body.roles.length > 0
+    ? body.roles
+    : ['volunteer', 'attendee', 'speaker'];
 
   // Resolve organization_id from the *target* of the send (never a blanket
   // fallback), so a caller can only message recipients that actually belong to
@@ -131,7 +134,8 @@ export async function POST(request: Request) {
       let query = serviceSupabase
         .from('volunteer_registrations')
         .select('name, email')
-        .eq('event_id', eventId);
+        .eq('event_id', eventId)
+        .in('attendee_type', roles);
       if (waitlistFilter !== 'all') {
         query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
       }

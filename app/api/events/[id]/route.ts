@@ -45,7 +45,7 @@ export async function DELETE(
   // Verify the user is an admin of the org that owns this event
   const { data: event } = await service
     .from('events')
-    .select('id, organization_id')
+    .select('id, organization_id, series_id')
     .eq('id', eventId)
     .single();
 
@@ -102,6 +102,20 @@ export async function DELETE(
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // A "series" of one isn't a series — if this delete leaves exactly one
+  // event carrying the series_id, clear it so that event stops showing as
+  // recurring and can be set up as a fresh series again if wanted.
+  if (event.series_id) {
+    const { data: remaining } = await service
+      .from('events')
+      .select('id')
+      .eq('series_id', event.series_id);
+
+    if (remaining && remaining.length === 1) {
+      await service.from('events').update({ series_id: null }).eq('id', remaining[0].id);
+    }
   }
 
   return NextResponse.json({ success: true });
