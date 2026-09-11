@@ -151,14 +151,32 @@ export async function POST(req: NextRequest) {
   return ephemeral('Unsupported interaction.');
 }
 
-async function submitShiftSignup(shiftId: string, name: string, email: string): Promise<string> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/volunteer-registrations/batch`, {
+// Calls back into this same deployment's public API. On a Vercel preview
+// deployment behind Deployment Protection, an unauthenticated request here
+// gets rejected with Vercel's own {"error":{"code","message"}} shape rather
+// than reaching our route at all — the bypass secret Vercel auto-populates
+// once "Protection Bypass for Automation" is enabled lets server-to-server
+// calls like this one through. No-op (header omitted) when unset, e.g. in
+// production if protection isn't enabled there.
+async function internalApiFetch(path: string, body: unknown) {
+  return fetch(`${process.env.NEXT_PUBLIC_APP_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, attendee_type: 'volunteer', shift_ids: [shiftId] }),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+        ? { 'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET }
+        : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function submitShiftSignup(shiftId: string, name: string, email: string): Promise<string> {
+  const res = await internalApiFetch('/api/volunteer-registrations/batch', {
+    name, email, attendee_type: 'volunteer', shift_ids: [shiftId],
   });
   const data = await res.json();
-  if (!res.ok) return `Signup failed: ${data.error ?? 'unknown error'}`;
+  if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
   const reg = data.registrations?.[0];
   return reg?.isWaitlisted
     ? `You're on the waitlist for "${reg.shiftName}". Check your email for details.`
@@ -167,12 +185,10 @@ async function submitShiftSignup(shiftId: string, name: string, email: string): 
 
 async function submitRsvpSignup(encodedId: string, name: string, email: string): Promise<string> {
   const [eventId, attendeeType] = encodedId.split(':');
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/volunteer-registrations`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, event_id: eventId, attendee_type: attendeeType }),
+  const res = await internalApiFetch('/api/volunteer-registrations', {
+    name, email, event_id: eventId, attendee_type: attendeeType,
   });
   const data = await res.json();
-  if (!res.ok) return `Signup failed: ${data.error ?? 'unknown error'}`;
+  if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
   return `You're signed up! Check your email for confirmation.`;
 }
