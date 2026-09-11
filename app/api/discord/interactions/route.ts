@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       return ephemeral(channelName ? `Please use /signup in #${channelName} instead.` : 'This command isn\'t available in this channel.');
     }
 
-    const events = await getUpcomingEventsForOrg(connection.organization_id);
+    const events = await getUpcomingEventsForOrg(connection.organization_id, interaction.member?.user?.id ?? interaction.user?.id ?? null);
     if (events.length === 0) {
       return ephemeral('There are no upcoming events to sign up for right now.');
     }
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     if (customId === 'select_event') {
       const eventId = selectedValue;
-      const shifts = await getOpenShiftsForEvent(eventId);
+      const { shifts, hasAnyShifts } = await getOpenShiftsForEvent(eventId, interaction.member?.user?.id ?? interaction.user?.id ?? null);
 
       if (shifts.length > 0) {
         const options = shifts.map((s) => ({
@@ -104,6 +104,10 @@ export async function POST(req: NextRequest) {
           description: s.is_full ? 'Waitlist' : `${s.available} spot${s.available === 1 ? '' : 's'} open`,
         }));
         return updateMessage('Choose a shift:', selectMenuRow('select_shift', 'Choose a shift', options));
+      }
+
+      if (hasAnyShifts) {
+        return updateMessage('No shifts are available to you for this event right now — you may have already signed up for all of them.', []);
       }
 
       const event = await getEventById(eventId);
@@ -132,7 +136,7 @@ export async function POST(req: NextRequest) {
     const name = fields.find((f) => f.custom_id === 'name')?.value?.trim();
     const email = fields.find((f) => f.custom_id === 'email')?.value?.trim();
     const interactionToken = interaction.token;
-    const discordUserId: string | null = interaction.member?.user?.id ?? interaction.user?.id ?? null;
+    const discordUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null;
 
     after(async () => {
       try {
