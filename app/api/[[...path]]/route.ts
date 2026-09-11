@@ -623,15 +623,20 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           }
         }
 
+        const normalizedEmail = email.trim().toLowerCase();
+
         const { data: registration, error: regError } = await supabase
           .from('volunteer_registrations')
-          .insert({ event_id, name, email, phone: phone ?? null, attendee_type: resolvedType })
+          .insert({ event_id, name, email: normalizedEmail, phone: phone ?? null, attendee_type: resolvedType })
           .select()
           .single();
 
-        if (regError) throw regError;
+        if (regError) {
+          if (regError.code === '23505') return fail('You are already registered for this event', 409);
+          throw regError;
+        }
 
-        sendShiftlessConfirmation(supabase, name, email, event_id)
+        sendShiftlessConfirmation(supabase, name, normalizedEmail, event_id)
           .catch((e) => console.error('sendShiftlessConfirmation error:', e));
 
         return ok(registration, 201);

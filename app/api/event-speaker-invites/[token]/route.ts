@@ -159,7 +159,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     .select()
     .single();
 
-  if (regError) return NextResponse.json({ error: regError.message }, { status: 500 });
+  if (regError) {
+    if (regError.code === '23505') {
+      return NextResponse.json({ error: 'This person has already registered as a speaker for this event' }, { status: 409 });
+    }
+    return NextResponse.json({ error: regError.message }, { status: 500 });
+  }
 
   await service
     .from('event_speaker_invites')
