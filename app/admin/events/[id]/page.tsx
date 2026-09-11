@@ -1371,9 +1371,11 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'shifts' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
+  const [activeTab, setActiveTab] = useState<'shifts' | 'attendees' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
   const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
+  const [attendeeRegs, setAttendeeRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
+  const [loadingAttendeeRegs, setLoadingAttendeeRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -1437,6 +1439,9 @@ export default function AdminEventDetailPage() {
     if (data.is_shiftless) {
       loadShiftlessRegs(data.id);
     }
+    if (data.attendee_enabled) {
+      loadAttendeeRegs(data.id);
+    }
   }
 
   async function handleForceSync() {
@@ -1463,6 +1468,13 @@ export default function AdminEventDetailPage() {
     const res = await fetch(`/api/events/${eventId}/shiftless-registrations`);
     if (res.ok) setShiftlessRegs(await res.json());
     setLoadingShiftlessRegs(false);
+  }
+
+  async function loadAttendeeRegs(eventId: string) {
+    setLoadingAttendeeRegs(true);
+    const res = await fetch(`/api/events/${eventId}/shiftless-registrations?type=attendee`);
+    if (res.ok) setAttendeeRegs(await res.json());
+    setLoadingAttendeeRegs(false);
   }
 
   function checkInUrl(registrationId: string): string {
@@ -1889,6 +1901,11 @@ export default function AdminEventDetailPage() {
               <button onClick={() => setActiveTab('shifts')} className={tabClass(activeTab === 'shifts')}>
                 {event.is_shiftless ? `Registrations (${shiftlessRegs.length})` : `Shifts (${event.shifts.length})`}
               </button>
+              {event.attendee_enabled && (
+                <button onClick={() => setActiveTab('attendees')} className={tabClass(activeTab === 'attendees')}>
+                  <Users className="w-4 h-4" />Attendees ({attendeeRegs.length})
+                </button>
+              )}
               <button onClick={() => setActiveTab('analytics')} className={tabClass(activeTab === 'analytics')}>
                 <BarChart2 className="w-4 h-4" />Analytics
               </button>
@@ -1937,6 +1954,71 @@ export default function AdminEventDetailPage() {
           <QRCodesTab eventId={event.id} customDomain={customDomain} />
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
+        ) : activeTab === 'attendees' && event.attendee_enabled ? (
+          <>
+            {loadingAttendeeRegs ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+            ) : attendeeRegs.length === 0 ? (
+              <Card className="p-8 text-center text-gray-500">No attendees yet.</Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <div className="px-5 py-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                        <th className="pb-2 font-medium">Name</th>
+                        <th className="pb-2 font-medium">Email</th>
+                        <th className="pb-2 font-medium">Phone</th>
+                        <th className="pb-2 font-medium">Registered</th>
+                        <th className="pb-2 font-medium">Check-in</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {attendeeRegs.map((r) => (
+                        <tr key={r.id} className="text-gray-700 dark:text-gray-300">
+                          <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
+                          <td className="py-2 pr-4">
+                            {streamerMode ? redact(r.email, 'email', streamerMode) : (
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                <Mail className="w-3 h-3" />{r.email}
+                              </button>
+                            )}
+                          </td>
+                          <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
+                          <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                          <td className="py-2">
+                            {r.checked_in_at ? (
+                              <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={checkInUrl(r.id)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                >
+                                  Check-in link
+                                </a>
+                                <button
+                                  onClick={() => setCheckInModal({ registrationId: r.id, name: r.name })}
+                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                  title="Show QR code"
+                                >
+                                  <QrCode className="w-3.5 h-3.5 text-gray-500" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </>
         ) : event.is_shiftless ? (
           <>
             {loadingShiftlessRegs ? (

@@ -8,8 +8,9 @@ type Params = { params: Promise<{ id: string }> };
 // GET /api/events/[id]/shiftless-registrations
 // Returns all event-level (shiftless) registrations for an event.
 // Accessible to org admins and event admins.
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const { id: eventId } = await params;
+  const type = req.nextUrl.searchParams.get('type');
 
   const cookieStore = await cookies();
   const session = createServerClient(
@@ -62,12 +63,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data, error } = await service
+  let query = service
     .from('volunteer_registrations')
     .select('id, name, email, phone, registered_at')
     .eq('event_id', eventId)
     .is('shift_id', null)
     .order('registered_at', { ascending: true });
+
+  if (type === 'attendee') {
+    query = query.eq('attendee_type', 'attendee');
+  }
+
+  const { data, error } = await query;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
