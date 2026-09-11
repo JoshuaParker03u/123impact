@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sendBulkEmail, filterOptedOut } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
+import { sendBulkDiscordDMs } from '@/lib/discord/dm-batch';
 
 export async function POST(request: Request) {
   const cookieStore = await cookies();
@@ -124,7 +125,7 @@ export async function POST(request: Request) {
   const branding = { name: org?.name, logoUrl: (org as any)?.logo_url };
 
   try {
-    let recipients: { name: string; email: string }[] = [];
+    let recipients: { name: string; email: string; discord_user_id?: string | null }[] = [];
 
     if (recipientType === 'event' && eventId) {
       // event_id is set on every registration (shift-based or shiftless), so
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
       // returned zero recipients for those events.
       let query = serviceSupabase
         .from('volunteer_registrations')
-        .select('name, email')
+        .select('name, email, discord_user_id')
         .eq('event_id', eventId)
         .in('attendee_type', roles);
       if (waitlistFilter !== 'all') {
@@ -144,7 +145,7 @@ export async function POST(request: Request) {
     } else if (recipientType === 'shift' && shiftId) {
       let query = serviceSupabase
         .from('volunteer_registrations')
-        .select('name, email')
+        .select('name, email, discord_user_id')
         .eq('shift_id', shiftId);
       if (waitlistFilter !== 'all') {
         query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
@@ -152,6 +153,10 @@ export async function POST(request: Request) {
       const { data } = await query;
       recipients = data || [];
     } else if (recipientType === 'volunteer' && volunteerEmail) {
+      // No registration id available for this mode, so there's no reliable
+      // way to resolve a Discord account for it — email isn't a unique key
+      // on volunteer_registrations (one person can have several shift
+      // registrations). DM sending is intentionally skipped for this mode.
       recipients = [{ name: volunteerName || '', email: volunteerEmail }];
     }
 
@@ -211,6 +216,7 @@ export async function POST(request: Request) {
         status:          'pending',
         event_id:        eventId || null,
         shift_id:        shiftId || null,
+        discord_user_id: r.discord_user_id ?? null,
       }));
 
       const { error: scheduleError } = await serviceSupabase
@@ -234,6 +240,15 @@ export async function POST(request: Request) {
     const result = await sendBulkEmail(
       allowedEmails.map(to => ({ to, subject, html: htmlContent }))
     );
+
+    // DM fan-out is independent of the email result above — never let a
+    // Discord failure turn a successful email send into an error response.
+    const dmRecipients = uniqueRecipients.filter((r) => r.discord_user_id);
+    if (dmRecipients.length > 0) {
+      sendBulkDiscordDMs(
+        dmRecipients.map((r) => ({ discordUserId: r.discord_user_id!, content: `${subject}\n\n${message}` }))
+      ).catch((e) => console.error('message DM batch error:', e));
+    }
 
     const deliveryStatus = result.success ? 'delivered' : 'failed';
 

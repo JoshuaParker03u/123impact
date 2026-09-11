@@ -4,6 +4,7 @@ import { InteractionType, InteractionResponseType, InteractionResponseFlags } fr
 import { verifyDiscordRequest } from '@/lib/discord/verify';
 import { editOriginalResponse } from '@/lib/discord/api';
 import { encodeCustomId, decodeCustomId } from '@/lib/discord/custom-id';
+import { sendDirectMessage } from '@/lib/discord/dm';
 import {
   getConnectionByGuildId,
   getUpcomingEventsForOrg,
@@ -186,9 +187,14 @@ async function submitShiftSignup(shiftId: string, name: string, email: string, d
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
   const reg = data.registrations?.[0];
-  return reg?.isWaitlisted
+  const result = reg?.isWaitlisted
     ? `You're on the waitlist for "${reg.shiftName}". Check your email for details.`
     : `You're signed up for "${reg?.shiftName}"! Check your email for confirmation.`;
+
+  if (discordUserId) {
+    await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
+  }
+  return result;
 }
 
 async function submitRsvpSignup(encodedId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
@@ -198,5 +204,10 @@ async function submitRsvpSignup(encodedId: string, name: string, email: string, 
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
-  return `You're signed up! Check your email for confirmation.`;
+  const result = `You're signed up! Check your email for confirmation.`;
+
+  if (discordUserId) {
+    await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
+  }
+  return result;
 }

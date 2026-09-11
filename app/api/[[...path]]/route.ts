@@ -46,8 +46,9 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { parseEmailTemplate, wrapEmailHtml } from '@/lib/email-templates';
+import { wrapEmailHtml } from '@/lib/email-templates';
 import { sendEmail } from '@/lib/email';
+import { scheduleAutomatedEmails } from '@/lib/scheduling';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -234,101 +235,6 @@ async function sendShiftlessConfirmation(
     subject: `Confirmed: ${event.title}`,
     html,
   });
-}
-
-// ---------------------------------------------------------------------------
-// scheduleAutomatedEmails
-// Called after a successful public volunteer registration to queue any
-// automated emails defined for the shift's event.
-// ---------------------------------------------------------------------------
-
-async function scheduleAutomatedEmails(
-  supabase: SupabaseClient,
-  registrationId: string,
-  volunteerName: string,
-  volunteerEmail: string,
-  shiftId: string
-) {
-  // Get shift and event details
-  const { data: shift } = await supabase
-    .from('shifts')
-    .select('*, events(*)')
-    .eq('id', shiftId)
-    .single();
-
-  if (!shift) return;
-
-  // Get enabled templates for this event
-  const { data: templates } = await supabase
-    .from('automated_email_templates')
-    .select('*')
-    .eq('event_id', shift.event_id)
-    .eq('enabled', true);
-
-  if (!templates || templates.length === 0) return;
-
-  const shiftStart = new Date(shift.start_time);
-  const shiftEnd   = new Date(shift.end_time);
-
-  const scheduledEmails = templates
-    .map((template: any) => {
-      let scheduledFor: Date;
-
-      switch (template.trigger_type) {
-        case 'signup':
-          scheduledFor = new Date();
-          break;
-        case '7_days_before':
-          scheduledFor = new Date(shiftStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-          break;
-        case '24_hours_before':
-          scheduledFor = new Date(shiftStart.getTime() - 24 * 60 * 60 * 1000);
-          break;
-        case '1_hour_before':
-          scheduledFor = new Date(shiftStart.getTime() - 60 * 60 * 1000);
-          break;
-        default:
-          return null;
-      }
-
-      // Don't schedule if the time has already passed (except signup, which is immediate)
-      if (scheduledFor < new Date() && template.trigger_type !== 'signup') {
-        return null;
-      }
-
-      const variables = {
-        volunteer_name:    volunteerName,
-        volunteer_email:   volunteerEmail,
-        event_name:        shift.events.title,
-        event_description: shift.events.description || '',
-        shift_date:        shiftStart.toLocaleDateString(),
-        shift_start_time:  shiftStart.toLocaleTimeString(),
-        shift_end_time:    shiftEnd.toLocaleTimeString(),
-        shift_location:    shift.location,
-        hours_until_shift: Math.floor((shiftStart.getTime() - Date.now()) / (1000 * 60 * 60)),
-      };
-
-      const subject = parseEmailTemplate(template.subject, variables);
-      const body    = parseEmailTemplate(template.body, variables);
-
-      return {
-        template_id:                template.id,
-        volunteer_registration_id:  registrationId,
-        volunteer_name:             volunteerName,
-        volunteer_email:            volunteerEmail,
-        event_id:                   shift.event_id,
-        shift_id:                   shiftId,
-        subject,
-        body,
-        scheduled_for:              scheduledFor.toISOString(),
-        status:                     'pending',
-      };
-    })
-    .filter(Boolean);
-
-  if (scheduledEmails.length > 0) {
-    await supabase.from('scheduled_emails').insert(scheduledEmails);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +544,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
         sendShiftlessConfirmation(supabase, name, normalizedEmail, event_id)
           .catch((e) => console.error('sendShiftlessConfirmation error:', e));
+        scheduleAutomatedEmails(supabase, registration.id, name, normalizedEmail, event_id, null)
+          .catch((e) => console.error('scheduleAutomatedEmails error:', e));
 
         return ok(registration, 201);
       }
@@ -676,7 +584,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
       sendRegistrationConfirmation(supabase, name, email, shift_id, isWaitlisted)
         .catch((e) => console.error('sendRegistrationConfirmation error:', e));
-      scheduleAutomatedEmails(supabase, registration.id, name, email, shift_id)
+      scheduleAutomatedEmails(supabase, registration.id, name, email, shift.event_id, shift_id)
         .catch((e) => console.error('scheduleAutomatedEmails error:', e));
 
       return ok(registration, 201);

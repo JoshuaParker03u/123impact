@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
+import { scheduleAutomatedEmails } from '@/lib/scheduling';
 
 function buildServiceClient() {
   return createClient(
@@ -238,6 +239,11 @@ export async function POST(req: NextRequest) {
 
   sendMultiShiftConfirmation(supabase, name, normalizedEmail, emailShifts, eventId)
     .catch(e => console.error('sendMultiShiftConfirmation error:', e));
+
+  for (const reg of inserted ?? []) {
+    scheduleAutomatedEmails(supabase, reg.id, name, normalizedEmail, eventId, reg.shift_id)
+      .catch(e => console.error('scheduleAutomatedEmails error:', e));
+  }
 
   return NextResponse.json({
     registrations: shiftStatuses.map(({ shift, is_waitlisted }) => ({

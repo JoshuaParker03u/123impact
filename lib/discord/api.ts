@@ -1,6 +1,6 @@
 const DISCORD_API = 'https://discord.com/api/v10';
 
-async function discordFetch(path: string, init: RequestInit = {}) {
+export async function discordFetch(path: string, init: RequestInit = {}) {
   const res = await fetch(`${DISCORD_API}${path}`, {
     ...init,
     headers: {
