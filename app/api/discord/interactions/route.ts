@@ -108,6 +108,9 @@ export async function POST(req: NextRequest) {
 
       const event = await getEventById(eventId);
       if (!event) return ephemeral('That event could not be found.');
+      if (!event.attendee_enabled && !event.is_shiftless) {
+        return updateMessage('This event isn\'t currently open for signups.', []);
+      }
       const attendeeType = event.attendee_enabled ? 'attendee' : 'volunteer';
       return signupModal(encodeCustomId('signup_modal_rsvp', `${eventId}:${attendeeType}`));
     }
