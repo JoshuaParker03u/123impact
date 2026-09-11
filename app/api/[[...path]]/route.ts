@@ -531,6 +531,38 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
         const normalizedEmail = email.trim().toLowerCase();
 
+        // A Discord signup for an email that already has a registration here
+        // (e.g. from before that account ever used the bot) would otherwise
+        // just hit the duplicate constraint below and fail outright. Instead,
+        // attach this Discord account to the existing registration so the
+        // bot can start DMing them — no new confirmation email/reminder
+        // scheduling, since they already have one from the original signup.
+        if (discord_user_id) {
+          const { data: candidates } = await supabase
+            .from('volunteer_registrations')
+            .select('*')
+            .eq('event_id', event_id)
+            .eq('attendee_type', resolvedType)
+            .is('shift_id', null);
+          const existing = (candidates ?? []).find((r: any) => r.email.trim().toLowerCase() === normalizedEmail);
+
+          if (existing) {
+            if (existing.discord_user_id && existing.discord_user_id !== discord_user_id) {
+              return fail('You are already registered for this event', 409);
+            }
+            if (!existing.discord_user_id) {
+              const { data: linked } = await supabase
+                .from('volunteer_registrations')
+                .update({ discord_user_id })
+                .eq('id', existing.id)
+                .select()
+                .single();
+              return ok({ ...linked, alreadyRegistered: true }, 200);
+            }
+            return ok({ ...existing, alreadyRegistered: true }, 200);
+          }
+        }
+
         const { data: registration, error: regError } = await supabase
           .from('volunteer_registrations')
           .insert({ event_id, name, email: normalizedEmail, phone: phone ?? null, attendee_type: resolvedType, discord_user_id: discord_user_id ?? null })

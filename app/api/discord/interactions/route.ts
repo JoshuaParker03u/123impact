@@ -187,7 +187,9 @@ async function submitShiftSignup(shiftId: string, name: string, email: string, d
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
   const reg = data.registrations?.[0];
-  const result = reg?.isWaitlisted
+  const result = data.alreadyRegistered
+    ? `You were already registered for "${reg?.shiftName}" — linked this Discord account to it.`
+    : reg?.isWaitlisted
     ? `You're on the waitlist for "${reg.shiftName}". Check your email for details.`
     : `You're signed up for "${reg?.shiftName}"! Check your email for confirmation.`;
 
@@ -204,7 +206,9 @@ async function submitRsvpSignup(encodedId: string, name: string, email: string, 
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
-  const result = `You're signed up! Check your email for confirmation.`;
+  const result = data.alreadyRegistered
+    ? `You were already registered for this event — linked this Discord account to it.`
+    : `You're signed up! Check your email for confirmation.`;
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));

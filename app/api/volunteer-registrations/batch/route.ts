@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
   // Check for conflicts with shifts the volunteer is already registered for
   const { data: existingRegs } = await supabase
     .from('volunteer_registrations')
-    .select('shift_id, shifts(id, name, start_time, end_time, shift_date)')
+    .select('id, shift_id, discord_user_id, is_waitlisted, shifts(id, name, start_time, end_time, shift_date)')
     .eq('event_id', eventId)
     .eq('email', normalizedEmail)
     .not('shift_id', 'is', null);
@@ -178,6 +178,32 @@ export async function POST(req: NextRequest) {
           error: `"${(incoming as any).name}" conflicts with your existing registration for "${existing.name}"`,
         }, { status: 409 });
       }
+    }
+  }
+
+  // A Discord signup for a shift the email is already registered for (e.g.
+  // from before that account ever used the bot) would otherwise just hit
+  // the duplicate constraint below and fail. Instead, attach this Discord
+  // account to the existing registration so the bot can start DMing them —
+  // no new confirmation email/reminder scheduling, they already have one.
+  if (discord_user_id) {
+    const alreadyRegisteredIds = new Set((existingRegs ?? []).map((r: any) => r.shift_id));
+    const linkableShiftIds = shift_ids.filter((id: string) => alreadyRegisteredIds.has(id));
+
+    if (linkableShiftIds.length === shift_ids.length) {
+      const linked = [];
+      for (const shiftId of linkableShiftIds) {
+        const reg = (existingRegs ?? []).find((r: any) => r.shift_id === shiftId) as any;
+        if (reg.discord_user_id && reg.discord_user_id !== discord_user_id) {
+          return NextResponse.json({ error: 'You are already registered for one or more of these shifts' }, { status: 409 });
+        }
+        if (!reg.discord_user_id) {
+          await supabase.from('volunteer_registrations').update({ discord_user_id }).eq('id', reg.id);
+        }
+        const shift = shifts.find((s: any) => s.id === shiftId) as any;
+        linked.push({ shiftId, shiftName: shift.name, isWaitlisted: reg.is_waitlisted });
+      }
+      return NextResponse.json({ registrations: linked, alreadyRegistered: true }, { status: 200 });
     }
   }
 
