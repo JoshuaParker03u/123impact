@@ -50,15 +50,7 @@ export async function POST(req: NextRequest) {
   const signature = req.headers.get('X-Signature-Ed25519');
   const timestamp = req.headers.get('X-Signature-Timestamp');
 
-  const verified = await verifyDiscordRequest(rawBody, signature, timestamp);
-  console.log('[discord interactions] debug', {
-    hasSignature: !!signature,
-    hasTimestamp: !!timestamp,
-    publicKeyLength: process.env.DISCORD_PUBLIC_KEY?.length ?? 0,
-    bodyLength: rawBody.length,
-    verified,
-  });
-  if (!verified) {
+  if (!(await verifyDiscordRequest(rawBody, signature, timestamp))) {
     return new NextResponse('Bad request signature', { status: 401 });
   }
 
