@@ -132,12 +132,13 @@ export async function POST(req: NextRequest) {
     const name = fields.find((f) => f.custom_id === 'name')?.value?.trim();
     const email = fields.find((f) => f.custom_id === 'email')?.value?.trim();
     const interactionToken = interaction.token;
+    const discordUserId: string | null = interaction.member?.user?.id ?? interaction.user?.id ?? null;
 
     after(async () => {
       try {
         const result = decoded.kind === 'signup_modal_shift'
-          ? await submitShiftSignup(decoded.id, name!, email!)
-          : await submitRsvpSignup(decoded.id, name!, email!);
+          ? await submitShiftSignup(decoded.id, name!, email!, discordUserId)
+          : await submitRsvpSignup(decoded.id, name!, email!, discordUserId);
         await editOriginalResponse(interactionToken, { content: result, components: [] });
       } catch (e) {
         console.error('Discord signup follow-up error:', e);
@@ -174,9 +175,9 @@ async function internalApiFetch(path: string, body: unknown) {
   });
 }
 
-async function submitShiftSignup(shiftId: string, name: string, email: string): Promise<string> {
+async function submitShiftSignup(shiftId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
   const res = await internalApiFetch('/api/volunteer-registrations/batch', {
-    name, email, attendee_type: 'volunteer', shift_ids: [shiftId],
+    name, email, attendee_type: 'volunteer', shift_ids: [shiftId], discord_user_id: discordUserId,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
@@ -186,10 +187,10 @@ async function submitShiftSignup(shiftId: string, name: string, email: string): 
     : `You're signed up for "${reg?.shiftName}"! Check your email for confirmation.`;
 }
 
-async function submitRsvpSignup(encodedId: string, name: string, email: string): Promise<string> {
+async function submitRsvpSignup(encodedId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
   const [eventId, attendeeType] = encodedId.split(':');
   const res = await internalApiFetch('/api/volunteer-registrations', {
-    name, email, event_id: eventId, attendee_type: attendeeType,
+    name, email, event_id: eventId, attendee_type: attendeeType, discord_user_id: discordUserId,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;

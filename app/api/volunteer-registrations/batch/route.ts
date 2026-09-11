@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { name, email, phone, attendee_type, shift_ids } = body;
+  const { name, email, phone, attendee_type, shift_ids, discord_user_id } = body;
 
   if (!name || !email) {
     return NextResponse.json({ error: 'name and email are required' }, { status: 400 });
@@ -212,6 +212,7 @@ export async function POST(req: NextRequest) {
     phone:         phone ?? null,
     attendee_type: resolvedType,
     is_waitlisted,
+    discord_user_id: discord_user_id ?? null,
   }));
 
   const { data: inserted, error: insertError } = await supabase

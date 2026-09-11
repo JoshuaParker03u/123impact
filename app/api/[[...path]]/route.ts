@@ -576,7 +576,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // Inserts into volunteer_registrations and queues automated emails.
     if (seg.length === 1 && seg[0] === 'volunteer-registrations') {
       const body = await request.json();
-      const { shift_id, event_id, name, email, phone, attendee_type } = body;
+      const { shift_id, event_id, name, email, phone, attendee_type, discord_user_id } = body;
 
       if (!name || !email) return fail('name and email are required');
       if (!shift_id && !event_id) return fail('shift_id or event_id is required');
@@ -623,15 +623,20 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           }
         }
 
+        const normalizedEmail = email.trim().toLowerCase();
+
         const { data: registration, error: regError } = await supabase
           .from('volunteer_registrations')
-          .insert({ event_id, name, email, phone: phone ?? null, attendee_type: resolvedType })
+          .insert({ event_id, name, email: normalizedEmail, phone: phone ?? null, attendee_type: resolvedType, discord_user_id: discord_user_id ?? null })
           .select()
           .single();
 
-        if (regError) throw regError;
+        if (regError) {
+          if (regError.code === '23505') return fail('You are already registered for this event', 409);
+          throw regError;
+        }
 
-        sendShiftlessConfirmation(supabase, name, email, event_id)
+        sendShiftlessConfirmation(supabase, name, normalizedEmail, event_id)
           .catch((e) => console.error('sendShiftlessConfirmation error:', e));
 
         return ok(registration, 201);
