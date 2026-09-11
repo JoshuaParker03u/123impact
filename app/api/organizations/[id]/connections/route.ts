@@ -55,9 +55,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select('platform, sync_new_events, connected_at, external_org_id')
     .eq('organization_id', orgId);
 
-  const connections = { luma: null as any, eventbrite: null as any };
+  const connections = { luma: null as any, eventbrite: null as any, discord: null as any };
   for (const row of rows ?? []) {
-    connections[row.platform as 'luma' | 'eventbrite'] = {
+    connections[row.platform as 'luma' | 'eventbrite' | 'discord'] = {
       connected:       true,
       sync_new_events: row.sync_new_events,
       connected_at:    row.connected_at,

@@ -907,7 +907,7 @@ function ImportModal({ orgId, platform, onClose, onImported }) {
 
 function IntegrationsTab({ orgId }) {
   const searchParams = useSearchParams();
-  const [connections, setConnections] = useState({ luma: null, eventbrite: null });
+  const [connections, setConnections] = useState({ luma: null, eventbrite: null, discord: null });
   const [loading, setLoading]         = useState(true);
   const [lumaKey, setLumaKey]         = useState('');
   const [savingLuma, setSavingLuma]   = useState(false);
@@ -922,6 +922,9 @@ function IntegrationsTab({ orgId }) {
     eventbrite_already_connected: 'This Eventbrite account is already connected to another organization.',
     eventbrite_denied:  'Eventbrite authorization was cancelled.',
     eventbrite_failed:  'Eventbrite connection failed. Please try again.',
+    discord_already_connected: 'This Discord server is already connected to another organization.',
+    discord_denied:     'Discord authorization was cancelled.',
+    discord_failed:     'Discord connection failed. Please try again.',
     invalid_state:      'Invalid OAuth state. Please try again.',
   };
 
@@ -957,8 +960,13 @@ function IntegrationsTab({ orgId }) {
     finally { setSavingLuma(false); }
   }
 
+  const PLATFORM_LABELS = { luma: 'Luma', eventbrite: 'Eventbrite', discord: 'Discord' };
+
   async function disconnect(platform) {
-    if (!confirm(`Disconnect ${platform === 'luma' ? 'Luma' : 'Eventbrite'}? Sync will stop but your imported events will not be affected.`)) return;
+    const confirmMsg = platform === 'discord'
+      ? 'Disconnect Discord? The bot will lose access to this server.'
+      : `Disconnect ${PLATFORM_LABELS[platform]}? Sync will stop but your imported events will not be affected.`;
+    if (!confirm(confirmMsg)) return;
     setDisconnecting(platform);
     await fetch(`/api/organizations/${orgId}/connections`, {
       method: 'DELETE',
@@ -990,6 +998,11 @@ function IntegrationsTab({ orgId }) {
       key: 'eventbrite',
       label: 'Eventbrite',
       description: 'Import events from your Eventbrite organization via OAuth.',
+    },
+    {
+      key: 'discord',
+      label: 'Discord',
+      description: "Connect your organization's Discord server so a future bot can post event signups there.",
     },
   ];
 
@@ -1037,7 +1050,9 @@ function IntegrationsTab({ orgId }) {
                 <div className="flex items-center gap-2 shrink-0">
                   {conn && (
                     <>
-                      <Button size="sm" variant="outline" onClick={() => setImportModal(key)}>Import Events</Button>
+                      {key !== 'discord' && (
+                        <Button size="sm" variant="outline" onClick={() => setImportModal(key)}>Import Events</Button>
+                      )}
                       <Button size="sm" variant="outline" onClick={() => disconnect(key)} disabled={disconnecting === key} className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20">
                         {disconnecting === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Disconnect'}
                       </Button>
@@ -1046,6 +1061,11 @@ function IntegrationsTab({ orgId }) {
                   {!conn && key === 'eventbrite' && (
                     <Button size="sm" onClick={() => window.location.href = `/api/auth/integrations/eventbrite?org_id=${orgId}`}>
                       Connect Eventbrite
+                    </Button>
+                  )}
+                  {!conn && key === 'discord' && (
+                    <Button size="sm" onClick={() => window.location.href = `/api/auth/integrations/discord?org_id=${orgId}`}>
+                      Connect Discord
                     </Button>
                   )}
                 </div>
@@ -1071,7 +1091,7 @@ function IntegrationsTab({ orgId }) {
                 </div>
               )}
 
-              {conn && (
+              {conn && key !== 'discord' && (
                 <div className="mt-4 pt-4 border-t dark:border-gray-700">
                   <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-700 dark:text-gray-300">
                     <input type="checkbox" className="rounded"

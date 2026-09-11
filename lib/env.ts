@@ -37,6 +37,10 @@ const OPTIONAL = [
   'EVENTBRITE_CLIENT_ID',
   'EVENTBRITE_CLIENT_SECRET',
 
+  // Discord OAuth integration (guild-connect flow only — login's client
+  // secret lives in the Supabase Dashboard, not here)
+  'DISCORD_CLIENT_ID',
+
   // Vercel API (custom domain management)
   'VERCEL_API_TOKEN',
   'VERCEL_PROJECT_ID',

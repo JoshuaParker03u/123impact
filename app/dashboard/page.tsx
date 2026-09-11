@@ -123,7 +123,7 @@ function DashboardContent() {
 
         if (user.identities && user.identities.length > 0) {
           const providerMap: Record<string, string> = {
-            google: 'Google', azure: 'Microsoft', github: 'GitHub', email: 'Email',
+            google: 'Google', azure: 'Microsoft', discord: 'Discord', github: 'GitHub', email: 'Email',
           }
           setAuthProvider(providerMap[user.identities[0].provider] || user.identities[0].provider)
         }
