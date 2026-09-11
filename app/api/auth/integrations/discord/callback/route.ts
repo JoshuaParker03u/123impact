@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { registerGuildCommand } from '@/lib/discord/api';
 
 // GET /api/auth/integrations/discord/callback
 // Handles Discord's bot-authorization callback. No code exchange happens —
@@ -90,6 +92,12 @@ export async function GET(req: NextRequest) {
       connected_by:    user.id,
       connected_at:    new Date().toISOString(),
     }, { onConflict: 'organization_id,platform' });
+
+    // Guild-scoped so the command appears within seconds instead of the
+    // up-to-an-hour propagation delay for global commands. Doesn't block the
+    // redirect — worst case the admin needs to disconnect/reconnect once if
+    // this fails, which is logged for that troubleshooting.
+    after(() => registerGuildCommand(guildId).catch((e) => console.error('registerGuildCommand error:', e)));
 
     return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&connected=discord`);
   } catch {

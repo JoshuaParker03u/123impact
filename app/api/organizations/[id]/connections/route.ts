@@ -52,7 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: rows } = await service
     .from('platform_connections')
-    .select('platform, sync_new_events, connected_at, external_org_id')
+    .select('platform, sync_new_events, connected_at, external_org_id, channel_id')
     .eq('organization_id', orgId);
 
   const connections = { luma: null as any, eventbrite: null as any, discord: null as any };
@@ -61,6 +61,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       connected:       true,
       sync_new_events: row.sync_new_events,
       connected_at:    row.connected_at,
+      external_org_id: row.external_org_id,
+      channel_id:      row.channel_id,
     };
   }
 
@@ -120,7 +122,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/organizations/[id]/connections
-// Body: { platform, sync_new_events: boolean }
+// Body: { platform, sync_new_events?: boolean, channel_id?: string | null }
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id: orgId } = await params;
   const cookieStore = await cookies();
@@ -132,10 +134,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { platform, sync_new_events } = await req.json();
+  const { platform, sync_new_events, channel_id } = await req.json();
+  const updates: Record<string, unknown> = {};
+  if (sync_new_events !== undefined) updates.sync_new_events = sync_new_events;
+  if (channel_id !== undefined) updates.channel_id = channel_id;
+
   const { error } = await service
     .from('platform_connections')
-    .update({ sync_new_events })
+    .update(updates)
     .eq('organization_id', orgId)
     .eq('platform', platform);
 

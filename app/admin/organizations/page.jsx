@@ -917,6 +917,8 @@ function IntegrationsTab({ orgId }) {
   const [importModal, setImportModal] = useState(null);
   const [toast, setToast]             = useState('');
   const [oauthError, setOauthError]   = useState('');
+  const [discordChannels, setDiscordChannels] = useState(null);
+  const [savingChannel, setSavingChannel]     = useState(false);
 
   const OAUTH_ERRORS = {
     eventbrite_already_connected: 'This Eventbrite account is already connected to another organization.',
@@ -943,6 +945,25 @@ function IntegrationsTab({ orgId }) {
   }
 
   useEffect(() => { if (orgId) loadConnections(); }, [orgId]);
+
+  useEffect(() => {
+    if (!orgId || !connections.discord) { setDiscordChannels(null); return; }
+    fetch(`/api/organizations/${orgId}/discord/channels`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setDiscordChannels)
+      .catch(() => setDiscordChannels([]));
+  }, [orgId, connections.discord]);
+
+  async function saveDiscordChannel(channelId) {
+    setSavingChannel(true);
+    await fetch(`/api/organizations/${orgId}/connections`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'discord', channel_id: channelId || null }),
+    });
+    setSavingChannel(false);
+    loadConnections();
+  }
 
   async function connectLuma() {
     if (!lumaKey.trim()) return;
@@ -1099,6 +1120,28 @@ function IntegrationsTab({ orgId }) {
                       onChange={e => toggleSync(key, e.target.checked)} />
                     Automatically import new events added to this account (nightly)
                   </label>
+                </div>
+              )}
+
+              {conn && key === 'discord' && (
+                <div className="mt-4 pt-4 border-t dark:border-gray-700 space-y-2">
+                  <label className="block text-sm text-gray-700 dark:text-gray-300">
+                    Command channel
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    /signup only responds in this channel. Leave unset to allow it anywhere.
+                  </p>
+                  <select
+                    className="w-full max-w-xs px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    value={conn.channel_id ?? ''}
+                    disabled={savingChannel || discordChannels === null}
+                    onChange={e => saveDiscordChannel(e.target.value)}
+                  >
+                    <option value="">Any channel</option>
+                    {(discordChannels ?? []).map(c => (
+                      <option key={c.id} value={c.id}>#{c.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
             </div>
