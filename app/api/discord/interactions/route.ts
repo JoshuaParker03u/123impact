@@ -114,6 +114,10 @@ export async function POST(req: NextRequest) {
       const event = await getEventById(eventId);
       if (!event) return ephemeral('That event could not be found.');
       if (!event.attendee_enabled && !event.is_shiftless) {
+        if (event.panels_enabled) {
+          const url = `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.event_id}/signup/attendee`;
+          return updateMessage(`This event's signups are panel-based, which isn't supported in Discord yet — please sign up on the web instead: ${url}`, []);
+        }
         return updateMessage('This event isn\'t currently open for signups.', []);
       }
       const attendeeType = event.attendee_enabled ? 'attendee' : 'volunteer';

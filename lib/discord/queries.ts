@@ -84,16 +84,18 @@ export async function getUpcomingEventsForOrg(orgId: string, discordUserId?: str
 
 export interface EventFlags {
   id: string;
+  event_id: string;
   title: string;
   is_shiftless: boolean;
   attendee_enabled: boolean;
+  panels_enabled: boolean;
 }
 
 export async function getEventById(eventId: string): Promise<EventFlags | null> {
   const supabase = buildServiceClient();
   const { data } = await supabase
     .from('events')
-    .select('id, title, is_shiftless, attendee_enabled')
+    .select('id, event_id, title, is_shiftless, attendee_enabled, panels_enabled')
     .eq('id', eventId)
     .single();
   return data ?? null;
