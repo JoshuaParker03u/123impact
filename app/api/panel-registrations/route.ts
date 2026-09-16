@@ -27,7 +27,7 @@ async function sendPanelConfirmation(
   supabase: ReturnType<typeof buildServiceClient>,
   volunteerName: string,
   volunteerEmail: string,
-  panel: { name: string; start_time: string; end_time: string; panel_date: string | null; location: string | null },
+  panel: { name: string; start_time: string; end_time: string; panel_date: string | null; location: string | null; online_url: string | null },
   event: { title: string; date: string; location: string; organizations: any }
 ) {
   const org = event.organizations;
@@ -43,6 +43,7 @@ async function sendPanelConfirmation(
       <tr><td style="padding:8px 0;color:#6b7280;">Date</td><td style="padding:8px 0;">${panelDate}</td></tr>
       <tr><td style="padding:8px 0;color:#6b7280;">Time</td><td style="padding:8px 0;">${panel.start_time} – ${panel.end_time}</td></tr>
       <tr><td style="padding:8px 0;color:#6b7280;">Location</td><td style="padding:8px 0;">${panel.location || event.location}</td></tr>
+      ${panel.online_url ? `<tr><td style="padding:8px 0;color:#6b7280;">Join Link</td><td style="padding:8px 0;"><a href="${panel.online_url}">${panel.online_url}</a></td></tr>` : ''}
     </table>
     <p>See you there!</p>
   `, branding);
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   const { data: panel } = await supabase
     .from('panels')
-    .select('id, event_id, name, start_time, end_time, panel_date, location, capacity, allow_waitlist')
+    .select('id, event_id, name, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist')
     .eq('id', panel_id)
     .single();
 

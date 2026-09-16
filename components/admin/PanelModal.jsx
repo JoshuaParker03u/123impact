@@ -15,12 +15,14 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
     capacity:       panel?.capacity       || 30,
     panel_date:     panel?.panel_date     || '',
     location:       panel?.location       || '',
+    online_url:     panel?.online_url     || '',
     allow_waitlist: panel?.allow_waitlist ?? false,
   });
   const [errors, setErrors]       = useState({});
   const [submitting, setSubmitting] = useState(false);
 
   const isOvernight = formData.start_time && formData.end_time && formData.end_time <= formData.start_time;
+  const isOnlineEvent = event.event_format === 'online' || event.event_format === 'hybrid';
 
   const validate = () => {
     const e = {};
@@ -119,6 +121,21 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 placeholder="Room B, Main Hall" />
             </div>
+
+            {isOnlineEvent && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Online URL (Zoom, breakout room, etc.)</label>
+                <input type="url" value={formData.online_url}
+                  onChange={(e) => setFormData({ ...formData, online_url: e.target.value })}
+                  className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                  placeholder="https://zoom.us/j/..." />
+                {!formData.online_url.trim() && (
+                  <p className="text-amber-600 dark:text-amber-400 text-sm mt-1">
+                    No link yet? That&apos;s fine — you can add it later, but attendees won&apos;t be able to join until you do.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Attendee Capacity</label>

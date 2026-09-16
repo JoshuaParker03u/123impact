@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ('error' in check) return NextResponse.json({ error: check.error }, { status: check.status });
 
   const body = await req.json();
-  const { name, description, start_time, end_time, panel_date, location, capacity, allow_waitlist } = body;
+  const { name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist } = body;
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (name !== undefined) updates.name = name;
@@ -73,6 +73,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (end_time !== undefined) updates.end_time = end_time;
   if (panel_date !== undefined) updates.panel_date = panel_date;
   if (location !== undefined) updates.location = location;
+  if (online_url !== undefined) updates.online_url = online_url;
   if (capacity !== undefined) updates.capacity = capacity;
   if (allow_waitlist !== undefined) updates.allow_waitlist = allow_waitlist;
 

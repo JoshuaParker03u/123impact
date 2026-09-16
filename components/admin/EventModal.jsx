@@ -213,7 +213,6 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
   };
 
   const locationRequired = formData.event_format !== 'online';
-  const onlineUrlRequired = formData.event_format === 'online' || formData.event_format === 'hybrid';
 
   const validate = () => {
     const newErrors = {};
@@ -221,7 +220,6 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     if (!formData.date) newErrors.date = 'Date is required';
     if (formData.end_date && formData.end_date < formData.date) newErrors.end_date = 'End date must be on or after start date';
     if (locationRequired && !formData.location.trim()) newErrors.location = 'Location is required';
-    if (onlineUrlRequired && !formData.online_url.trim()) newErrors.online_url = 'Online URL is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -507,7 +505,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
             {(formData.event_format === 'online' || formData.event_format === 'hybrid') && (
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  Online URL (Zoom, livestream, etc.) <span className="text-red-500">*</span>
+                  Online URL (Zoom, livestream, etc.)
                 </label>
                 <input
                   type="url"
@@ -516,7 +514,11 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                   className={inputCls}
                   placeholder="https://zoom.us/j/..."
                 />
-                {errors.online_url && <p className="text-red-600 text-sm mt-1">{errors.online_url}</p>}
+                {!formData.online_url.trim() && (
+                  <p className="text-amber-600 text-sm mt-1">
+                    No link yet? That&apos;s fine — you can add it later, but attendees won&apos;t be able to join until you do.
+                  </p>
+                )}
               </div>
             )}
 

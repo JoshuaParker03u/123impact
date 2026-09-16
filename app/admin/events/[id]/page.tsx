@@ -79,6 +79,8 @@ interface Event {
   attendee_capacity?: number | null;
   speaker_enabled?: boolean;
   panels_enabled?: boolean;
+  event_format?: 'in_person' | 'online' | 'hybrid';
+  online_url?: string | null;
   platform_source?: 'luma' | 'eventbrite' | null;
   external_id?: string | null;
   platform_image?: string | null;
@@ -1090,6 +1092,7 @@ interface Panel {
   end_time: string;
   panel_date: string | null;
   location: string | null;
+  online_url: string | null;
   capacity: number;
   allow_waitlist: boolean;
   filled: number;
@@ -1279,6 +1282,11 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
                       {panel.location ? ` · ${panel.location}` : ''} · {panel.filled}/{panel.capacity} attending
                       {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
                     </p>
+                    {(event.event_format === 'online' || event.event_format === 'hybrid') && !panel.online_url && (
+                      <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" /> No online URL set yet
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {canManage && (
@@ -2155,6 +2163,13 @@ export default function AdminEventDetailPage() {
 
               {event.description && (
                 <p className="mt-3 text-gray-700 dark:text-gray-300">{event.description}</p>
+              )}
+
+              {(event.event_format === 'online' || event.event_format === 'hybrid') && !event.online_url && (
+                <div className="flex items-center gap-1.5 mt-3 text-sm text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  No online URL set yet — attendees won&apos;t be able to join until you add one{canManage ? ' in Edit Event' : ''}.
+                </div>
               )}
             </div>
 
