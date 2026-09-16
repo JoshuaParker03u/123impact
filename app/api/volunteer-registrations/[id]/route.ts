@@ -6,8 +6,12 @@ import { cookies } from 'next/headers';
 type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/volunteer-registrations/[id]
-// Promotes a waitlisted registration to confirmed (is_waitlisted = false).
-// Requires org admin access for the event.
+// Body: { is_waitlisted?: boolean, attendee_type?: 'speaker' }
+// Two supported actions: promoting a waitlisted registration to confirmed,
+// and "Promote to Speaker" — flipping a panel attendee's role in place
+// (only valid for a row that's already scoped to a panel; this is what
+// makes someone a panel speaker, no new row created). Requires org admin
+// access for the event either way.
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id: registrationId } = await params;
 
@@ -33,27 +37,48 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { data: { user } } = await session.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Fetch the registration to find its shift → event → org
+  const body = await req.json().catch(() => ({}));
+  const { is_waitlisted, attendee_type } = body;
+
+  if (attendee_type !== undefined && attendee_type !== 'speaker') {
+    return NextResponse.json({ error: 'Only promotion to speaker is supported' }, { status: 400 });
+  }
+
   const { data: reg } = await service
     .from('volunteer_registrations')
-    .select('id, shift_id, is_waitlisted')
+    .select('id, shift_id, event_id, panel_id, attendee_type')
     .eq('id', registrationId)
     .single();
 
   if (!reg) return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
 
-  const { data: shift } = await service
-    .from('shifts')
-    .select('event_id')
-    .eq('id', reg.shift_id)
-    .single();
+  if (attendee_type === 'speaker') {
+    if (!reg.panel_id) {
+      return NextResponse.json({ error: 'Only a panel attendee can be promoted to speaker' }, { status: 400 });
+    }
+    if (reg.attendee_type !== 'attendee') {
+      return NextResponse.json({ error: 'Only an attendee registration can be promoted' }, { status: 400 });
+    }
+  }
 
-  if (!shift) return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
+  // Resolve org via whichever scope this registration carries.
+  let eventId: string | null = null;
+  if (reg.shift_id) {
+    const { data: shift } = await service.from('shifts').select('event_id').eq('id', reg.shift_id).single();
+    eventId = shift?.event_id ?? null;
+  } else if (reg.panel_id) {
+    const { data: panel } = await service.from('panels').select('event_id').eq('id', reg.panel_id).single();
+    eventId = panel?.event_id ?? null;
+  } else {
+    eventId = reg.event_id;
+  }
+
+  if (!eventId) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
   const { data: event } = await service
     .from('events')
     .select('organization_id')
-    .eq('id', shift.event_id)
+    .eq('id', eventId)
     .single();
 
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -69,9 +94,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  const updates: Record<string, unknown> = {};
+  if (is_waitlisted !== undefined) updates.is_waitlisted = is_waitlisted;
+  if (attendee_type !== undefined) updates.attendee_type = attendee_type;
+
   const { data: updated, error } = await service
     .from('volunteer_registrations')
-    .update({ is_waitlisted: false })
+    .update(updates)
     .eq('id', registrationId)
     .select()
     .single();

@@ -4,11 +4,11 @@ import { parseEmailTemplate } from '@/lib/email-templates';
 // ---------------------------------------------------------------------------
 // scheduleAutomatedEmails
 // Called after a successful public registration to queue any automated
-// emails defined for the event. Works for both shift-based registrations
-// (anchors reminder offsets to the shift's start time) and RSVP-style
-// registrations — shiftless Volunteer or Attendee, shiftId null (anchors to
-// the event's date/time instead), since those registrants benefit from an
-// event-day reminder the same way a shift volunteer does.
+// emails defined for the event. Anchors reminder offsets to whichever of
+// the three registration shapes applies: a shift's start time, a panel's
+// start time, or (when neither is given) the event's own date/time — the
+// latter covers shiftless-Volunteer/Attendee RSVPs, which still benefit
+// from an event-day reminder the same way a shift volunteer does.
 // ---------------------------------------------------------------------------
 
 export async function scheduleAutomatedEmails(
@@ -17,7 +17,8 @@ export async function scheduleAutomatedEmails(
   volunteerName: string,
   volunteerEmail: string,
   eventId: string,
-  shiftId: string | null
+  shiftId: string | null,
+  panelId: string | null = null
 ) {
   let anchor: Date;
   let eventTitle: string;
@@ -43,6 +44,20 @@ export async function scheduleAutomatedEmails(
     eventTitle = shift.events.title;
     eventDescription = shift.events.description || '';
     location = shift.location;
+  } else if (panelId) {
+    const { data: panel } = await supabase
+      .from('panels')
+      .select('*, events(*)')
+      .eq('id', panelId)
+      .single();
+
+    if (!panel) return;
+
+    anchor = new Date(`${panel.panel_date ?? panel.events.date}T${panel.start_time}`);
+    shiftEnd = new Date(`${panel.panel_date ?? panel.events.date}T${panel.end_time}`);
+    eventTitle = panel.events.title;
+    eventDescription = panel.events.description || '';
+    location = panel.location || panel.events.location;
   } else {
     const { data: event } = await supabase
       .from('events')

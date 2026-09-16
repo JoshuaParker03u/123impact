@@ -278,7 +278,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .select(`
           id, event_id, title, description, date, end_date, time, location,
           image_url, status, organization_id, is_shiftless, shiftless_capacity,
-          attendee_enabled, attendee_capacity, speaker_enabled,
+          attendee_enabled, attendee_capacity, speaker_enabled, panels_enabled,
           created_at, updated_at,
           event_day_hours (event_date, start_time, end_time),
           organizations (id, name, logo_url)

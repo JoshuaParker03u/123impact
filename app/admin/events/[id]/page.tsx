@@ -17,6 +17,7 @@ import CheckInQRModal from './CheckInQRModal';
 import InviteSpeakerModal from './InviteSpeakerModal';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import ShiftModal from '@/components/admin/ShiftModal';
+import PanelModal from '@/components/admin/PanelModal';
 import EventModal from '@/components/admin/EventModal';
 import SetRecurringModal from '@/components/admin/SetRecurringModal';
 import MessageComposer from '@/components/MessageComposer';
@@ -26,7 +27,7 @@ import {
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
   AlertTriangle, QrCode, Download, BarChart2, Radio, Link2, Copy,
-  CheckCircle2, WifiOff, RotateCcw, UserPlus, Repeat,
+  CheckCircle2, WifiOff, RotateCcw, UserPlus, Repeat, Mic,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -77,6 +78,7 @@ interface Event {
   attendee_enabled?: boolean;
   attendee_capacity?: number | null;
   speaker_enabled?: boolean;
+  panels_enabled?: boolean;
   platform_source?: 'luma' | 'eventbrite' | null;
   external_id?: string | null;
   platform_image?: string | null;
@@ -1076,6 +1078,343 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
 }
 
 // ---------------------------------------------------------------------------
+// Panels Tab
+// ---------------------------------------------------------------------------
+
+interface Panel {
+  id: string;
+  event_id: string;
+  name: string;
+  description: string | null;
+  start_time: string;
+  end_time: string;
+  panel_date: string | null;
+  location: string | null;
+  capacity: number;
+  allow_waitlist: boolean;
+  filled: number;
+  waitlisted: number;
+  available: number;
+  is_full: boolean;
+}
+
+interface PanelRegistration {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  registered_at: string;
+  is_waitlisted: boolean;
+  attendee_type: 'attendee' | 'speaker';
+}
+
+interface PanelAssignmentRow {
+  id: string;
+  role: 'speaker' | 'volunteer';
+  registration: { id: string; name: string; email: string; speaker_topic: string | null } | null;
+}
+
+interface PoolCandidate {
+  id: string;
+  name: string;
+  email: string;
+  speaker_topic: string | null;
+}
+
+function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; role: 'speaker' | 'volunteer'; onAssigned: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [candidates, setCandidates] = useState<PoolCandidate[] | null>(null);
+  const [assigning, setAssigning] = useState<string | null>(null);
+
+  async function loadPool() {
+    setCandidates(null);
+    const res = await fetch(`/api/panels/${panelId}/pool?role=${role}`);
+    if (res.ok) setCandidates(await res.json());
+  }
+
+  async function assign(registrationId: string) {
+    setAssigning(registrationId);
+    const res = await fetch(`/api/panels/${panelId}/assignments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registration_id: registrationId, role }),
+    });
+    setAssigning(null);
+    if (!res.ok) { alert((await res.json()).error ?? 'Failed to assign'); return; }
+    setOpen(false);
+    onAssigned();
+  }
+
+  return (
+    <div className="relative inline-block">
+      <Button size="sm" variant="outline" onClick={() => { setOpen(!open); if (!open) loadPool(); }}>
+        <UserPlus className="w-3.5 h-3.5 mr-1" />{role === 'speaker' ? 'Assign Speaker' : 'Assign Staff'}
+      </Button>
+      {open && (
+        <div className="absolute z-10 mt-1 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          {candidates === null ? (
+            <div className="p-3 text-center"><Loader2 className="w-4 h-4 animate-spin inline text-gray-400" /></div>
+          ) : candidates.length === 0 ? (
+            <p className="p-3 text-sm text-gray-500">No {role === 'speaker' ? 'unassigned speakers' : 'volunteers'} available.</p>
+          ) : (
+            candidates.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => assign(c.id)}
+                disabled={assigning === c.id}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b last:border-0 border-gray-100 dark:border-gray-800"
+              >
+                <div className="font-medium text-gray-900 dark:text-gray-100">{c.name}</div>
+                <div className="text-xs text-gray-500">{c.email}{c.speaker_topic ? ` · ${c.speaker_topic}` : ''}</div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Event; canManage: boolean }) {
+  const [panels, setPanels] = useState<Panel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPanelModal, setShowPanelModal] = useState(false);
+  const [editingPanel, setEditingPanel] = useState<Panel | null>(null);
+  const [deletingPanel, setDeletingPanel] = useState<Panel | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [registrations, setRegistrations] = useState<PanelRegistration[]>([]);
+  const [assignments, setAssignments] = useState<PanelAssignmentRow[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch(`/api/events/${eventId}/panels`);
+    if (res.ok) setPanels(await res.json());
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, [eventId]);
+
+  async function loadDetail(panelId: string) {
+    setLoadingDetail(true);
+    const [regsRes, assignRes] = await Promise.all([
+      fetch(`/api/panels/${panelId}/registrations`),
+      fetch(`/api/panels/${panelId}/assignments`),
+    ]);
+    if (regsRes.ok) setRegistrations(await regsRes.json());
+    if (assignRes.ok) setAssignments(await assignRes.json());
+    setLoadingDetail(false);
+  }
+
+  function toggleExpand(panelId: string) {
+    if (expandedId === panelId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(panelId);
+    loadDetail(panelId);
+  }
+
+  async function deletePanel() {
+    if (!deletingPanel) return;
+    setDeleting(true);
+    await fetch(`/api/panels/${deletingPanel.id}`, { method: 'DELETE' });
+    setDeleting(false);
+    setDeletingPanel(null);
+    if (expandedId === deletingPanel.id) setExpandedId(null);
+    load();
+  }
+
+  async function promoteToSpeaker(registrationId: string) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendee_type: 'speaker' }),
+    });
+    if (!res.ok) { alert((await res.json()).error ?? 'Failed to promote'); return; }
+    if (expandedId) loadDetail(expandedId);
+  }
+
+  async function unassign(assignmentId: string) {
+    await fetch(`/api/panel-assignments/${assignmentId}`, { method: 'DELETE' });
+    if (expandedId) loadDetail(expandedId);
+  }
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
+
+  const attendees = registrations.filter((r) => r.attendee_type === 'attendee');
+  const promotedSpeakers = registrations.filter((r) => r.attendee_type === 'speaker');
+  const assignedSpeakers = assignments.filter((a) => a.role === 'speaker');
+  const staff = assignments.filter((a) => a.role === 'volunteer');
+
+  return (
+    <>
+      {canManage && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={() => { setEditingPanel(null); setShowPanelModal(true); }} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
+            <Plus className="w-4 h-4 mr-1" />Create Panel
+          </Button>
+        </div>
+      )}
+
+      {panels.length === 0 ? (
+        <Card className="p-8 text-center text-gray-500">No panels yet.</Card>
+      ) : (
+        <div className="space-y-3">
+          {panels.map((panel) => {
+            const expanded = expandedId === panel.id;
+            return (
+              <Card key={panel.id} className="overflow-hidden">
+                <button onClick={() => toggleExpand(panel.id)} className="w-full flex items-center justify-between p-4 text-left">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
+                      {panel.is_full && !panel.allow_waitlist && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium">Full</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                      {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)}
+                      {panel.location ? ` · ${panel.location}` : ''} · {panel.filled}/{panel.capacity} attending
+                      {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {canManage && (
+                      <>
+                        <span
+                          role="button"
+                          onClick={(e) => { e.stopPropagation(); setEditingPanel(panel); setShowPanelModal(true); }}
+                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          <Pencil className="w-4 h-4 text-gray-500" />
+                        </span>
+                        <span
+                          role="button"
+                          onClick={(e) => { e.stopPropagation(); setDeletingPanel(panel); }}
+                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </span>
+                      </>
+                    )}
+                    {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                  </div>
+                </button>
+
+                {expanded && (
+                  <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-6">
+                    {loadingDetail ? (
+                      <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+                    ) : (
+                      <>
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Attendees ({attendees.length})</h4>
+                          {attendees.length === 0 ? (
+                            <p className="text-sm text-gray-400">No attendees yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {attendees.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1">
+                                  <span className="text-gray-700 dark:text-gray-300">
+                                    {r.name} <span className="text-gray-400">({r.email})</span>
+                                    {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
+                                  </span>
+                                  {canManage && (
+                                    <button onClick={() => promoteToSpeaker(r.id)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                                      Promote to Speaker
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Speakers ({promotedSpeakers.length + assignedSpeakers.length})</h4>
+                            {canManage && <AssignPersonControl panelId={panel.id} role="speaker" onAssigned={() => loadDetail(panel.id)} />}
+                          </div>
+                          {promotedSpeakers.length === 0 && assignedSpeakers.length === 0 ? (
+                            <p className="text-sm text-gray-400">No speakers yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {promotedSpeakers.map((r) => (
+                                <div key={r.id} className="text-sm py-1 text-gray-700 dark:text-gray-300">
+                                  {r.name} <span className="text-gray-400">({r.email})</span>
+                                </div>
+                              ))}
+                              {assignedSpeakers.map((a) => (
+                                <div key={a.id} className="flex items-center justify-between text-sm py-1">
+                                  <span className="text-gray-700 dark:text-gray-300">
+                                    {a.registration?.name} <span className="text-gray-400">({a.registration?.email})</span>
+                                  </span>
+                                  {canManage && (
+                                    <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Volunteer Staff ({staff.length})</h4>
+                            {canManage && <AssignPersonControl panelId={panel.id} role="volunteer" onAssigned={() => loadDetail(panel.id)} />}
+                          </div>
+                          {staff.length === 0 ? (
+                            <p className="text-sm text-gray-400">No staff assigned yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {staff.map((a) => (
+                                <div key={a.id} className="flex items-center justify-between text-sm py-1">
+                                  <span className="text-gray-700 dark:text-gray-300">
+                                    {a.registration?.name} <span className="text-gray-400">({a.registration?.email})</span>
+                                  </span>
+                                  {canManage && (
+                                    <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {showPanelModal && (
+        <PanelModal
+          panel={editingPanel}
+          event={event}
+          onClose={() => setShowPanelModal(false)}
+          onSave={() => { setShowPanelModal(false); load(); }}
+        />
+      )}
+
+      {deletingPanel && (
+        <ConfirmDeleteModal
+          title="Delete Panel"
+          message={<>This will permanently delete <span className="font-medium text-gray-900 dark:text-gray-100">{deletingPanel.name}</span> and all of its registrations. This cannot be undone.</>}
+          loading={deleting}
+          onCancel={() => setDeletingPanel(null)}
+          onConfirm={deletePanel}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // QR Codes Tab
 // ---------------------------------------------------------------------------
 
@@ -1371,7 +1710,7 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'shifts' | 'attendees' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
+  const [activeTab, setActiveTab] = useState<'shifts' | 'attendees' | 'panels' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
   const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [attendeeRegs, setAttendeeRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
@@ -1906,6 +2245,11 @@ export default function AdminEventDetailPage() {
                   <Users className="w-4 h-4" />Attendees ({attendeeRegs.length})
                 </button>
               )}
+              {event.panels_enabled && (
+                <button onClick={() => setActiveTab('panels')} className={tabClass(activeTab === 'panels')}>
+                  <Mic className="w-4 h-4" />Panels
+                </button>
+              )}
               <button onClick={() => setActiveTab('analytics')} className={tabClass(activeTab === 'analytics')}>
                 <BarChart2 className="w-4 h-4" />Analytics
               </button>
@@ -1954,6 +2298,8 @@ export default function AdminEventDetailPage() {
           <QRCodesTab eventId={event.id} customDomain={customDomain} />
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
+        ) : activeTab === 'panels' && event.panels_enabled ? (
+          <PanelsTab eventId={event.id} event={event} canManage={canManage} />
         ) : activeTab === 'attendees' && event.attendee_enabled ? (
           <>
             {loadingAttendeeRegs ? (

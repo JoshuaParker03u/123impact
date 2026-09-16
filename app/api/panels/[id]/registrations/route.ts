@@ -5,12 +5,10 @@ import { cookies } from 'next/headers';
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/events/[id]/shiftless-registrations
-// Returns all event-level (shiftless) registrations for an event.
-// Accessible to org admins and event admins.
-export async function GET(req: NextRequest, { params }: Params) {
-  const { id: eventId } = await params;
-  const type = req.nextUrl.searchParams.get('type');
+// GET /api/panels/[id]/registrations — this panel's attendee list.
+// Accessible to org admins AND event admins for this event.
+export async function GET(_req: NextRequest, { params }: Params) {
+  const { id: panelId } = await params;
 
   const cookieStore = await cookies();
   const session = createServerClient(
@@ -34,10 +32,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { data: { user } } = await session.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const { data: panel } = await service
+    .from('panels')
+    .select('id, event_id')
+    .eq('id', panelId)
+    .single();
+  if (!panel) return NextResponse.json({ error: 'Panel not found' }, { status: 404 });
+
   const { data: event } = await service
     .from('events')
     .select('organization_id')
-    .eq('id', eventId)
+    .eq('id', panel.event_id)
     .single();
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
@@ -51,7 +56,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     service
       .from('event_admin_assignments')
       .select('id')
-      .eq('event_id', eventId)
+      .eq('event_id', panel.event_id)
       .eq('user_id', user.id)
       .eq('status', 'active')
       .gt('expires_at', new Date().toISOString())
@@ -63,19 +68,11 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  let query = service
+  const { data, error } = await service
     .from('volunteer_registrations')
-    .select('id, name, email, phone, registered_at')
-    .eq('event_id', eventId)
-    .is('shift_id', null)
-    .is('panel_id', null)
+    .select('id, name, email, phone, registered_at, is_waitlisted, attendee_type')
+    .eq('panel_id', panelId)
     .order('registered_at', { ascending: true });
-
-  if (type === 'attendee') {
-    query = query.eq('attendee_type', 'attendee');
-  }
-
-  const { data, error } = await query;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

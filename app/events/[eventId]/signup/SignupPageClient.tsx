@@ -54,6 +54,21 @@ type Event = {
   attendee_capacity?: number | null
   attendee_filled?: number
   speaker_enabled?: boolean
+  panels_enabled?: boolean
+}
+
+type Panel = {
+  id: string
+  name: string
+  description: string | null
+  start_time: string
+  end_time: string
+  panel_date: string | null
+  location: string | null
+  capacity: number
+  available: number
+  is_full: boolean
+  allow_waitlist: boolean
 }
 
 function EventScheduleDisplay({ event }: { event: Event }) {
@@ -164,6 +179,8 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
   const [pageError, setPageError]         = useState<string | null>(null)
   const branding = initialBranding
   const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set())
+  const [panels, setPanels]                 = useState<Panel[]>([])
+  const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null)
   const [formData, setFormData]             = useState({ name: '', email: '', phone: '', bio: '', topic: '' })
   const [submitted, setSubmitted]           = useState(false)
   const [submittedShifts, setSubmittedShifts] = useState<{ id: string; name: string; start_time: string; end_time: string; waitlisted: boolean }[]>([])
@@ -206,6 +223,13 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
           // GET /api/events/:id/shifts  — public
           const shiftsData = await apiFetch<Shift[]>(`events/${eventData.id}/shifts`)
           setShifts(shiftsData)
+        }
+
+        if (role === 'attendee' && eventData.panels_enabled) {
+          // GET /api/events/:id/panels — public, not catch-all-routed so it
+          // doesn't use apiFetch's {data} envelope convention
+          const panelsRes = await fetch(`/api/events/${eventData.id}/panels`)
+          if (panelsRes.ok) setPanels(await panelsRes.json())
         }
 
         // Fetch co-sponsors (fire-and-forget, non-blocking)
@@ -314,6 +338,9 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
   // Only Volunteer signups (on events that aren't shiftless) pick a shift —
   // Attendee/Speaker are always RSVP-style.
   const requiresShift = role === 'volunteer' && !event?.is_shiftless
+  // When an event has panels, an Attendee RSVPs to one specific panel
+  // instead of the whole event.
+  const requiresPanel = role === 'attendee' && panels.length > 0
 
   // ── Validation ───────────────────────────────────────────────────────────
 
@@ -336,6 +363,9 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
     if (requiresShift && selectedShifts.size === 0)
       next.shift = 'Please select at least one shift'
 
+    if (requiresPanel && !selectedPanelId)
+      next.panel = 'Please select a panel'
+
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -344,7 +374,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate() || (requiresShift && selectedShifts.size === 0) || !event) return
+    if (!validate() || (requiresShift && selectedShifts.size === 0) || (requiresPanel && !selectedPanelId) || !event) return
 
     setSubmitting(true)
     setErrors({})
@@ -359,6 +389,20 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
             phone: formData.phone.trim() || null,
             bio:   formData.bio.trim() || null,
             topic: formData.topic.trim() || null,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`)
+        setSubmittedShifts([])
+      } else if (role === 'attendee' && selectedPanelId) {
+        const res = await fetch('/api/panel-registrations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            panel_id: selectedPanelId,
+            name:     formData.name,
+            email:    formData.email.toLowerCase(),
+            phone:    formData.phone.trim() || null,
           }),
         })
         const data = await res.json()
@@ -684,8 +728,72 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
             </div>
           </Card>
 
-          {/* Shift selection — only for Volunteer signups on non-shiftless events */}
-          {role === 'attendee' ? (
+          {/* Panel/Shift selection — only for Volunteer signups on non-shiftless events, or Attendee signups on events with panels */}
+          {role === 'attendee' && panels.length > 0 ? (
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Choose a Panel</h2>
+              {errors.panel && <p className="text-red-600 text-sm mb-2">{errors.panel}</p>}
+              <div className="grid gap-4">
+                {panels.map((panel) => {
+                  const isSelected     = selectedPanelId === panel.id
+                  const isWaitlistable = panel.is_full && panel.allow_waitlist
+                  const isBlocked      = panel.is_full && !panel.allow_waitlist
+                  return (
+                    <Card
+                      key={panel.id}
+                      className={`p-6 transition-all ${
+                        isSelected
+                          ? isWaitlistable
+                            ? 'ring-2 ring-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                            : 'bg-blue-50 dark:bg-blue-900/30'
+                          : isBlocked
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'hover:shadow-lg cursor-pointer'
+                      }`}
+                      style={isSelected && !isWaitlistable
+                        ? { outline: `2px solid ${accentColor ?? '#2563eb'}`, outlineOffset: '-2px' }
+                        : undefined}
+                      onClick={() => !isBlocked && setSelectedPanelId(isSelected ? null : panel.id)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
+                            {isSelected && (
+                              <div
+                                className={`w-6 h-6 rounded-full flex items-center justify-center ${isWaitlistable ? 'bg-amber-500' : 'bg-blue-600'}`}
+                                style={!isWaitlistable && accentStyle ? accentStyle : undefined}
+                              >
+                                <Check className="w-4 h-4 text-white" />
+                              </div>
+                            )}
+                          </div>
+                          {panel.description && <p className="text-gray-600 dark:text-gray-400 mb-3">{panel.description}</p>}
+                          <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-4 h-4" />
+                              {formatEventTime(panel.start_time)} – {formatEventTime(panel.end_time)}
+                            </span>
+                            {panel.location && <span>{panel.location}</span>}
+                            <span className="flex items-center gap-1">
+                              <Users className="w-4 h-4" />
+                              {isWaitlistable ? 'Waitlist open' : `${panel.available} ${panel.available === 1 ? 'spot' : 'spots'} left`}
+                            </span>
+                          </div>
+                        </div>
+                        {isBlocked && (
+                          <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-full">Full</span>
+                        )}
+                        {isWaitlistable && (
+                          <span className="px-3 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-sm font-medium rounded-full">Waitlist</span>
+                        )}
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+          ) : role === 'attendee' ? (
             event.attendee_capacity ? (
               <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
                 <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />

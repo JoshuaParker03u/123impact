@@ -188,6 +188,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     attendee_enabled:    event?.attendee_enabled    ?? false,
     attendee_capacity:   event?.attendee_capacity   ?? '',
     speaker_enabled:     event?.speaker_enabled     ?? false,
+    panels_enabled:      event?.panels_enabled      ?? false,
   });
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
   const [applyToSeries, setApplyToSeries] = useState(false);
@@ -257,6 +258,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
         attendee_enabled:   formData.attendee_enabled,
         attendee_capacity:  formData.attendee_capacity ? parseInt(formData.attendee_capacity) : null,
         speaker_enabled:    formData.speaker_enabled,
+        panels_enabled:     formData.panels_enabled,
       };
       const imageUrl = formData.image_url || organizationLogoUrl || '';
       if (event) {
@@ -619,6 +621,23 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
               {formData.speaker_enabled && event && (
                 <p className="text-xs text-gray-400 mt-1">
                   Manage speaker invites from the &quot;Speakers&quot; tab after saving.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-600 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={formData.panels_enabled}
+                  onChange={(e) => setFormData({ ...formData, panels_enabled: e.target.checked })}
+                  className="rounded"
+                />
+                Enable Panels (scheduled sessions with their own attendees, speakers, and staff)
+              </label>
+              {formData.panels_enabled && event && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Manage panels from the &quot;Panels&quot; tab after saving.
                 </p>
               )}
             </div>
