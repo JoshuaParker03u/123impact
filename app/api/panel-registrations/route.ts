@@ -92,6 +92,16 @@ export async function POST(req: NextRequest) {
     .eq('email', normalizedEmail)
     .not('panel_id', 'is', null);
 
+  // Check for an existing registration for THIS panel before the capacity
+  // check below — otherwise a duplicate submission for an already-full
+  // panel gets told "it's full" instead of the more accurate "you're
+  // already registered" (the unique-index catch further down would give
+  // the right message, but only if the capacity check didn't short-circuit
+  // first).
+  if ((otherPanelRegs ?? []).some((reg) => reg.panel_id === panel_id)) {
+    return NextResponse.json({ error: 'You are already registered for this panel' }, { status: 409 });
+  }
+
   for (const reg of otherPanelRegs ?? []) {
     const other = (reg as any).panels;
     if (!other || reg.panel_id === panel_id) continue;
