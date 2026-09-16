@@ -56,12 +56,12 @@ async function sendPanelConfirmation(
 }
 
 // POST /api/panel-registrations — public, single-panel RSVP.
-// Body: { panel_id, name, email, phone? }
+// Body: { panel_id, name, email, phone?, discord_user_id? }
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { panel_id, name, email, phone } = body;
+  const { panel_id, name, email, phone, discord_user_id } = body;
   if (!panel_id || !name || !email) {
     return NextResponse.json({ error: 'panel_id, name, and email are required' }, { status: 400 });
   }
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   // Conflict check against this email's other panel RSVPs at the same event
   const { data: otherPanelRegs } = await supabase
     .from('volunteer_registrations')
-    .select('panel_id, panels(name, start_time, end_time, panel_date)')
+    .select('id, panel_id, discord_user_id, panels(name, start_time, end_time, panel_date)')
     .eq('event_id', panel.event_id)
     .eq('email', normalizedEmail)
     .not('panel_id', 'is', null);
@@ -99,7 +99,25 @@ export async function POST(req: NextRequest) {
   // already registered" (the unique-index catch further down would give
   // the right message, but only if the capacity check didn't short-circuit
   // first).
-  if ((otherPanelRegs ?? []).some((reg) => reg.panel_id === panel_id)) {
+  const existingForThisPanel = (otherPanelRegs ?? []).find((reg) => reg.panel_id === panel_id);
+  if (existingForThisPanel) {
+    // A Discord signup for an email that already has a registration here
+    // (e.g. from before that account ever used the bot) would otherwise
+    // just fail outright — instead attach this Discord account to the
+    // existing registration so the bot can start DMing them, mirroring the
+    // shift/RSVP signup paths.
+    if (discord_user_id) {
+      if (existingForThisPanel.discord_user_id && existingForThisPanel.discord_user_id !== discord_user_id) {
+        return NextResponse.json({ error: 'You are already registered for this panel' }, { status: 409 });
+      }
+      if (!existingForThisPanel.discord_user_id) {
+        await supabase
+          .from('volunteer_registrations')
+          .update({ discord_user_id })
+          .eq('id', existingForThisPanel.id);
+      }
+      return NextResponse.json({ alreadyRegistered: true, panelName: panel.name }, { status: 200 });
+    }
     return NextResponse.json({ error: 'You are already registered for this panel' }, { status: 409 });
   }
 
@@ -136,6 +154,7 @@ export async function POST(req: NextRequest) {
       phone:         phone ?? null,
       attendee_type: 'attendee',
       is_waitlisted: isWaitlisted,
+      discord_user_id: discord_user_id ?? null,
     })
     .select()
     .single();
@@ -152,5 +171,5 @@ export async function POST(req: NextRequest) {
   scheduleAutomatedEmails(supabase, registration.id, name, normalizedEmail, panel.event_id, null, panel_id)
     .catch((e) => console.error('scheduleAutomatedEmails error:', e));
 
-  return NextResponse.json({ ...registration, isWaitlisted }, { status: 201 });
+  return NextResponse.json({ ...registration, isWaitlisted, panelName: panel.name }, { status: 201 });
 }

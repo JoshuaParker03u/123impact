@@ -9,6 +9,7 @@ import {
   getConnectionByGuildId,
   getUpcomingEventsForOrg,
   getOpenShiftsForEvent,
+  getOpenPanelsForEvent,
   getEventById,
 } from '@/lib/discord/queries';
 
@@ -113,11 +114,25 @@ export async function POST(req: NextRequest) {
 
       const event = await getEventById(eventId);
       if (!event) return ephemeral('That event could not be found.');
-      if (!event.attendee_enabled && !event.is_shiftless) {
-        if (event.panels_enabled) {
-          const url = `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.event_id}/signup/attendee`;
-          return updateMessage(`This event's signups are panel-based, which isn't supported in Discord yet — please sign up on the web instead: ${url}`, []);
+
+      if (event.panels_enabled) {
+        const { panels, hasAnyPanels } = await getOpenPanelsForEvent(eventId, interaction.member?.user?.id ?? interaction.user?.id ?? null);
+
+        if (panels.length > 0) {
+          const options = panels.map((p) => ({
+            label: `${p.name} (${p.start_time}-${p.end_time})`.slice(0, 100),
+            value: p.id,
+            description: p.is_full ? 'Waitlist' : `${p.available} spot${p.available === 1 ? '' : 's'} open`,
+          }));
+          return updateMessage('Choose a panel:', selectMenuRow('select_panel', 'Choose a panel', options));
         }
+
+        if (hasAnyPanels) {
+          return updateMessage('No panels are available to you for this event right now — you may have already signed up for all of them.', []);
+        }
+      }
+
+      if (!event.attendee_enabled && !event.is_shiftless) {
         return updateMessage('This event isn\'t currently open for signups.', []);
       }
       const attendeeType = event.attendee_enabled ? 'attendee' : 'volunteer';
@@ -127,6 +142,11 @@ export async function POST(req: NextRequest) {
     if (customId === 'select_shift') {
       const shiftId = selectedValue;
       return signupModal(encodeCustomId('signup_modal_shift', shiftId));
+    }
+
+    if (customId === 'select_panel') {
+      const panelId = selectedValue;
+      return signupModal(encodeCustomId('signup_modal_panel', panelId));
     }
 
     return ephemeral('Something went wrong — please run /signup again.');
@@ -147,6 +167,8 @@ export async function POST(req: NextRequest) {
       try {
         const result = decoded.kind === 'signup_modal_shift'
           ? await submitShiftSignup(decoded.id, name!, email!, discordUserId)
+          : decoded.kind === 'signup_modal_panel'
+          ? await submitPanelSignup(decoded.id, name!, email!, discordUserId)
           : await submitRsvpSignup(decoded.id, name!, email!, discordUserId);
         await editOriginalResponse(interactionToken, { content: result, components: [] });
       } catch (e) {
@@ -196,6 +218,24 @@ async function submitShiftSignup(shiftId: string, name: string, email: string, d
     : reg?.isWaitlisted
     ? `You're on the waitlist for "${reg.shiftName}". Check your email for details.`
     : `You're signed up for "${reg?.shiftName}"! Check your email for confirmation.`;
+
+  if (discordUserId) {
+    await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
+  }
+  return result;
+}
+
+async function submitPanelSignup(panelId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
+  const res = await internalApiFetch('/api/panel-registrations', {
+    name, email, panel_id: panelId, discord_user_id: discordUserId,
+  });
+  const data = await res.json();
+  if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
+  const result = data.alreadyRegistered
+    ? `You were already registered for "${data.panelName}" — linked this Discord account to it.`
+    : data.isWaitlisted
+    ? `You're on the waitlist for "${data.panelName}". Check your email for details.`
+    : `You're signed up for "${data.panelName}"! Check your email for confirmation.`;
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));

@@ -36,6 +36,7 @@ export interface UpcomingEvent {
   end_date: string | null;
   is_shiftless: boolean;
   attendee_enabled: boolean;
+  panels_enabled: boolean;
 }
 
 // Mirrors SignupPageClient.tsx's local-date-string comparison — comparing
@@ -53,7 +54,7 @@ export async function getUpcomingEventsForOrg(orgId: string, discordUserId?: str
   const supabase = buildServiceClient();
   const { data } = await supabase
     .from('events')
-    .select('id, title, date, end_date, is_shiftless, attendee_enabled')
+    .select('id, title, date, end_date, is_shiftless, attendee_enabled, panels_enabled')
     .eq('organization_id', orgId)
     .eq('status', 'active')
     .order('date', { ascending: true });
@@ -70,6 +71,7 @@ export async function getUpcomingEventsForOrg(orgId: string, discordUserId?: str
       .from('volunteer_registrations')
       .select('event_id')
       .is('shift_id', null)
+      .is('panel_id', null)
       .eq('discord_user_id', discordUserId)
       .in('event_id', eventIds),
   ]);
@@ -77,8 +79,11 @@ export async function getUpcomingEventsForOrg(orgId: string, discordUserId?: str
   const eventsWithShifts = new Set((shiftRows ?? []).map((s) => s.event_id));
   const alreadyRsvped = new Set((rsvpRows ?? []).map((r) => r.event_id));
 
+  // Panel-based events are kept like shift-based ones — the user may have
+  // signed up for one panel but want another; per-panel availability is
+  // filtered later at selection time (see getOpenPanelsForEvent).
   return upcoming
-    .filter((e) => eventsWithShifts.has(e.id) || !alreadyRsvped.has(e.id))
+    .filter((e) => eventsWithShifts.has(e.id) || e.panels_enabled || !alreadyRsvped.has(e.id))
     .slice(0, 25); // Discord select-menu option limit
 }
 
@@ -170,4 +175,77 @@ export async function getOpenShiftsForEvent(eventId: string, discordUserId?: str
     .slice(0, 25);
 
   return { shifts: filtered, hasAnyShifts: true };
+}
+
+export interface OpenPanel {
+  id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  available: number;
+  is_full: boolean;
+  allow_waitlist: boolean;
+}
+
+export interface PanelsForEvent {
+  panels: OpenPanel[];
+  // Same purpose as ShiftsForEvent.hasAnyShifts — lets callers tell "no
+  // panels created yet" apart from "panels exist but none are open to
+  // this user right now".
+  hasAnyPanels: boolean;
+}
+
+export async function getOpenPanelsForEvent(eventId: string, discordUserId?: string | null): Promise<PanelsForEvent> {
+  const supabase = buildServiceClient();
+  const { data: panels } = await supabase
+    .from('panels')
+    .select('id, name, start_time, end_time, capacity, allow_waitlist')
+    .eq('event_id', eventId)
+    .order('start_time', { ascending: true });
+
+  if (!panels || panels.length === 0) return { panels: [], hasAnyPanels: false };
+
+  const panelIds = panels.map((p) => p.id);
+  // Mirrors the capacity check in POST /api/panel-registrations exactly
+  // (no attendee_type filter — a promoted speaker's row still occupies a
+  // capacity slot), so the count shown here matches what the insert enforces.
+  const [{ data: regRows }, { data: claimedRows }] = await Promise.all([
+    supabase
+      .from('volunteer_registrations')
+      .select('panel_id, is_waitlisted')
+      .in('panel_id', panelIds)
+      .eq('is_waitlisted', false),
+    discordUserId
+      ? supabase
+          .from('volunteer_registrations')
+          .select('panel_id')
+          .in('panel_id', panelIds)
+          .eq('discord_user_id', discordUserId)
+      : Promise.resolve({ data: [] as { panel_id: string }[] }),
+  ]);
+
+  const filledMap = (regRows ?? []).reduce<Record<string, number>>((acc, r) => {
+    acc[r.panel_id] = (acc[r.panel_id] ?? 0) + 1;
+    return acc;
+  }, {});
+  const claimedByUser = new Set((claimedRows ?? []).map((r) => r.panel_id));
+
+  const filtered = panels
+    .map((p) => {
+      const filled = filledMap[p.id] ?? 0;
+      const is_full = filled >= p.capacity;
+      return {
+        id: p.id,
+        name: p.name,
+        start_time: p.start_time,
+        end_time: p.end_time,
+        available: Math.max(p.capacity - filled, 0),
+        is_full,
+        allow_waitlist: p.allow_waitlist,
+      };
+    })
+    .filter((p) => (!p.is_full || p.allow_waitlist) && !claimedByUser.has(p.id))
+    .slice(0, 25);
+
+  return { panels: filtered, hasAnyPanels: true };
 }
