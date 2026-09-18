@@ -3,7 +3,8 @@ import { after } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { registerGuildCommand } from '@/lib/discord/api';
+import { registerGuildCommand, getGuildSystemChannelId } from '@/lib/discord/api';
+import { maybeSendWelcomeMessage } from '@/lib/discord/welcome';
 
 // GET /api/auth/integrations/discord/callback
 // Handles Discord's bot-authorization callback. No code exchange happens —
@@ -98,6 +99,19 @@ export async function GET(req: NextRequest) {
     // redirect — worst case the admin needs to disconnect/reconnect once if
     // this fails, which is logged for that troubleshooting.
     after(() => registerGuildCommand(guildId).catch((e) => console.error('registerGuildCommand error:', e)));
+
+    // Best-effort welcome message to the guild's own default channel — an
+    // org can't pick a channel during authorization itself (channel listing
+    // requires the bot to already be a member), so this is a fallback for
+    // guilds with no announcement channel set yet. See maybeSendWelcomeMessage.
+    after(async () => {
+      try {
+        const channelId = await getGuildSystemChannelId(guildId);
+        if (channelId) await maybeSendWelcomeMessage(service, orgId, channelId);
+      } catch (e) {
+        console.error('welcome message error:', e);
+      }
+    });
 
     return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&connected=discord`);
   } catch {

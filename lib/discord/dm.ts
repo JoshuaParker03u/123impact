@@ -51,3 +51,21 @@ export async function sendDirectMessage(discordUserId: string, content: string):
     return { success: false, error: e.message ?? String(e) };
   }
 }
+
+// Posts directly to a guild channel — no DM-channel-creation step needed,
+// unlike sendDirectMessage. Same never-throws contract.
+export async function sendChannelMessage(channelId: string, content: string): Promise<DmResult> {
+  try {
+    const res = await withRetry(() =>
+      fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ content }),
+      })
+    );
+    if (!res.ok) throw new Error(`send channel message failed: ${res.status} ${await res.text()}`);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message ?? String(e) };
+  }
+}

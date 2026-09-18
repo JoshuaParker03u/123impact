@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { lumaValidateKey } from '@/lib/platforms/luma';
+import { maybeSendWelcomeMessage } from '@/lib/discord/welcome';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -52,17 +53,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: rows } = await service
     .from('platform_connections')
-    .select('platform, sync_new_events, connected_at, external_org_id, channel_id')
+    .select('platform, sync_new_events, connected_at, external_org_id, channel_id, announcement_channel_id')
     .eq('organization_id', orgId);
 
   const connections = { luma: null as any, eventbrite: null as any, discord: null as any };
   for (const row of rows ?? []) {
     connections[row.platform as 'luma' | 'eventbrite' | 'discord'] = {
-      connected:       true,
-      sync_new_events: row.sync_new_events,
-      connected_at:    row.connected_at,
-      external_org_id: row.external_org_id,
-      channel_id:      row.channel_id,
+      connected:                true,
+      sync_new_events:          row.sync_new_events,
+      connected_at:             row.connected_at,
+      external_org_id:          row.external_org_id,
+      channel_id:               row.channel_id,
+      announcement_channel_id:  row.announcement_channel_id,
     };
   }
 
@@ -122,7 +124,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/organizations/[id]/connections
-// Body: { platform, sync_new_events?: boolean, channel_id?: string | null }
+// Body: { platform, sync_new_events?: boolean, channel_id?: string | null, announcement_channel_id?: string | null }
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id: orgId } = await params;
   const cookieStore = await cookies();
@@ -134,10 +136,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { platform, sync_new_events, channel_id } = await req.json();
+  const { platform, sync_new_events, channel_id, announcement_channel_id } = await req.json();
   const updates: Record<string, unknown> = {};
   if (sync_new_events !== undefined) updates.sync_new_events = sync_new_events;
   if (channel_id !== undefined) updates.channel_id = channel_id;
+  if (announcement_channel_id !== undefined) updates.announcement_channel_id = announcement_channel_id;
 
   const { error } = await service
     .from('platform_connections')
@@ -146,6 +149,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .eq('platform', platform);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // First time an org points announcements at a channel, greet it there —
+  // covers guilds where the join-time system-channel post never happened.
+  if (platform === 'discord' && announcement_channel_id) {
+    maybeSendWelcomeMessage(service, orgId, announcement_channel_id)
+      .catch((e) => console.error('maybeSendWelcomeMessage error:', e));
+  }
+
   return NextResponse.json({ success: true });
 }
 

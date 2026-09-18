@@ -906,6 +906,7 @@ function IntegrationsTab({ orgId }) {
   const [oauthError, setOauthError]   = useState('');
   const [discordChannels, setDiscordChannels] = useState(null);
   const [savingChannel, setSavingChannel]     = useState(false);
+  const [savingAnnouncementChannel, setSavingAnnouncementChannel] = useState(false);
 
   const OAUTH_ERRORS = {
     eventbrite_already_connected: 'This Eventbrite account is already connected to another organization.',
@@ -949,6 +950,17 @@ function IntegrationsTab({ orgId }) {
       body: JSON.stringify({ platform: 'discord', channel_id: channelId || null }),
     });
     setSavingChannel(false);
+    loadConnections();
+  }
+
+  async function saveAnnouncementChannel(channelId) {
+    setSavingAnnouncementChannel(true);
+    await fetch(`/api/organizations/${orgId}/connections`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'discord', announcement_channel_id: channelId || null }),
+    });
+    setSavingAnnouncementChannel(false);
     loadConnections();
   }
 
@@ -1128,6 +1140,24 @@ function IntegrationsTab({ orgId }) {
                     onChange={e => saveDiscordChannel(e.target.value)}
                   >
                     <option value="">Any channel</option>
+                    {(discordChannels ?? []).map(c => (
+                      <option key={c.id} value={c.id}>#{c.name}</option>
+                    ))}
+                  </select>
+
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 pt-2">
+                    Announcement Channel
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    Where the bot posts announcements (like its welcome message, and event/panel announcements in the future). Leave unset to use your server&apos;s default channel when possible.
+                  </p>
+                  <select
+                    className="w-full max-w-xs px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    value={conn.announcement_channel_id ?? ''}
+                    disabled={savingAnnouncementChannel || discordChannels === null}
+                    onChange={e => saveAnnouncementChannel(e.target.value)}
+                  >
+                    <option value="">Server default</option>
                     {(discordChannels ?? []).map(c => (
                       <option key={c.id} value={c.id}>#{c.name}</option>
                     ))}
