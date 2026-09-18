@@ -51,6 +51,7 @@ export default function AdminEventsPage() {
   const [discordAnnouncementChannelName, setDiscordAnnouncementChannelName] = useState(null);
   const [discordAnnounceEvent, setDiscordAnnounceEvent] = useState(null);
   const [postingDiscordId, setPostingDiscordId] = useState(null);
+  const [discordResult, setDiscordResult] = useState(null);
 
   // Fetch events when organization changes
   useEffect(() => {
@@ -167,13 +168,12 @@ export default function AdminEventsPage() {
     setPostingDiscordId(eventId);
     const res = await fetch(`/api/events/${eventId}/discord-announce`, { method: 'POST' });
     setPostingDiscordId(null);
-    setDiscordAnnounceEvent(null);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      alert(data.error ?? 'Failed to post to Discord');
+      setDiscordResult(data.error ?? 'Failed to post to Discord');
       return;
     }
-    alert('Posted to Discord!');
+    setDiscordResult('success');
   };
 
   const handleCreateEvent = () => {
@@ -517,7 +517,7 @@ export default function AdminEventsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setDiscordAnnounceEvent(event)}
+                            onClick={() => { setDiscordResult(null); setDiscordAnnounceEvent(event); }}
                             title="Post to Discord"
                           >
                             <Send className="w-4 h-4" />
@@ -666,6 +666,7 @@ export default function AdminEventsPage() {
           <DiscordPostConfirmModal
             channelName={discordAnnouncementChannelName}
             loading={postingDiscordId === discordAnnounceEvent.id}
+            result={discordResult}
             onCancel={() => setDiscordAnnounceEvent(null)}
             onConfirm={() => postEventToDiscord(discordAnnounceEvent.id)}
           />

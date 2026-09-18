@@ -1200,6 +1200,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
   const [deleting, setDeleting] = useState(false);
   const [confirmingDiscordId, setConfirmingDiscordId] = useState<string | null>(null);
   const [postingDiscordId, setPostingDiscordId] = useState<string | null>(null);
+  const [discordResult, setDiscordResult] = useState<'success' | string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [registrations, setRegistrations] = useState<PanelRegistration[]>([]);
   const [assignments, setAssignments] = useState<PanelAssignmentRow[]>([]);
@@ -1266,9 +1267,8 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     setPostingDiscordId(panelId);
     const res = await fetch(`/api/panels/${panelId}/discord-announce`, { method: 'POST' });
     setPostingDiscordId(null);
-    setConfirmingDiscordId(null);
-    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
-    alert('Posted to Discord!');
+    if (!res.ok) { setDiscordResult((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
+    setDiscordResult('success');
   }
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
@@ -1327,7 +1327,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                         <span
                           role="button"
                           title="Post to Discord"
-                          onClick={(e) => { e.stopPropagation(); setConfirmingDiscordId(panel.id); }}
+                          onClick={(e) => { e.stopPropagation(); setDiscordResult(null); setConfirmingDiscordId(panel.id); }}
                           className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
                         >
                           {postingDiscordId === panel.id
@@ -1475,6 +1475,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
         <DiscordPostConfirmModal
           channelName={discordChannelName}
           loading={postingDiscordId === confirmingDiscordId}
+          result={discordResult}
           onCancel={() => setConfirmingDiscordId(null)}
           onConfirm={() => postPanelToDiscord(confirmingDiscordId)}
         />
@@ -1511,14 +1512,14 @@ function QRCodesTab({ eventId, customDomain, canManage, discordReady, discordCha
   const [previewId, setPreviewId]         = useState<string | null>(null);
   const [confirmingDiscord, setConfirmingDiscord] = useState(false);
   const [postingDiscord, setPostingDiscord] = useState(false);
+  const [discordResult, setDiscordResult] = useState<'success' | string | null>(null);
 
   async function postEventToDiscord() {
     setPostingDiscord(true);
     const res = await fetch(`/api/events/${eventId}/discord-announce`, { method: 'POST' });
     setPostingDiscord(false);
-    setConfirmingDiscord(false);
-    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
-    alert('Posted to Discord!');
+    if (!res.ok) { setDiscordResult((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
+    setDiscordResult('success');
   }
 
   const load = useCallback(async () => {
@@ -1613,7 +1614,7 @@ function QRCodesTab({ eventId, customDomain, canManage, discordReady, discordCha
               Post an announcement with a signup link to {discordChannelName ? `#${discordChannelName}` : 'your announcement channel'}.
             </p>
           </div>
-          <Button variant="outline" onClick={() => setConfirmingDiscord(true)} className="gap-1.5 text-sm">
+          <Button variant="outline" onClick={() => { setDiscordResult(null); setConfirmingDiscord(true); }} className="gap-1.5 text-sm">
             <Send className="w-4 h-4" /> Post to Discord
           </Button>
         </Card>
@@ -1789,6 +1790,7 @@ function QRCodesTab({ eventId, customDomain, canManage, discordReady, discordCha
         <DiscordPostConfirmModal
           channelName={discordChannelName}
           loading={postingDiscord}
+          result={discordResult}
           onCancel={() => setConfirmingDiscord(false)}
           onConfirm={postEventToDiscord}
         />
