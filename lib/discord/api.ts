@@ -26,21 +26,6 @@ export async function registerGuildCommand(guildId: string): Promise<void> {
   });
 }
 
-// Best-effort lookup of a guild's default "system channel" (where Discord
-// itself posts join/boost messages) — used as a sensible fallback target
-// for the one-time welcome message when an org hasn't set an announcement
-// channel yet. Returns null on any failure rather than throwing, since this
-// is only ever used opportunistically right after the bot joins a guild.
-export async function getGuildSystemChannelId(guildId: string): Promise<string | null> {
-  try {
-    const res = await discordFetch(`/guilds/${guildId}`, { method: 'GET' });
-    const guild = await res.json();
-    return guild.system_channel_id ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export interface DiscordChannel {
   id: string;
   name: string;

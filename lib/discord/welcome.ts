@@ -8,10 +8,10 @@ const WELCOME_MESSAGE = [
 
 // Sends the one-time welcome/instructions message to a channel, marking
 // platform_connections.welcome_message_sent_at so it's never repeated.
-// Called from two places: right after the bot joins a guild (if it has a
-// system channel), and whenever an org sets an announcement channel for the
-// first time (covers guilds with no system channel, or where that post
-// silently failed, e.g. missing permission).
+// The bot never auto-posts anywhere on its own — this only fires once an
+// org explicitly sets its announcement channel (deliberately not falling
+// back to the guild's default channel; orgs are steered toward a channel
+// only the bot posts in, not wherever regular chat happens).
 export async function maybeSendWelcomeMessage(
   service: SupabaseClient,
   organizationId: string,

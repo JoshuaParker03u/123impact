@@ -1149,7 +1149,7 @@ function IntegrationsTab({ orgId }) {
                     Announcement Channel
                   </label>
                   <p className="text-xs text-gray-400 dark:text-gray-500">
-                    Where the bot posts announcements (like its welcome message, and event/panel announcements in the future). Leave unset to use your server&apos;s default channel when possible.
+                    Where the bot posts announcements (starting with its welcome message, with event and panel announcements coming later). We recommend a channel only the bot can post to, so these don&apos;t get lost in regular chat. Nothing is posted until you set this.
                   </p>
                   <select
                     className="w-full max-w-xs px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
@@ -1157,7 +1157,7 @@ function IntegrationsTab({ orgId }) {
                     disabled={savingAnnouncementChannel || discordChannels === null}
                     onChange={e => saveAnnouncementChannel(e.target.value)}
                   >
-                    <option value="">Server default</option>
+                    <option value="">Select a channel…</option>
                     {(discordChannels ?? []).map(c => (
                       <option key={c.id} value={c.id}>#{c.name}</option>
                     ))}
