@@ -1287,7 +1287,9 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
               <Card key={panel.id} className="overflow-hidden">
                 <button onClick={() => toggleExpand(panel.id)} className="w-full flex items-center justify-between p-4 text-left">
                   <div className="flex items-center gap-3">
-                    {expanded ? <ChevronUp className="w-5 h-5 text-gray-400 shrink-0" /> : <ChevronDown className="w-5 h-5 text-gray-400 shrink-0" />}
+                    <span className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 shrink-0">
+                      {expanded ? <ChevronUp className="w-5 h-5 text-gray-500 dark:text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-500 dark:text-gray-400" />}
+                    </span>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
@@ -2578,12 +2580,14 @@ export default function AdminEventDetailPage() {
                         onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? toggleShift(shift.id) : undefined}
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          {loadingVolunteers === shift.id
-                            ? <Loader2 className="w-4 h-4 animate-spin text-gray-400 shrink-0" />
-                            : isOpen
-                              ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
-                              : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
-                          }
+                          <span className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 shrink-0">
+                            {loadingVolunteers === shift.id
+                              ? <Loader2 className="w-4 h-4 animate-spin text-gray-500 dark:text-gray-400" />
+                              : isOpen
+                                ? <ChevronUp className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                : <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                            }
+                          </span>
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
