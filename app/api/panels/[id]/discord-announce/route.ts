@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { sendChannelMessage } from '@/lib/discord/dm';
+import { sendChannelMessage, deleteChannelMessage } from '@/lib/discord/dm';
 import { buildPanelAnnouncement } from '@/lib/discord/announce';
 
 type Params = { params: Promise<{ id: string }> };
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: panel } = await service
     .from('panels')
-    .select('id, name, description, start_time, end_time, panel_date, location, capacity, allow_waitlist, events!inner(id, event_id, title, organization_id, date, end_date)')
+    .select('id, name, description, start_time, end_time, panel_date, location, capacity, allow_waitlist, discord_message_id, events!inner(id, event_id, title, organization_id, date, end_date)')
     .eq('id', panelId)
     .single();
   if (!panel) return NextResponse.json({ error: 'Panel not found' }, { status: 404 });
@@ -101,10 +101,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   const signupUrl = `${origin}/events/${event.event_id}/signup/attendee?panel=${panel.id}`;
   const message = buildPanelAnnouncement({ ...panel, available }, event, signupUrl, speakerNames);
 
+  // Clear out the previous announcement first — same reasoning as the
+  // event-level route, best-effort and never blocks the new post.
+  if (panel.discord_message_id) {
+    await deleteChannelMessage(connection.announcement_channel_id, panel.discord_message_id).catch((e) => console.error('deleteChannelMessage error:', e));
+  }
+
   const result = await sendChannelMessage(connection.announcement_channel_id, message);
   if (!result.success) {
     return NextResponse.json({ error: result.error ?? 'Failed to post to Discord' }, { status: 502 });
   }
+
+  await service.from('panels').update({ discord_message_id: result.messageId ?? null }).eq('id', panelId);
 
   return NextResponse.json({ success: true });
 }

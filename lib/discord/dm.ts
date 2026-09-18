@@ -20,6 +20,7 @@ async function withRetry(doFetch: () => Promise<Response>): Promise<Response> {
 export interface DmResult {
   success: boolean;
   error?: string;
+  messageId?: string;
 }
 
 // Sends a single Discord DM. Never throws — a failed DM (DMs closed, left
@@ -53,7 +54,9 @@ export async function sendDirectMessage(discordUserId: string, content: string):
 }
 
 // Posts directly to a guild channel — no DM-channel-creation step needed,
-// unlike sendDirectMessage. Same never-throws contract.
+// unlike sendDirectMessage. Same never-throws contract. Returns the new
+// message's id so callers can track it (e.g. to delete a stale announcement
+// on the next re-post).
 export async function sendChannelMessage(channelId: string, content: string): Promise<DmResult> {
   try {
     const res = await withRetry(() =>
@@ -64,8 +67,27 @@ export async function sendChannelMessage(channelId: string, content: string): Pr
       })
     );
     if (!res.ok) throw new Error(`send channel message failed: ${res.status} ${await res.text()}`);
-    return { success: true };
+    const message = await res.json();
+    return { success: true, messageId: message.id };
   } catch (e: any) {
     return { success: false, error: e.message ?? String(e) };
+  }
+}
+
+// Deletes a message the bot previously posted to a channel — used to clear
+// a stale announcement before posting its replacement. Only ever deletes
+// the bot's own messages, so no permission beyond SEND_MESSAGES is needed.
+// A 404 (already gone — deleted manually, or the channel itself changed)
+// is treated as success, not an error; this never blocks posting the new
+// message.
+export async function deleteChannelMessage(channelId: string, messageId: string): Promise<void> {
+  const res = await withRetry(() =>
+    fetch(`${DISCORD_API}/channels/${channelId}/messages/${messageId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+  );
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`delete channel message failed: ${res.status} ${await res.text()}`);
   }
 }

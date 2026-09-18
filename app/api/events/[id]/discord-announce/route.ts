@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { sendChannelMessage } from '@/lib/discord/dm';
+import { sendChannelMessage, deleteChannelMessage } from '@/lib/discord/dm';
 import { buildEventAnnouncement } from '@/lib/discord/announce';
 
 type Params = { params: Promise<{ id: string }> };
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: event } = await service
     .from('events')
-    .select('id, event_id, organization_id, title, description, date, end_date, time, location')
+    .select('id, event_id, organization_id, title, description, date, end_date, time, location, discord_message_id')
     .eq('id', eventId)
     .single();
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -70,10 +70,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   const signupUrl = `${origin}/events/${event.event_id}/signup`;
   const message = buildEventAnnouncement(event, signupUrl);
 
+  // Clear out the previous announcement first so re-posting (e.g. after
+  // editing the event) doesn't leave stale copies piling up in the channel.
+  // Best-effort — a failure here (already deleted, channel changed since)
+  // never blocks posting the new one.
+  if (event.discord_message_id) {
+    await deleteChannelMessage(connection.announcement_channel_id, event.discord_message_id).catch((e) => console.error('deleteChannelMessage error:', e));
+  }
+
   const result = await sendChannelMessage(connection.announcement_channel_id, message);
   if (!result.success) {
     return NextResponse.json({ error: result.error ?? 'Failed to post to Discord' }, { status: 502 });
   }
+
+  await service.from('events').update({ discord_message_id: result.messageId ?? null }).eq('id', eventId);
 
   return NextResponse.json({ success: true });
 }
