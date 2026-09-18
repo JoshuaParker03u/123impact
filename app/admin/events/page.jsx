@@ -7,10 +7,11 @@ import EventModal from '@/components/admin/EventModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import FloatingWindow from '@/components/FloatingWindow';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail, CalendarClock } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail, CalendarClock, Send } from 'lucide-react';
 import Link from 'next/link';
 import MessageComposer from '@/components/MessageComposer';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
+import DiscordPostConfirmModal from '@/components/DiscordPostConfirmModal';
 import SeriesManagerModal from '@/components/admin/SeriesManagerModal';
 
 const supabase = getBrowserClient();
@@ -46,6 +47,10 @@ export default function AdminEventsPage() {
   const [messagingEvent, setMessagingEvent] = useState(null);
   const [manageSeriesId, setManageSeriesId] = useState(null);
   const [orgPlan, setOrgPlan] = useState('free');
+  const [discordAnnouncementChannelId, setDiscordAnnouncementChannelId] = useState(null);
+  const [discordAnnouncementChannelName, setDiscordAnnouncementChannelName] = useState(null);
+  const [discordAnnounceEvent, setDiscordAnnounceEvent] = useState(null);
+  const [postingDiscordId, setPostingDiscordId] = useState(null);
 
   // Fetch events when organization changes
   useEffect(() => {
@@ -137,6 +142,38 @@ export default function AdminEventsPage() {
       .eq('id', currentOrganization.id)
       .maybeSingle();
     setOrgPlan(orgData?.plan ?? 'free');
+
+    // Fetch Discord announcement-channel status once per org, so every
+    // event row can show the "Post to Discord" action without a fetch each
+    const connectionsRes = await fetch(`/api/organizations/${currentOrganization.id}/connections`);
+    if (connectionsRes.ok) {
+      const connectionsJson = await connectionsRes.json();
+      const announcementChannelId = connectionsJson?.discord?.announcement_channel_id ?? null;
+      setDiscordAnnouncementChannelId(announcementChannelId);
+      if (announcementChannelId) {
+        fetch(`/api/organizations/${currentOrganization.id}/discord/channels`)
+          .then((r) => (r.ok ? r.json() : []))
+          .then((channels) => {
+            setDiscordAnnouncementChannelName(channels.find((c) => c.id === announcementChannelId)?.name ?? null);
+          })
+          .catch(() => {});
+      } else {
+        setDiscordAnnouncementChannelName(null);
+      }
+    }
+  };
+
+  const postEventToDiscord = async (eventId) => {
+    setPostingDiscordId(eventId);
+    const res = await fetch(`/api/events/${eventId}/discord-announce`, { method: 'POST' });
+    setPostingDiscordId(null);
+    setDiscordAnnounceEvent(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? 'Failed to post to Discord');
+      return;
+    }
+    alert('Posted to Discord!');
   };
 
   const handleCreateEvent = () => {
@@ -476,6 +513,16 @@ export default function AdminEventsPage() {
                               : <Copy className="w-4 h-4" />}
                           </Button>
                         )}
+                        {isAdmin && discordAnnouncementChannelId && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDiscordAnnounceEvent(event)}
+                            title="Post to Discord"
+                          >
+                            <Send className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -612,6 +659,15 @@ export default function AdminEventsPage() {
             seriesId={manageSeriesId}
             onClose={() => setManageSeriesId(null)}
             onChanged={fetchEvents}
+          />
+        )}
+
+        {discordAnnounceEvent && (
+          <DiscordPostConfirmModal
+            channelName={discordAnnouncementChannelName}
+            loading={postingDiscordId === discordAnnounceEvent.id}
+            onCancel={() => setDiscordAnnounceEvent(null)}
+            onConfirm={() => postEventToDiscord(discordAnnounceEvent.id)}
           />
         )}
 

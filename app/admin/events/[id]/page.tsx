@@ -17,6 +17,7 @@ import EventbriteAttendeesTab from './EventbriteAttendeesTab';
 import CheckInQRModal from './CheckInQRModal';
 import InviteSpeakerModal from './InviteSpeakerModal';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
+import DiscordPostConfirmModal from '@/components/DiscordPostConfirmModal';
 import ShiftModal from '@/components/admin/ShiftModal';
 import PanelModal from '@/components/admin/PanelModal';
 import EventModal from '@/components/admin/EventModal';
@@ -1190,13 +1191,14 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
   );
 }
 
-function PanelsTab({ eventId, event, canManage, discordReady }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean }) {
+function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean; discordChannelName: string | null }) {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPanelModal, setShowPanelModal] = useState(false);
   const [editingPanel, setEditingPanel] = useState<Panel | null>(null);
   const [deletingPanel, setDeletingPanel] = useState<Panel | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmingDiscordId, setConfirmingDiscordId] = useState<string | null>(null);
   const [postingDiscordId, setPostingDiscordId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [registrations, setRegistrations] = useState<PanelRegistration[]>([]);
@@ -1264,6 +1266,7 @@ function PanelsTab({ eventId, event, canManage, discordReady }: { eventId: strin
     setPostingDiscordId(panelId);
     const res = await fetch(`/api/panels/${panelId}/discord-announce`, { method: 'POST' });
     setPostingDiscordId(null);
+    setConfirmingDiscordId(null);
     if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
     alert('Posted to Discord!');
   }
@@ -1324,7 +1327,7 @@ function PanelsTab({ eventId, event, canManage, discordReady }: { eventId: strin
                         <span
                           role="button"
                           title="Post to Discord"
-                          onClick={(e) => { e.stopPropagation(); postPanelToDiscord(panel.id); }}
+                          onClick={(e) => { e.stopPropagation(); setConfirmingDiscordId(panel.id); }}
                           className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
                         >
                           {postingDiscordId === panel.id
@@ -1467,6 +1470,15 @@ function PanelsTab({ eventId, event, canManage, discordReady }: { eventId: strin
           onConfirm={deletePanel}
         />
       )}
+
+      {confirmingDiscordId && (
+        <DiscordPostConfirmModal
+          channelName={discordChannelName}
+          loading={postingDiscordId === confirmingDiscordId}
+          onCancel={() => setConfirmingDiscordId(null)}
+          onConfirm={() => postPanelToDiscord(confirmingDiscordId)}
+        />
+      )}
     </>
   );
 }
@@ -1486,7 +1498,7 @@ interface QRInstance {
   target_role: 'volunteer' | 'attendee';
 }
 
-function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: string | null }) {
+function QRCodesTab({ eventId, customDomain, canManage, discordReady, discordChannelName }: { eventId: string; customDomain: string | null; canManage: boolean; discordReady: boolean; discordChannelName: string | null }) {
   const [instances, setInstances]         = useState<QRInstance[]>([]);
   const [eventSlug, setEventSlug]         = useState('');
   const [attendeeEnabled, setAttendeeEnabled] = useState(false);
@@ -1497,6 +1509,17 @@ function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: 
   const [showAddForm, setShowAddForm]     = useState<'qr' | 'link' | null>(null);
   const [regenerating, setRegenerating]   = useState<string | null>(null);
   const [previewId, setPreviewId]         = useState<string | null>(null);
+  const [confirmingDiscord, setConfirmingDiscord] = useState(false);
+  const [postingDiscord, setPostingDiscord] = useState(false);
+
+  async function postEventToDiscord() {
+    setPostingDiscord(true);
+    const res = await fetch(`/api/events/${eventId}/discord-announce`, { method: 'POST' });
+    setPostingDiscord(false);
+    setConfirmingDiscord(false);
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
+    alert('Posted to Discord!');
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1582,6 +1605,20 @@ function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: 
 
   return (
     <>
+      {canManage && discordReady && (
+        <Card className="p-4 mb-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="font-medium text-gray-900 dark:text-gray-100">Discord</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Post an announcement with a signup link to {discordChannelName ? `#${discordChannelName}` : 'your announcement channel'}.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setConfirmingDiscord(true)} className="gap-1.5 text-sm">
+            <Send className="w-4 h-4" /> Post to Discord
+          </Button>
+        </Card>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           QR placements and tracking links — all scans/clicks tracked anonymously (date only, no PII).
@@ -1747,6 +1784,15 @@ function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: 
         <strong>Personal check-in codes</strong> — Each registrant also has their own unique QR code
         for check-in on event day. Staff can scan it at the door. No setup required.
       </div>
+
+      {confirmingDiscord && (
+        <DiscordPostConfirmModal
+          channelName={discordChannelName}
+          loading={postingDiscord}
+          onCancel={() => setConfirmingDiscord(false)}
+          onConfirm={postEventToDiscord}
+        />
+      )}
     </>
   );
 }
@@ -1776,7 +1822,7 @@ export default function AdminEventDetailPage() {
   const [orgPlan, setOrgPlan]     = useState<string>('free');
   const [customDomain, setCustomDomain] = useState<string | null>(null);
   const [discordAnnouncementChannelId, setDiscordAnnouncementChannelId] = useState<string | null>(null);
-  const [postingDiscord, setPostingDiscord] = useState(false);
+  const [discordAnnouncementChannelName, setDiscordAnnouncementChannelName] = useState<string | null>(null);
   const [syncing, setSyncing]     = useState(false);
   const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -1821,7 +1867,18 @@ export default function AdminEventDetailPage() {
     const connectionsRes = await fetch(`/api/organizations/${data.organization_id}/connections`);
     if (connectionsRes.ok) {
       const connectionsJson = await connectionsRes.json();
-      setDiscordAnnouncementChannelId(connectionsJson?.discord?.announcement_channel_id ?? null);
+      const announcementChannelId = connectionsJson?.discord?.announcement_channel_id ?? null;
+      setDiscordAnnouncementChannelId(announcementChannelId);
+      if (announcementChannelId) {
+        // Best-effort — only used to show a friendly "#channel-name" in the
+        // post-to-Discord confirmation instead of a raw channel id.
+        fetch(`/api/organizations/${data.organization_id}/discord/channels`)
+          .then((r) => (r.ok ? r.json() : []))
+          .then((channels: { id: string; name: string }[]) => {
+            setDiscordAnnouncementChannelName(channels.find((c) => c.id === announcementChannelId)?.name ?? null);
+          })
+          .catch(() => {});
+      }
     }
 
     // Fetch registration counts
@@ -2120,15 +2177,6 @@ export default function AdminEventDetailPage() {
     }
   }
 
-  async function postEventToDiscord() {
-    if (!event) return;
-    setPostingDiscord(true);
-    const res = await fetch(`/api/events/${event.id}/discord-announce`, { method: 'POST' });
-    setPostingDiscord(false);
-    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
-    alert('Posted to Discord!');
-  }
-
   async function handleDeleteEvent() {
     if (!event) return;
     setDeletingEvent(true);
@@ -2312,16 +2360,6 @@ export default function AdminEventDetailPage() {
               >
                 <Mail className="w-4 h-4" /> Message Volunteers
               </Button>
-              {canManage && discordAnnouncementChannelId && (
-                <Button
-                  variant="outline"
-                  onClick={postEventToDiscord}
-                  disabled={postingDiscord}
-                  className="w-full justify-start gap-2"
-                >
-                  {postingDiscord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Post to Discord
-                </Button>
-              )}
               {canManage && (
                 <>
                   <Button
@@ -2434,11 +2472,11 @@ export default function AdminEventDetailPage() {
         ) : activeTab === 'live' ? (
           <LiveTab eventId={event.id} />
         ) : activeTab === 'qr' ? (
-          <QRCodesTab eventId={event.id} customDomain={customDomain} />
+          <QRCodesTab eventId={event.id} customDomain={customDomain} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} />
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
         ) : activeTab === 'panels' && event.panels_enabled ? (
-          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} />
+          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} />
         ) : activeTab === 'attendees' && event.attendee_enabled ? (
           <>
             {loadingAttendeeRegs ? (
