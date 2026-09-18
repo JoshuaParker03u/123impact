@@ -33,6 +33,7 @@ export default function AdminEventsPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedEvent, setExpandedEvent] = useState(null);
+  const [expandedPanelsEvent, setExpandedPanelsEvent] = useState(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -78,6 +79,17 @@ export default function AdminEventsPage() {
           capacity,
           shift_date
         ),
+        panels (
+          id,
+          name,
+          description,
+          start_time,
+          end_time,
+          panel_date,
+          location,
+          capacity,
+          allow_waitlist
+        ),
         event_day_hours (id, event_date, start_time, end_time)
       `)
       .eq('organization_id', currentOrganization.id)
@@ -105,6 +117,24 @@ export default function AdminEventsPage() {
       }, {});
     }
 
+    // Count registrations per panel — every confirmed registration counts
+    // regardless of attendee_type (matches POST /api/panel-registrations'
+    // real enforcement; see app/api/events/[id]/panels/route.ts).
+    const allPanelIds = (data || []).flatMap(e => e.panels?.map(p => p.id) ?? []);
+    let panelCountMap = {};
+    if (allPanelIds.length > 0) {
+      const { data: panelRegRows } = await supabase
+        .from('volunteer_registrations')
+        .select('panel_id, is_waitlisted')
+        .in('panel_id', allPanelIds);
+      panelCountMap = (panelRegRows || []).reduce((acc, r) => {
+        if (!acc[r.panel_id]) acc[r.panel_id] = { filled: 0, waitlisted: 0 };
+        if (r.is_waitlisted) acc[r.panel_id].waitlisted++;
+        else acc[r.panel_id].filled++;
+        return acc;
+      }, {});
+    }
+
     // Count attendee/speaker registrations per event (these are shiftless,
     // so they aren't covered by the shift_id-scoped query above)
     const eventIds = (data || []).map(e => e.id);
@@ -128,6 +158,11 @@ export default function AdminEventsPage() {
         ...shift,
         filled:    countMap[shift.id]?.filled    ?? 0,
         waitlisted: countMap[shift.id]?.waitlisted ?? 0,
+      })),
+      panels: (event.panels || []).map(panel => ({
+        ...panel,
+        filled:     panelCountMap[panel.id]?.filled     ?? 0,
+        waitlisted: panelCountMap[panel.id]?.waitlisted ?? 0,
       })),
       attendeeCount: roleCountMap[event.id]?.attendee ?? 0,
       speakerCount:  roleCountMap[event.id]?.speaker ?? 0,
@@ -380,6 +415,7 @@ export default function AdminEventsPage() {
           <div className="space-y-4">
             {visibleEvents.map((event) => {
               const isExpanded = expandedEvent === event.id;
+              const isPanelsExpanded = expandedPanelsEvent === event.id;
               const totalVolunteers = event.shifts?.reduce((sum, shift) => sum + (shift.filled || 0), 0) || 0;
               const totalCapacity   = event.shifts?.reduce((sum, shift) => sum + shift.capacity, 0) || 0;
               const totalWaitlisted = event.shifts?.reduce((sum, shift) => sum + (shift.waitlisted || 0), 0) || 0;
@@ -552,18 +588,28 @@ export default function AdminEventsPage() {
                       </div>
                     )}
 
-                    {/* Shifts Toggle / Manage footer */}
+                    {/* Shifts/Panels Toggle / Manage footer */}
                     <div className="flex items-center justify-between pt-4 border-t dark:border-gray-700">
-                      {!event.is_shiftless && (
-                        <button
-                          onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
-                          className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
-                        >
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          {event.shifts?.length || 0} Shifts
-                        </button>
-                      )}
-                      {event.is_shiftless && <span />}
+                      <div className="flex items-center gap-4">
+                        {!event.is_shiftless && (
+                          <button
+                            onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
+                            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            {event.shifts?.length || 0} Shifts
+                          </button>
+                        )}
+                        {event.panels_enabled && (
+                          <button
+                            onClick={() => setExpandedPanelsEvent(isPanelsExpanded ? null : event.id)}
+                            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            {isPanelsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            {event.panels?.length || 0} Panels
+                          </button>
+                        )}
+                      </div>
                       <Link
                         href={`/admin/events/${event.event_id}`}
                         className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
@@ -602,6 +648,54 @@ export default function AdminEventsPage() {
                                       <Clock className="w-3 h-3" />
                                       {shift.start_time} - {shift.end_time}
                                     </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Panels List (Collapsible) */}
+                  {isPanelsExpanded && event.panels_enabled && (
+                    <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-6">
+                      {!event.panels || event.panels.length === 0 ? (
+                        <p className="text-gray-600 dark:text-gray-400 text-center py-4">No panels yet. Add one to get started!</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {event.panels.map((panel) => {
+                            const spotsLeft = panel.capacity - (panel.filled || 0);
+                            const isFull = spotsLeft <= 0;
+
+                            return (
+                              <div
+                                key={panel.id}
+                                className="bg-white dark:bg-gray-800 rounded-lg p-4 flex justify-between items-center"
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
+                                    <span className={`text-sm font-medium ${isFull ? 'text-red-600' : 'text-green-600'}`}>
+                                      {panel.filled || 0}/{panel.capacity} registered
+                                    </span>
+                                    {panel.waitlisted > 0 && (
+                                      <span className="text-xs text-amber-600 dark:text-amber-400">{panel.waitlisted} waitlisted</span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{panel.description}</p>
+                                  <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      {panel.start_time} - {panel.end_time}
+                                    </span>
+                                    {panel.location && (
+                                      <span className="flex items-center gap-1">
+                                        <MapPin className="w-3 h-3" />
+                                        {panel.location}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
