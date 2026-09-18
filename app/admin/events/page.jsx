@@ -79,17 +79,6 @@ export default function AdminEventsPage() {
           capacity,
           shift_date
         ),
-        panels (
-          id,
-          name,
-          description,
-          start_time,
-          end_time,
-          panel_date,
-          location,
-          capacity,
-          allow_waitlist
-        ),
         event_day_hours (id, event_date, start_time, end_time)
       `)
       .eq('organization_id', currentOrganization.id)
@@ -117,22 +106,21 @@ export default function AdminEventsPage() {
       }, {});
     }
 
-    // Count registrations per panel — every confirmed registration counts
-    // regardless of attendee_type (matches POST /api/panel-registrations'
-    // real enforcement; see app/api/events/[id]/panels/route.ts).
-    const allPanelIds = (data || []).flatMap(e => e.panels?.map(p => p.id) ?? []);
-    let panelCountMap = {};
-    if (allPanelIds.length > 0) {
-      const { data: panelRegRows } = await supabase
-        .from('volunteer_registrations')
-        .select('panel_id, is_waitlisted')
-        .in('panel_id', allPanelIds);
-      panelCountMap = (panelRegRows || []).reduce((acc, r) => {
-        if (!acc[r.panel_id]) acc[r.panel_id] = { filled: 0, waitlisted: 0 };
-        if (r.is_waitlisted) acc[r.panel_id].waitlisted++;
-        else acc[r.panel_id].filled++;
-        return acc;
-      }, {});
+    // Panels are service-role-only at the RLS level (no client-read policy —
+    // same as event_speaker_invites), so they can't be embedded in the
+    // select above the way shifts can. Fetch each panels-enabled event's
+    // panels through the existing public API route instead, which already
+    // computes filled/waitlisted the same way the panel capacity fix
+    // elsewhere in the app does.
+    const panelsEnabledEvents = (data || []).filter(e => e.panels_enabled);
+    const panelsByEvent = {};
+    if (panelsEnabledEvents.length > 0) {
+      const results = await Promise.all(
+        panelsEnabledEvents.map(e =>
+          fetch(`/api/events/${e.id}/panels`).then(r => (r.ok ? r.json() : []))
+        )
+      );
+      panelsEnabledEvents.forEach((e, i) => { panelsByEvent[e.id] = results[i]; });
     }
 
     // Count attendee/speaker registrations per event (these are shiftless,
@@ -159,11 +147,7 @@ export default function AdminEventsPage() {
         filled:    countMap[shift.id]?.filled    ?? 0,
         waitlisted: countMap[shift.id]?.waitlisted ?? 0,
       })),
-      panels: (event.panels || []).map(panel => ({
-        ...panel,
-        filled:     panelCountMap[panel.id]?.filled     ?? 0,
-        waitlisted: panelCountMap[panel.id]?.waitlisted ?? 0,
-      })),
+      panels: panelsByEvent[event.id] || [],
       attendeeCount: roleCountMap[event.id]?.attendee ?? 0,
       speakerCount:  roleCountMap[event.id]?.speaker ?? 0,
     }));
