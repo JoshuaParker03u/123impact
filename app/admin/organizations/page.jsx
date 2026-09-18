@@ -10,6 +10,7 @@ import CheckoutModal from '@/components/admin/CheckoutModal';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import FloatingWindow from '@/components/FloatingWindow';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Upload, Link as LinkIcon, X, Loader2, Check, AlertTriangle,
@@ -265,13 +266,7 @@ function InviteModal({ orgId, onClose, onSent, userRole }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <Card className="w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Invite Member</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="w-5 h-5" /></button>
-        </div>
-
+    <FloatingWindow title="Invite Member" onClose={onClose} maxWidthClassName="max-w-md">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email address</label>
@@ -316,8 +311,7 @@ function InviteModal({ orgId, onClose, onSent, userRole }) {
             </Button>
           </div>
         </form>
-      </Card>
-    </div>
+    </FloatingWindow>
   );
 }
 
@@ -847,14 +841,8 @@ function ImportModal({ orgId, platform, onClose, onImported }) {
   const platformLabel = platform === 'luma' ? 'Luma' : 'Eventbrite';
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between p-5 border-b dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Import from {platformLabel}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="w-5 h-5" /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5">
+    <FloatingWindow title={`Import from ${platformLabel}`} onClose={onClose} maxWidthClassName="max-w-lg" noPadding>
+        <div className="max-h-[50vh] overflow-y-auto p-5">
           {loading && <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>}
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           {!loading && !error && events.length === 0 && (
@@ -900,8 +888,7 @@ function ImportModal({ orgId, platform, onClose, onImported }) {
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }
 

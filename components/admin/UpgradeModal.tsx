@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Zap, Check } from 'lucide-react';
+import { Zap, Check } from 'lucide-react';
+import FloatingWindow from '@/components/FloatingWindow';
 import CheckoutModal from './CheckoutModal';
 
 interface Props {
@@ -24,19 +25,11 @@ export default function UpgradeModal({ feature, orgId, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-yellow-500" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Upgrade to Pro</h2>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-6">
+    <FloatingWindow
+      title={<><Zap className="w-5 h-5 text-yellow-500" /> Upgrade to Pro</>}
+      onClose={onClose}
+      maxWidthClassName="max-w-md"
+    >
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
             <span className="font-medium text-gray-900 dark:text-white">{feature}</span> is a Pro feature.
             Upgrade to unlock it along with unlimited events, custom domains, and more.
@@ -83,8 +76,6 @@ export default function UpgradeModal({ feature, orgId, onClose }: Props) {
           >
             Maybe later
           </button>
-        </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }

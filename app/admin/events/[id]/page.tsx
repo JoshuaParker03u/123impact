@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import FloatingWindow from '@/components/FloatingWindow';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
@@ -275,15 +276,7 @@ function AddAdminModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b dark:border-gray-800">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add Event Admin</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <FloatingWindow title="Add Event Admin" onClose={onClose} maxWidthClassName="max-w-md" noPadding>
         <div className="px-6 py-4 space-y-4">
           {/* Search / email field */}
           <div className="relative">
@@ -466,8 +459,7 @@ function AddAdminModal({
             {isExternal ? 'Send Invitation' : 'Add Admin'}
           </Button>
         </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }
 
@@ -504,12 +496,7 @@ function EditExpiryModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm">
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b dark:border-gray-800">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Edit Expiry</h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
-        </div>
+    <FloatingWindow title="Edit Expiry" onClose={onClose} maxWidthClassName="max-w-sm" noPadding>
         <div className="px-6 py-4">
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
             Updating expiry for <strong>{redact(assignment.user_name || assignment.email, assignment.user_name ? 'name' : 'email', streamerMode)}</strong>
@@ -526,8 +513,7 @@ function EditExpiryModal({
             Save
           </Button>
         </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }
 

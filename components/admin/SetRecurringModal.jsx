@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Loader2, Repeat } from 'lucide-react';
+import { Loader2, Repeat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import FloatingWindow from '@/components/FloatingWindow';
 import ShiftDatePicker from './ShiftDatePicker';
 import { countOccurrences, describeMonthlyPattern, MAX_OCCURRENCES } from '@/lib/recurrence';
 
@@ -44,16 +44,11 @@ export default function SetRecurringModal({ event, onClose, onDone }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <Card className="p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <Repeat className="w-5 h-5 text-indigo-600" /> Set as Recurring
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <FloatingWindow
+      title={<><Repeat className="w-5 h-5 text-indigo-600" /> Set as Recurring</>}
+      onClose={onClose}
+      maxWidthClassName="max-w-sm"
+    >
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Creates additional copies of this event — including its current shifts and daily schedule — on a repeating basis.
         </p>
@@ -99,7 +94,6 @@ export default function SetRecurringModal({ event, onClose, onDone }) {
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Series'}
           </Button>
         </div>
-      </Card>
-    </div>
+    </FloatingWindow>
   );
 }

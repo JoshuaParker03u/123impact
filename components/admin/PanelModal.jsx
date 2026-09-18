@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import FloatingWindow from '@/components/FloatingWindow';
 import ShiftDatePicker from './ShiftDatePicker';
-import { X } from 'lucide-react';
 
 export default function PanelModal({ panel, event, onClose, onSave }) {
   const [formData, setFormData] = useState({
@@ -60,15 +59,7 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="max-w-lg w-full">
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">{panel ? 'Edit Panel' : 'Create Panel'}</h2>
-            <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-6 h-6" />
-            </button>
-          </div>
+    <FloatingWindow title={panel ? 'Edit Panel' : 'Create Panel'} onClose={onClose} maxWidthClassName="max-w-lg">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Panel Name</label>
@@ -175,8 +166,6 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
               </Button>
             </div>
           </form>
-        </div>
-      </Card>
-    </div>
+    </FloatingWindow>
   );
 }

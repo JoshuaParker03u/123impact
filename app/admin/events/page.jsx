@@ -6,6 +6,7 @@ import { getBrowserClient } from '@/lib/supabase';
 import EventModal from '@/components/admin/EventModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import FloatingWindow from '@/components/FloatingWindow';
 import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail, CalendarClock } from 'lucide-react';
 import Link from 'next/link';
 import MessageComposer from '@/components/MessageComposer';
@@ -697,10 +698,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="max-w-lg w-full">
-        <div className="p-6">
-          <h2 className="text-2xl font-bold mb-6">{shift ? 'Edit Shift' : 'Create Shift'}</h2>
+    <FloatingWindow title={shift ? 'Edit Shift' : 'Create Shift'} onClose={onClose} maxWidthClassName="max-w-lg">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Shift Name</label>
@@ -777,8 +775,6 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
               </Button>
             </div>
           </form>
-        </div>
-      </Card>
-    </div>
+    </FloatingWindow>
   );
 }

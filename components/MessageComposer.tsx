@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { REDACTED_EMAIL } from '@/lib/redact';
-import { X } from 'lucide-react';
+import FloatingWindow from '@/components/FloatingWindow';
 
 interface MessageComposerProps {
   isOpen: boolean;
@@ -186,16 +186,7 @@ export default function MessageComposer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Send Message</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-
+    <FloatingWindow title="Send Message" onClose={onClose} maxWidthClassName="max-w-2xl">
           <div className="space-y-4">
             {/* Send to selector — hidden for individual-volunteer sends and
                 whenever opened with a preset event/shift (the mode is
@@ -406,8 +397,6 @@ export default function MessageComposer({
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }
