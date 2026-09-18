@@ -304,7 +304,9 @@ function InviteModal({ orgId, onClose, onSent, userRole }) {
             </div>
           )}
 
-          <div className="flex gap-3 pt-1">
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
             <Button type="submit" disabled={!valid || sending} className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90 disabled:opacity-50">
               {sending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending…</> : <><Send className="w-4 h-4 mr-2" />Send Invitation</>}
