@@ -1286,46 +1286,46 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
             return (
               <Card key={panel.id} className="overflow-hidden">
                 <button onClick={() => toggleExpand(panel.id)} className="w-full flex items-center justify-between p-4 text-left">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
-                      {panel.is_full && !panel.allow_waitlist && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium">Full</span>
+                  <div className="flex items-center gap-3">
+                    {expanded ? <ChevronUp className="w-5 h-5 text-gray-400 shrink-0" /> : <ChevronDown className="w-5 h-5 text-gray-400 shrink-0" />}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
+                        {panel.is_full && !panel.allow_waitlist && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium">Full</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                        {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)}
+                        {panel.location ? ` · ${panel.location}` : ''} · {panel.filled}/{panel.capacity} registered
+                        {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
+                      </p>
+                      {(event.event_format === 'online' || event.event_format === 'hybrid') && !panel.online_url && (
+                        <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          <AlertTriangle className="w-3 h-3 shrink-0" /> No online URL set yet
+                        </p>
                       )}
                     </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                      {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)}
-                      {panel.location ? ` · ${panel.location}` : ''} · {panel.filled}/{panel.capacity} registered
-                      {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
-                    </p>
-                    {(event.event_format === 'online' || event.event_format === 'hybrid') && !panel.online_url && (
-                      <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-1">
-                        <AlertTriangle className="w-3 h-3 shrink-0" /> No online URL set yet
-                      </p>
-                    )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {canManage && (
-                      <>
-                        <span
-                          role="button"
-                          onClick={(e) => { e.stopPropagation(); setEditingPanel(panel); setShowPanelModal(true); }}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-                        >
-                          <Pencil className="w-4 h-4 text-gray-500" />
-                        </span>
-                        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
-                        <span
-                          role="button"
-                          onClick={(e) => { e.stopPropagation(); setDeletingPanel(panel); }}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </span>
-                      </>
-                    )}
-                    {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                  </div>
+                  {canManage && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); setEditingPanel(panel); setShowPanelModal(true); }}
+                        className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                      >
+                        <Pencil className="w-4 h-4 text-gray-500" />
+                      </span>
+                      <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); setDeletingPanel(panel); }}
+                        className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </span>
+                    </div>
+                  )}
                 </button>
 
                 {expanded && (
@@ -2577,22 +2577,30 @@ export default function AdminEventDetailPage() {
                         onClick={() => toggleShift(shift.id)}
                         onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? toggleShift(shift.id) : undefined}
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                            {event.end_date && shift.shift_date && (
-                              <span className="mr-1 font-medium text-gray-600 dark:text-gray-300">
-                                {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                              </span>
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {loadingVolunteers === shift.id
+                            ? <Loader2 className="w-4 h-4 animate-spin text-gray-400 shrink-0" />
+                            : isOpen
+                              ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+                              : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                          }
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                              {event.end_date && shift.shift_date && (
+                                <span className="mr-1 font-medium text-gray-600 dark:text-gray-300">
+                                  {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                              )}
+                              {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {' – '}
+                              {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {overnight && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400 font-medium">+1</span>}
+                            </p>
+                            {shift.description && (
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
                             )}
-                            {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {' – '}
-                            {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {overnight && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400 font-medium">+1</span>}
-                          </p>
-                          {shift.description && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
-                          )}
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2 ml-4">
@@ -2641,12 +2649,6 @@ export default function AdminEventDetailPage() {
                               </button>
                             </>
                           )}
-                          {loadingVolunteers === shift.id
-                            ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                            : isOpen
-                              ? <ChevronUp className="w-4 h-4 text-gray-400" />
-                              : <ChevronDown className="w-4 h-4 text-gray-400" />
-                          }
                         </div>
                       </div>
 
