@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import FloatingWindow from '@/components/FloatingWindow';
 import ShiftDatePicker from './ShiftDatePicker';
 import LocationAutocomplete from './LocationAutocomplete';
-import { Upload, Link as LinkIcon } from 'lucide-react';
+import { Upload, Link as LinkIcon, Copy, Check } from 'lucide-react';
 
 function generateSlug(title, suffix) {
   const base = title
@@ -170,6 +170,7 @@ function EventImageUploader({ value, onChange, organizationId, orgLogoUrl, disab
 export default function EventModal({ event, organizationId, organizationLogoUrl = null, onClose, onSave, supabase, isPaid = false }) {
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
+  const [slugCopied, setSlugCopied] = useState(false);
   const [formData, setFormData] = useState({
     event_id:            event?.event_id            || '',
     title:               event?.title               || '',
@@ -210,6 +211,12 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
       updates.event_id = generateSlug(value, slugSuffix);
     }
     setFormData(prev => ({ ...prev, ...updates }));
+  };
+
+  const copySlug = () => {
+    navigator.clipboard.writeText(formData.event_id);
+    setSlugCopied(true);
+    setTimeout(() => setSlugCopied(false), 2000);
   };
 
   const locationRequired = formData.event_format !== 'online';
@@ -326,13 +333,18 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
           <form onSubmit={handleSubmit} className="space-y-4">
             {event && (
               <div>
-                <label className="block text-sm font-medium mb-1">Event ID (URL slug)</label>
-                <input
-                  type="text"
-                  value={formData.event_id}
-                  className="w-full border rounded-md px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 cursor-not-allowed"
-                  disabled
-                />
+                <label className="block text-sm font-medium mb-1 text-gray-500 dark:text-gray-400">Event ID (URL slug)</label>
+                <div className="flex items-center justify-between gap-2">
+                  <code className="text-sm text-gray-600 dark:text-gray-400 font-mono truncate">{formData.event_id}</code>
+                  <button
+                    type="button"
+                    onClick={copySlug}
+                    className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors shrink-0"
+                  >
+                    {slugCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {slugCopied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -484,7 +496,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                     onClick={() => setFormData({ ...formData, event_format: val })}
                     className={`flex-1 py-2 rounded-md text-sm font-medium border transition-colors ${
                       formData.event_format === val
-                        ? 'bg-blue-600 text-white border-blue-600'
+                        ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white border-transparent'
                         : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
                     }`}
                   >
