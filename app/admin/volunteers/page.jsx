@@ -6,6 +6,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase';
 import MessageComposer from '@/components/MessageComposer';
+import MessagesSection from '@/components/admin/MessagesSection';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -244,6 +245,7 @@ function AdminVolunteersPage() {
   const [removingVolunteer, setRemovingVolunteer] = useState(null);
   const [removing, setRemoving] = useState(false);
   const searchParams = useSearchParams();
+  const [sectionTab, setSectionTab] = useState(searchParams.get('tab') === 'messages' ? 'messages' : 'volunteers');
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -496,6 +498,32 @@ function AdminVolunteersPage() {
           </p>
         </div>
 
+        {/* Section tabs — Messages lives here rather than its own nav entry */}
+        <div className="mb-6 border-b dark:border-gray-700">
+          <nav className="flex gap-4">
+            {[
+              { id: 'volunteers', label: 'Volunteers' },
+              { id: 'messages',   label: 'Messages' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSectionTab(tab.id)}
+                className={`pb-3 px-2 font-medium transition-colors ${
+                  sectionTab === tab.id
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {sectionTab === 'messages' && <MessagesSection />}
+
+        {sectionTab === 'volunteers' && (
+        <>
         {/* Filters */}
         <Card className="p-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -765,6 +793,8 @@ function AdminVolunteersPage() {
           <Card className="p-8 text-center">
             <p className="text-gray-600 dark:text-gray-400">No volunteers match your filters</p>
           </Card>
+        )}
+        </>
         )}
       </div>
 
