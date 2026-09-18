@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { getBrowserClient } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { REDACTED_EMAIL } from '@/lib/redact';
@@ -59,6 +60,12 @@ export default function MessageComposer({
   const [scheduledFor, setScheduledFor] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  // Set once a send/schedule attempt completes — shown in place of a native
+  // alert(). 'success' replaces the whole form with a confirmation (nothing
+  // left to edit); 'error' shows a banner and leaves the form intact so the
+  // draft isn't lost and the user can just retry.
+  const [sendResult, setSendResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
   const supabase = getBrowserClient();
@@ -71,6 +78,8 @@ export default function MessageComposer({
       setMessage('');
       setSendMode('now');
       setScheduledFor('');
+      setFormError(null);
+      setSendResult(null);
       if (volunteerEmail) {
         setRecipientType('volunteer');
         setRecipientCount(1);
@@ -171,11 +180,13 @@ export default function MessageComposer({
   }
 
   async function handleSend() {
-    if (!subject || !message) { alert('Please fill in subject and message'); return; }
-    if (recipientCount === 0) { alert('No recipients selected'); return; }
+    setFormError(null);
+    setSendResult(null);
+    if (!subject || !message) { setFormError('Please fill in subject and message'); return; }
+    if (recipientCount === 0) { setFormError('No recipients selected'); return; }
     if (sendMode === 'scheduled') {
-      if (!scheduledFor) { alert('Please choose a date and time to schedule the message'); return; }
-      if (new Date(scheduledFor) <= new Date()) { alert('Scheduled time must be in the future'); return; }
+      if (!scheduledFor) { setFormError('Please choose a date and time to schedule the message'); return; }
+      if (new Date(scheduledFor) <= new Date()) { setFormError('Scheduled time must be in the future'); return; }
     }
 
     setSending(true);
@@ -202,27 +213,47 @@ export default function MessageComposer({
       const data = await response.json();
       if (response.ok) {
         const dmNote = data.dmCount > 0 ? ` (including ${data.dmCount} via Discord DM)` : '';
-        if (data.scheduled) {
-          alert(`Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}.`);
-        } else {
-          alert(`Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}!`);
-        }
-        onClose();
-        setSubject('');
-        setMessage('');
-        setSendMode('now');
-        setScheduledFor('');
+        const text = data.scheduled
+          ? `Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}.`
+          : `Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}!`;
+        setSendResult({ type: 'success', text });
       } else {
-        alert(`Error: ${data.error}`);
+        setSendResult({ type: 'error', text: data.error ?? 'Failed to send message' });
       }
     } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      setSendResult({ type: 'error', text: e.message ?? 'Failed to send message' });
     } finally {
       setSending(false);
     }
   }
 
+  function handleDone() {
+    onClose();
+    setSubject('');
+    setMessage('');
+    setSendMode('now');
+    setScheduledFor('');
+    setSendResult(null);
+  }
+
   if (!isOpen) return null;
+
+  if (sendResult?.type === 'success') {
+    return (
+      <FloatingWindow title="Message Sent" onClose={handleDone} maxWidthClassName="max-w-md">
+        <div className="flex items-start gap-3 mb-6">
+          <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-gray-700 dark:text-gray-300">{sendResult.text}</p>
+        </div>
+        <button
+          onClick={handleDone}
+          className="w-full bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90 text-white py-2 px-4 rounded-lg"
+        >
+          Done
+        </button>
+      </FloatingWindow>
+    );
+  }
 
   return (
     <FloatingWindow title="Send Message" onClose={onClose} maxWidthClassName="max-w-2xl">
@@ -456,6 +487,13 @@ export default function MessageComposer({
                 />
               )}
             </div>
+
+            {(formError || sendResult?.type === 'error') && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-400">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{formError || sendResult?.text}</span>
+              </div>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button
