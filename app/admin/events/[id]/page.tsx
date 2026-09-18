@@ -665,6 +665,7 @@ function EventAdminsTab({
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
+                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
                         <button
                           onClick={() => revoke(a.id)}
                           disabled={revoking === a.id}
@@ -946,14 +947,17 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
 
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {i.status === 'pending' && (
-                        <button
-                          onClick={() => copyLink(i)}
-                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                          title="Copy invite link"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          {copiedId === i.id ? 'Copied!' : 'Copy Link'}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => copyLink(i)}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            title="Copy invite link"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            {copiedId === i.id ? 'Copied!' : 'Copy Link'}
+                          </button>
+                          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
+                        </>
                       )}
                       {i.status === 'accepted' && (
                         editingId === i.id ? (
@@ -1298,6 +1302,7 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
                         >
                           <Pencil className="w-4 h-4 text-gray-500" />
                         </span>
+                        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                         <span
                           role="button"
                           onClick={(e) => { e.stopPropagation(); setDeletingPanel(panel); }}
@@ -2227,6 +2232,7 @@ export default function AdminEventDetailPage() {
                       <Repeat className="w-4 h-4" /> Set as Recurring
                     </Button>
                   )}
+                  <hr className="border-gray-200 dark:border-gray-700" />
                   <Button
                     variant="outline"
                     onClick={() => setShowDeleteEventModal(true)}
@@ -2541,6 +2547,7 @@ export default function AdminEventDetailPage() {
                               >
                                 <Mail className="w-3.5 h-3.5 text-blue-500" />
                               </button>
+                              <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDeleteShift(shift.id, (shift.filled ?? 0) + (shift.waitlisted ?? 0)); }}
                                 className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
@@ -2689,6 +2696,7 @@ export default function AdminEventDetailPage() {
                                                 >
                                                   Promote
                                                 </button>
+                                                <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                                                 <button
                                                   onClick={() => setRemoveVolunteerTarget({ registrationId: v.id, shiftId: shift.id, isWaitlisted: true, name: v.name })}
                                                   className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"

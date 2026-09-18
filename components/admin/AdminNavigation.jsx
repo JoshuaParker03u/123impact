@@ -385,6 +385,7 @@ export default function AdminNavigation() {
                     >
                       <Settings className="w-4 h-4" /> Settings
                     </Link>
+                    <hr className="my-1 border-gray-200 dark:border-gray-700" />
                     <button
                       onClick={handleLogout}
                       role="menuitem"
@@ -506,6 +507,8 @@ export default function AdminNavigation() {
                 <Settings className="w-4 h-4" />
                 Settings
               </Link>
+
+              <hr className="my-1 border-gray-100 dark:border-gray-800" />
 
               {userName && (
                 <p className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 truncate">{redact(userName, 'name', streamerMode)}</p>

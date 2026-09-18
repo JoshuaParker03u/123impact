@@ -416,7 +416,21 @@ export default function AdminEventsPage() {
                           <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
                         )}
                       </div>
-                      <div className="flex gap-2 mt-3 sm:mt-0 sm:ml-4">
+                      <div className="flex items-center gap-2 mt-3 sm:mt-0 sm:ml-4">
+                        {isAdmin && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeletingEvent(event)}
+                              title="Delete event"
+                              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                            <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
+                          </>
+                        )}
                         {isAdmin && (
                           <Button
                             variant="outline"
@@ -461,17 +475,6 @@ export default function AdminEventsPage() {
                               : <Copy className="w-4 h-4" />}
                           </Button>
                         )}
-                        {isAdmin && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeletingEvent(event)}
-                            title="Delete event"
-                            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/20"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
                       </div>
                     </div>
 
@@ -489,6 +492,7 @@ export default function AdminEventsPage() {
                             >
                               Complete
                             </button>
+                            <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                             <button
                               onClick={() => resolveEventStatus(event.id, 'cancelled')}
                               className="text-xs px-2 py-1 rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"

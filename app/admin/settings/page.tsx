@@ -409,6 +409,7 @@ export default function SettingsPage() {
                         <>
                           <span className="text-xs text-gray-600 dark:text-gray-400">Leave {org.name}?</span>
                           <Button size="sm" variant="outline" onClick={() => setLeavingOrgId(null)} className="text-xs">Cancel</Button>
+                          <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                           <Button size="sm" variant="outline"
                             onClick={() => leaveOrg(org.id)}
                             disabled={leavingInProgress === org.id}
@@ -517,10 +518,11 @@ export default function SettingsPage() {
                   className="max-w-xs font-mono"
                 />
                 {deleteError && <p className="text-sm text-red-600 dark:text-red-400">{deleteError}</p>}
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <Button variant="outline" onClick={() => { setShowDelete(false); setDeleteInput(''); setDeleteError(null) }}>
                     Cancel
                   </Button>
+                  <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
                   <Button
                     onClick={deleteAccount}
                     disabled={deleteInput !== 'DELETE' || deleting}

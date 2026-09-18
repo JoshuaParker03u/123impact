@@ -1072,7 +1072,10 @@ function IntegrationsTab({ orgId }) {
                   {conn && (
                     <>
                       {key !== 'discord' && (
-                        <Button size="sm" variant="outline" onClick={() => setImportModal(key)}>Import Events</Button>
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setImportModal(key)}>Import Events</Button>
+                          <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
+                        </>
                       )}
                       <Button size="sm" variant="outline" onClick={() => disconnect(key)} disabled={disconnecting === key} className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20">
                         {disconnecting === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Disconnect'}
@@ -1340,6 +1343,9 @@ function MembersTab({ org, currentUserId, userRole }) {
                   >
                     <Crown className="w-4 h-4" />
                   </button>
+                )}
+                {canEditRole && canRemove && (
+                  <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                 )}
                 {canRemove && (
                   <button
