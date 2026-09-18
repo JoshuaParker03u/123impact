@@ -145,10 +145,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }
     } else if (currentAnchor === 'panel') {
       if (attendee_type === 'volunteer') {
-        // Leaving the panel to become a shiftless volunteer.
-        const err = await checkShiftlessCapacity();
-        if (err) return NextResponse.json({ error: err }, { status: err === 'This event is full' ? 409 : 400 });
-        updates.panel_id = null;
+        // Becomes that panel's Volunteer Staff — stays panel_id-scoped
+        // (panels can have volunteers whenever panels are enabled, no
+        // separate "does this event allow volunteers" gate needed) rather
+        // than leaving the panel for the event-wide shiftless-volunteer
+        // pool, which wouldn't exist on a panels-only event anyway. Staff
+        // rows aren't counted in the panel's attendee capacity (only
+        // attendee_type='attendee' rows are), so there's nothing to check.
+        const { error: assignError } = await service.from('panel_assignments').insert({
+          panel_id: reg.panel_id, registration_id: reg.id, role: 'volunteer', assigned_by: user.id,
+        });
+        if (assignError && assignError.code !== '23505') {
+          return NextResponse.json({ error: assignError.message }, { status: 500 });
+        }
         updates.is_waitlisted = false;
       }
       // attendee <-> speaker: stays on the panel, shared capacity pool
