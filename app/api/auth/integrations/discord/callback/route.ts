@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=discord_already_connected`);
     }
 
-    await service.from('platform_connections').upsert({
+    const { error: upsertError } = await service.from('platform_connections').upsert({
       organization_id: orgId,
       platform:        'discord',
       access_token:    null,
@@ -92,6 +92,15 @@ export async function GET(req: NextRequest) {
       connected_by:    user.id,
       connected_at:    new Date().toISOString(),
     }, { onConflict: 'organization_id,platform' });
+
+    if (upsertError) {
+      // 23505 here means another org's connection attempt for this same
+      // guild won the race against the check above — rare, but the unique
+      // index on (platform, external_org_id) catches what that check alone
+      // can't.
+      const errorCode = upsertError.code === '23505' ? 'discord_already_connected' : 'discord_failed';
+      return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=${errorCode}`);
+    }
 
     // Guild-scoped so the command appears within seconds instead of the
     // up-to-an-hour propagation delay for global commands. Doesn't block the

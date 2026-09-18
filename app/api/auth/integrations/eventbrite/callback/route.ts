@@ -84,13 +84,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=eventbrite_already_connected`);
     }
 
-    await service.from('platform_connections').upsert({
+    const { error: upsertError } = await service.from('platform_connections').upsert({
       organization_id: orgId,
       platform:        'eventbrite',
       access_token,
       external_org_id: externalOrgId,
       connected_at:    new Date().toISOString(),
     }, { onConflict: 'organization_id,platform' });
+
+    if (upsertError) {
+      // 23505 here means another org's connection attempt for this same
+      // account won the race against the check above — rare, but the
+      // unique index on (platform, external_org_id) catches what that
+      // check alone can't.
+      const errorCode = upsertError.code === '23505' ? 'eventbrite_already_connected' : 'eventbrite_failed';
+      return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&error=${errorCode}`);
+    }
 
     return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&connected=eventbrite`);
   } catch {
