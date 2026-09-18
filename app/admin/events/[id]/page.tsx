@@ -1833,6 +1833,8 @@ export default function AdminEventDetailPage() {
   const [deletingEvent, setDeletingEvent] = useState(false);
   const [removeVolunteerTarget, setRemoveVolunteerTarget] = useState<{ registrationId: string; shiftId: string; isWaitlisted: boolean; name: string } | null>(null);
   const [removingVolunteer, setRemovingVolunteer] = useState(false);
+  const [removeAttendeeTarget, setRemoveAttendeeTarget] = useState<{ registrationId: string; name: string } | null>(null);
+  const [removingAttendee, setRemovingAttendee] = useState(false);
   const [checkInModal, setCheckInModal] = useState<{ registrationId: string; name: string } | null>(null);
 
   const { currentOrganization } = useOrganization() as any;
@@ -2163,6 +2165,19 @@ export default function AdminEventDetailPage() {
         }),
       };
     });
+  }
+
+  async function removeAttendee() {
+    if (!removeAttendeeTarget) return;
+    const { registrationId } = removeAttendeeTarget;
+    setRemovingAttendee(true);
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, { method: 'DELETE' });
+    setRemovingAttendee(false);
+    if (!res.ok) { alert('Failed to remove attendee.'); return; }
+
+    setRemoveAttendeeTarget(null);
+    setAttendeeRegs((prev) => prev.filter((r) => r.id !== registrationId));
+    setShiftlessRegs((prev) => prev.filter((r) => r.id !== registrationId));
   }
 
   async function handleDuplicateEvent() {
@@ -2497,6 +2512,7 @@ export default function AdminEventDetailPage() {
                         <th className="pb-2 font-medium">Registered</th>
                         <th className="pb-2 font-medium">Role</th>
                         <th className="pb-2 font-medium">Check-in</th>
+                        {canManage && <th className="pb-2 font-medium"></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -2544,6 +2560,17 @@ export default function AdminEventDetailPage() {
                               </div>
                             )}
                           </td>
+                          {canManage && (
+                            <td className="py-2 pl-4 text-right">
+                              <button
+                                onClick={() => setRemoveAttendeeTarget({ registrationId: r.id, name: r.name })}
+                                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                                title="Remove attendee"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -2570,6 +2597,7 @@ export default function AdminEventDetailPage() {
                         <th className="pb-2 font-medium">Registered</th>
                         <th className="pb-2 font-medium">Role</th>
                         <th className="pb-2 font-medium">Check-in</th>
+                        {canManage && <th className="pb-2 font-medium"></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -2617,6 +2645,17 @@ export default function AdminEventDetailPage() {
                               </div>
                             )}
                           </td>
+                          {canManage && (
+                            <td className="py-2 pl-4 text-right">
+                              <button
+                                onClick={() => setRemoveAttendeeTarget({ registrationId: r.id, name: r.name })}
+                                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                                title="Remove registration"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -2997,6 +3036,21 @@ export default function AdminEventDetailPage() {
           loading={removingVolunteer}
           onCancel={() => setRemoveVolunteerTarget(null)}
           onConfirm={removeVolunteer}
+        />
+      )}
+
+      {removeAttendeeTarget && (
+        <ConfirmDeleteModal
+          title="Remove Registration"
+          message={
+            <>
+              Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removeAttendeeTarget.name}</span>&apos;s registration for this event? They will need to sign up again to rejoin.
+            </>
+          }
+          confirmLabel="Remove"
+          loading={removingAttendee}
+          onCancel={() => setRemoveAttendeeTarget(null)}
+          onConfirm={removeAttendee}
         />
       )}
     </>
