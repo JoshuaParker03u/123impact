@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { lumaValidateKey } from '@/lib/platforms/luma';
 import { maybeSendWelcomeMessage } from '@/lib/discord/welcome';
+import { leaveGuild } from '@/lib/discord/api';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -174,6 +175,21 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   const { platform } = await req.json();
+
+  // Fetch the guild id before deleting so the bot can leave it afterward —
+  // disconnecting in the app but leaving the bot sitting in the server's
+  // member list is confusing and looks like the disconnect didn't work.
+  let guildId: string | null = null;
+  if (platform === 'discord') {
+    const { data: row } = await service
+      .from('platform_connections')
+      .select('external_org_id')
+      .eq('organization_id', orgId)
+      .eq('platform', 'discord')
+      .maybeSingle();
+    guildId = row?.external_org_id ?? null;
+  }
+
   const { error } = await service
     .from('platform_connections')
     .delete()
@@ -181,5 +197,12 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     .eq('platform', platform);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Best-effort: the disconnect itself already succeeded, so a Discord API
+  // hiccup here shouldn't be reported as a failed disconnect.
+  if (guildId) {
+    leaveGuild(guildId).catch((e) => console.error('leaveGuild error:', e));
+  }
+
   return NextResponse.json({ success: true });
 }

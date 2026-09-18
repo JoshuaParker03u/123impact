@@ -45,6 +45,20 @@ export async function listGuildChannels(guildId: string): Promise<DiscordChannel
     .sort((a, b) => a.position - b.position);
 }
 
+// Makes the bot leave a guild. Called when an org disconnects Discord, so
+// the bot doesn't linger as a member of a server it no longer has any
+// connection to. A 404 means it's already gone (kicked manually, guild
+// deleted) — treated as success, not an error.
+export async function leaveGuild(guildId: string): Promise<void> {
+  const res = await fetch(`${DISCORD_API}/users/@me/guilds/${guildId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Discord leaveGuild error ${res.status}: ${await res.text()}`);
+  }
+}
+
 // Edits the original interaction response. Authorized by the interaction
 // token itself (valid 15 minutes) — no bot token needed for this call.
 export async function editOriginalResponse(interactionToken: string, body: unknown): Promise<void> {
