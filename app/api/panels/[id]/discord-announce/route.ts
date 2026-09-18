@@ -76,9 +76,30 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const available = panel.capacity - (count ?? 0);
 
+  // Speakers come from two places (see the PanelsTab promotedX/assignedX
+  // split): native rows promoted to speaker on this panel, and existing
+  // registrations from elsewhere attached via "Assign Speaker".
+  const [{ data: nativeSpeakers }, { data: assignedSpeakers }] = await Promise.all([
+    service
+      .from('volunteer_registrations')
+      .select('name')
+      .eq('panel_id', panelId)
+      .eq('attendee_type', 'speaker')
+      .eq('is_waitlisted', false),
+    service
+      .from('panel_assignments')
+      .select('registration:volunteer_registrations(name)')
+      .eq('panel_id', panelId)
+      .eq('role', 'speaker'),
+  ]);
+  const speakerNames: string[] = [
+    ...(nativeSpeakers ?? []).map((r) => r.name),
+    ...((assignedSpeakers ?? []) as any[]).map((a) => a.registration?.name).filter(Boolean),
+  ];
+
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || '';
   const signupUrl = `${origin}/events/${event.event_id}/signup/attendee?panel=${panel.id}`;
-  const message = buildPanelAnnouncement({ ...panel, available }, event.title, signupUrl);
+  const message = buildPanelAnnouncement({ ...panel, available }, event.title, signupUrl, speakerNames);
 
   const result = await sendChannelMessage(connection.announcement_channel_id, message);
   if (!result.success) {

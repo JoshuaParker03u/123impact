@@ -40,7 +40,8 @@ export function buildEventAnnouncement(
 export function buildPanelAnnouncement(
   panel: { name: string; description: string | null; panel_date: string | null; start_time: string; end_time: string; location: string | null; capacity: number; allow_waitlist: boolean; available: number },
   eventTitle: string,
-  signupUrl: string
+  signupUrl: string,
+  speakerNames: string[] = []
 ): string {
   const dateStr = panel.panel_date ? formatDate(panel.panel_date) : null;
   const timeStr = `${formatTime(panel.start_time)}–${formatTime(panel.end_time)}`;
@@ -50,6 +51,7 @@ export function buildPanelAnnouncement(
     [dateStr, timeStr, panel.location].filter(Boolean).join(' · '),
   ];
   if (panel.description) lines.push(panel.description);
+  if (speakerNames.length > 0) lines.push(`🎤 Featured speaker${speakerNames.length > 1 ? 's' : ''}: ${speakerNames.join(', ')}`);
   lines.push(
     panel.available > 0
       ? `${panel.available} ${panel.available === 1 ? 'spot' : 'spots'} left`
