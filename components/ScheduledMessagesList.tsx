@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Trash2, Users, Calendar } from 'lucide-react';
+import { formatInTimeZone } from 'date-fns-tz';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
@@ -28,7 +29,8 @@ export default function ScheduledMessagesList() {
   const [deleting, setDeleting]     = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<{ id: string; subject: string } | null>(null);
 
-  const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
+  const { currentOrganization, user } = useOrganization() as { currentOrganization: { id: string } | null; user: { user_metadata?: { timezone?: string } } | null };
+  const timezone = user?.user_metadata?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const load = useCallback((showSpinner = false) => {
     if (!currentOrganization?.id) return;
@@ -114,7 +116,7 @@ export default function ScheduledMessagesList() {
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
-                    {new Date(msg.scheduled_for).toLocaleString()}
+                    {formatInTimeZone(new Date(msg.scheduled_for), timezone, 'PPpp')}
                   </span>
                   <span className="flex items-center gap-1">
                     <Users className="w-3.5 h-3.5" />

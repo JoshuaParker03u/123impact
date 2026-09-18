@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { getBrowserClient } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { REDACTED_EMAIL } from '@/lib/redact';
@@ -67,8 +68,19 @@ export default function MessageComposer({
   // draft isn't lost and the user can just retry.
   const [sendResult, setSendResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
+  const { currentOrganization, user } = useOrganization() as { currentOrganization: { id: string } | null; user: { user_metadata?: { timezone?: string } } | null };
   const supabase = getBrowserClient();
+
+  // The <input type="datetime-local"> value is a bare wall-clock string with
+  // no timezone attached — "5:55 PM" on its own. Interpreting that naive
+  // string is ambiguous unless it's pinned to a specific zone: the account's
+  // chosen timezone (Settings → Timezone) when set, else wherever this
+  // browser currently is. Without pinning it explicitly, a plain
+  // `new Date(scheduledFor)` gets parsed as local time of whatever runtime
+  // reads it — which on the server is UTC, not the admin's actual timezone,
+  // so a message scheduled for "5:55 PM" could fire hours off from what was
+  // intended.
+  const timezone = user?.user_metadata?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   useEffect(() => {
     if (isOpen) {
@@ -184,9 +196,14 @@ export default function MessageComposer({
     setSendResult(null);
     if (!subject || !message) { setFormError('Please fill in subject and message'); return; }
     if (recipientCount === 0) { setFormError('No recipients selected'); return; }
+    // Pin the naive picker value to the account's chosen timezone (or this
+    // browser's, as a fallback) to get a real, unambiguous instant — see the
+    // `timezone` comment above for why this can't just be `new Date(...)`.
+    const scheduledInstant = scheduledFor ? fromZonedTime(scheduledFor, timezone) : null;
+
     if (sendMode === 'scheduled') {
       if (!scheduledFor) { setFormError('Please choose a date and time to schedule the message'); return; }
-      if (new Date(scheduledFor) <= new Date()) { setFormError('Scheduled time must be in the future'); return; }
+      if (scheduledInstant! <= new Date()) { setFormError('Scheduled time must be in the future'); return; }
     }
 
     setSending(true);
@@ -204,7 +221,7 @@ export default function MessageComposer({
           registrationId: recipientType === 'volunteer' ? volunteerRegistrationId : null,
           volunteerEmail: recipientType === 'volunteer' ? volunteerEmail : null,
           volunteerName:  recipientType === 'volunteer' ? volunteerName  : null,
-          scheduledFor: sendMode === 'scheduled' ? scheduledFor : null,
+          scheduledFor: sendMode === 'scheduled' ? scheduledInstant!.toISOString() : null,
           waitlistFilter,
           roles: (recipientType === 'event' || recipientType === 'panel') ? [...roleFilter] : null,
         }),
@@ -214,7 +231,7 @@ export default function MessageComposer({
       if (response.ok) {
         const dmNote = data.dmCount > 0 ? ` (including ${data.dmCount} via Discord DM)` : '';
         const text = data.scheduled
-          ? `Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}.`
+          ? `Message scheduled for ${formatInTimeZone(scheduledInstant!, timezone, 'PPpp')} (${timezone}) — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}.`
           : `Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}!`;
         setSendResult({ type: 'success', text });
       } else {
@@ -474,17 +491,21 @@ export default function MessageComposer({
                 ))}
               </div>
               {sendMode === 'scheduled' && (
-                <input
-                  type="datetime-local"
-                  value={scheduledFor}
-                  min={(() => {
-                    const d = new Date(Date.now() + 60000);
-                    const pad = (n: number) => String(n).padStart(2, '0');
-                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                  })()}
-                  onChange={(e) => setScheduledFor(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
-                />
+                <>
+                  <input
+                    type="datetime-local"
+                    value={scheduledFor}
+                    min={formatInTimeZone(new Date(Date.now() + 60000), timezone, "yyyy-MM-dd'T'HH:mm")}
+                    onChange={(e) => setScheduledFor(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Time zone: {timezone}
+                    {user?.user_metadata?.timezone
+                      ? ' (from your account settings)'
+                      : " (this browser's — set one under Settings for a fixed value)"}
+                  </p>
+                </>
               )}
             </div>
 
