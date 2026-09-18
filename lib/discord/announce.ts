@@ -3,7 +3,7 @@
 // than a plain-text blob. Structured fields keep every announcement in the
 // same shape instead of each one being its own paragraph layout.
 
-import { baseEmbed, linkButton, MessagePayload, DiscordEmbedField } from './embed';
+import { baseEmbed, linkButton, orgAuthor, MessagePayload, DiscordEmbedField } from './embed';
 
 function formatTime(time: string | null | undefined): string {
   if (!time) return '';
@@ -28,6 +28,7 @@ function formatDateRange(date: string, endDate: string | null): string {
 
 export function buildEventAnnouncement(
   event: { title: string; description: string | null; date: string; end_date: string | null; time: string; location: string },
+  org: { name: string; logo_url?: string | null },
   signupUrl: string
 ): MessagePayload {
   const fields: DiscordEmbedField[] = [
@@ -39,6 +40,7 @@ export function buildEventAnnouncement(
     embeds: [baseEmbed({
       title: `📢 ${event.title}`,
       description: event.description || undefined,
+      author: orgAuthor(org),
       fields,
     })],
     components: [linkButton('Sign Up', signupUrl)],
@@ -48,6 +50,7 @@ export function buildEventAnnouncement(
 export function buildPanelAnnouncement(
   panel: { name: string; description: string | null; panel_date: string | null; start_time: string; end_time: string; location: string | null; capacity: number; allow_waitlist: boolean; available: number },
   event: { title: string; date: string; end_date: string | null },
+  org: { name: string; logo_url?: string | null },
   signupUrl: string,
   speakerNames: string[] = []
 ): MessagePayload {
@@ -76,6 +79,7 @@ export function buildPanelAnnouncement(
     embeds: [baseEmbed({
       title: `📢 ${panel.name}`,
       description: [panel.description, `_a panel at ${event.title}_`].filter(Boolean).join('\n\n'),
+      author: orgAuthor(org),
       fields,
     })],
     components: [linkButton('Sign Up', signupUrl)],

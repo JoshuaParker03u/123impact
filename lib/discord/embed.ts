@@ -19,8 +19,16 @@ export interface DiscordEmbed {
   url?: string;
   color?: number;
   fields?: DiscordEmbedField[];
+  author?: { name: string; icon_url?: string };
   footer?: { text: string };
   timestamp?: string;
+}
+
+// The org hosting the event/panel, shown as the small line above the embed
+// title (with their logo, when they have one) — without it, an announcement
+// has no visible sign of which org it's actually from.
+export function orgAuthor(org: { name: string; logo_url?: string | null }): { name: string; icon_url?: string } {
+  return { name: org.name, ...(org.logo_url ? { icon_url: org.logo_url } : {}) };
 }
 
 export interface MessagePayload {

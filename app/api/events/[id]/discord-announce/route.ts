@@ -38,10 +38,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: event } = await service
     .from('events')
-    .select('id, event_id, organization_id, title, description, date, end_date, time, location, discord_message_id')
+    .select('id, event_id, organization_id, title, description, date, end_date, time, location, discord_message_id, organizations!inner(name, logo_url)')
     .eq('id', eventId)
     .single();
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+
+  const org = (event as any).organizations as { name: string; logo_url: string | null };
 
   const { data: membership } = await service
     .from('organization_admins')
@@ -68,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Bare /signup URL, same link used by QR codes and emails elsewhere — it
   // redirects to whichever role flow fits, rather than guessing one here.
   const signupUrl = `${origin}/events/${event.event_id}/signup`;
-  const message = buildEventAnnouncement(event, signupUrl);
+  const message = buildEventAnnouncement(event, org, signupUrl);
 
   // Clear out the previous announcement first so re-posting (e.g. after
   // editing the event) doesn't leave stale copies piling up in the channel.
