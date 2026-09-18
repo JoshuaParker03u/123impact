@@ -43,6 +43,7 @@ interface Volunteer {
   registered_at: string;
   is_waitlisted?: boolean;
   checked_in_at?: string | null;
+  attendee_type?: 'volunteer' | 'attendee' | 'speaker';
 }
 
 interface Shift {
@@ -145,6 +146,27 @@ function formatDateRange(start: string, end?: string | null): string {
     ? e.getDate().toString()
     : e.toLocaleDateString(undefined, opts);
   return `${sStr}–${eStr}`;
+}
+
+type AttendeeTypeValue = 'volunteer' | 'attendee' | 'speaker';
+
+// Shared role dropdown used everywhere a registration is listed (Attendees
+// tab, Shifts tab, Panels tab) — reassigns attendee_type via
+// PATCH /api/volunteer-registrations/[id], which handles the structural
+// side of a role change (leaving a shift/panel when needed) server-side.
+function RoleSelect({ value, onChange, disabled }: { value: AttendeeTypeValue; onChange: (v: AttendeeTypeValue) => void; disabled?: boolean }) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value as AttendeeTypeValue)}
+      className="text-xs border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50"
+    >
+      <option value="volunteer">Volunteer</option>
+      <option value="attendee">Attendee</option>
+      <option value="speaker">Speaker</option>
+    </select>
+  );
 }
 
 function statusBadge(status: Assignment['status']) {
@@ -1219,13 +1241,16 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
     load();
   }
 
-  async function promoteToSpeaker(registrationId: string) {
+  // Attendee <-> speaker flips freely within the panel; picking "Volunteer"
+  // means leaving the panel entirely (server clears panel_id and becomes a
+  // shiftless volunteer) — either way this list needs a fresh load after.
+  async function setPanelRegistrationRole(registrationId: string, attendee_type: AttendeeTypeValue) {
     const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attendee_type: 'speaker' }),
+      body: JSON.stringify({ attendee_type }),
     });
-    if (!res.ok) { alert((await res.json()).error ?? 'Failed to promote'); return; }
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
     if (expandedId) loadDetail(expandedId);
   }
 
@@ -1321,9 +1346,7 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
                                     {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
                                   </span>
                                   {canManage && (
-                                    <button onClick={() => promoteToSpeaker(r.id)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                                      Promote to Speaker
-                                    </button>
+                                    <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
                                   )}
                                 </div>
                               ))}
@@ -1341,8 +1364,11 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
                           ) : (
                             <div className="space-y-1">
                               {promotedSpeakers.map((r) => (
-                                <div key={r.id} className="text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  {r.name} <span className="text-gray-400">({r.email})</span>
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
+                                  <span>{r.name} <span className="text-gray-400">({r.email})</span></span>
+                                  {canManage && (
+                                    <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                  )}
                                 </div>
                               ))}
                               {assignedSpeakers.map((a) => (
@@ -1710,9 +1736,9 @@ export default function AdminEventDetailPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'shifts' | 'attendees' | 'panels' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
-  const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
+  const [shiftlessRegs, setShiftlessRegs] = useState<Volunteer[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
-  const [attendeeRegs, setAttendeeRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
+  const [attendeeRegs, setAttendeeRegs] = useState<Volunteer[]>([]);
   const [loadingAttendeeRegs, setLoadingAttendeeRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
@@ -1813,6 +1839,22 @@ export default function AdminEventDetailPage() {
     const res = await fetch(`/api/events/${eventId}/shiftless-registrations?type=attendee`);
     if (res.ok) setAttendeeRegs(await res.json());
     setLoadingAttendeeRegs(false);
+  }
+
+  // Reassigns a registration's role from the Attendees or Registrations
+  // (shiftless) table. A change can move the row between these two lists
+  // (or out to a panel/speaker slot not shown on either), so both are
+  // reloaded rather than patching local state in place.
+  async function setEventLevelRole(registrationId: string, attendee_type: AttendeeTypeValue) {
+    if (!event) return;
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendee_type }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
+    loadAttendeeRegs(event.id);
+    loadShiftlessRegs(event.id);
   }
 
   function checkInUrl(registrationId: string): string {
@@ -1961,6 +2003,37 @@ export default function AdminEventDetailPage() {
             volunteers: (s.volunteers ?? []).map((v) =>
               v.id === registrationId ? { ...v, is_waitlisted: false } : v
             ),
+          };
+        }),
+      };
+    });
+  }
+
+  // Reassigning a shift volunteer to attendee/speaker always means leaving
+  // the shift (see PATCH /api/volunteer-registrations/[id]) — a
+  // "Volunteer" reselection is a harmless no-op there, but any other choice
+  // removes the row from this shift's list entirely, same shape as
+  // removeVolunteer.
+  async function setShiftVolunteerRole(registrationId: string, shiftId: string, isWaitlisted: boolean, attendee_type: AttendeeTypeValue) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendee_type }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
+    if (attendee_type === 'volunteer') return;
+
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        shifts: prev.shifts.map((s) => {
+          if (s.id !== shiftId) return s;
+          return {
+            ...s,
+            filled:     isWaitlisted ? (s.filled ?? 0) : Math.max(0, (s.filled ?? 0) - 1),
+            waitlisted: isWaitlisted ? Math.max(0, (s.waitlisted ?? 0) - 1) : (s.waitlisted ?? 0),
+            volunteers: (s.volunteers ?? []).filter((v) => v.id !== registrationId),
           };
         }),
       };
@@ -2323,6 +2396,7 @@ export default function AdminEventDetailPage() {
                         <th className="pb-2 font-medium">Email</th>
                         <th className="pb-2 font-medium">Phone</th>
                         <th className="pb-2 font-medium">Registered</th>
+                        <th className="pb-2 font-medium">Role</th>
                         <th className="pb-2 font-medium">Check-in</th>
                       </tr>
                     </thead>
@@ -2339,6 +2413,13 @@ export default function AdminEventDetailPage() {
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                          <td className="py-2 pr-4">
+                            {canManage ? (
+                              <RoleSelect value={r.attendee_type ?? 'attendee'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                            ) : (
+                              <span className="text-xs capitalize">{r.attendee_type ?? 'attendee'}</span>
+                            )}
+                          </td>
                           <td className="py-2">
                             {r.checked_in_at ? (
                               <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
@@ -2388,6 +2469,7 @@ export default function AdminEventDetailPage() {
                         <th className="pb-2 font-medium">Email</th>
                         <th className="pb-2 font-medium">Phone</th>
                         <th className="pb-2 font-medium">Registered</th>
+                        <th className="pb-2 font-medium">Role</th>
                         <th className="pb-2 font-medium">Check-in</th>
                       </tr>
                     </thead>
@@ -2404,6 +2486,13 @@ export default function AdminEventDetailPage() {
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                          <td className="py-2 pr-4">
+                            {canManage ? (
+                              <RoleSelect value={r.attendee_type ?? 'volunteer'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                            ) : (
+                              <span className="text-xs capitalize">{r.attendee_type ?? 'volunteer'}</span>
+                            )}
+                          </td>
                           <td className="py-2">
                             {r.checked_in_at ? (
                               <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
@@ -2570,6 +2659,7 @@ export default function AdminEventDetailPage() {
                                         <th className="pb-2 font-medium">Email</th>
                                         <th className="pb-2 font-medium">Phone</th>
                                         <th className="pb-2 font-medium">Registered</th>
+                                        <th className="pb-2 font-medium">Role</th>
                                         <th className="pb-2 font-medium">Check-in</th>
                                         <th className="pb-2 font-medium"></th>
                                       </tr>
@@ -2588,6 +2678,13 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 pr-4">
+                                            {canManage ? (
+                                              <RoleSelect value={v.attendee_type ?? 'volunteer'} onChange={(type) => setShiftVolunteerRole(v.id, shift.id, false, type)} />
+                                            ) : (
+                                              <span className="text-xs capitalize">{v.attendee_type ?? 'volunteer'}</span>
+                                            )}
                                           </td>
                                           <td className="py-2 pr-4">
                                             {v.checked_in_at ? (
@@ -2629,7 +2726,7 @@ export default function AdminEventDetailPage() {
                                       ))}
                                       {waitlisting.length > 0 && (
                                         <tr>
-                                          <td colSpan={6} className="pt-3 pb-2 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                                          <td colSpan={7} className="pt-3 pb-2 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
                                             Waitlist ({waitlisting.length})
                                           </td>
                                         </tr>
@@ -2647,6 +2744,13 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 pr-4">
+                                            {canManage ? (
+                                              <RoleSelect value={v.attendee_type ?? 'volunteer'} onChange={(type) => setShiftVolunteerRole(v.id, shift.id, true, type)} />
+                                            ) : (
+                                              <span className="text-xs capitalize">{v.attendee_type ?? 'volunteer'}</span>
+                                            )}
                                           </td>
                                           <td className="py-2 pr-4">
                                             {v.checked_in_at ? (

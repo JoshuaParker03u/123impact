@@ -65,15 +65,20 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   let query = service
     .from('volunteer_registrations')
-    .select('id, name, email, phone, registered_at')
+    .select('id, name, email, phone, registered_at, attendee_type')
     .eq('event_id', eventId)
     .is('shift_id', null)
     .is('panel_id', null)
     .order('registered_at', { ascending: true });
 
-  if (type === 'attendee') {
-    query = query.eq('attendee_type', 'attendee');
-  }
+  // type=attendee -> the Attendees tab; otherwise this is the plain
+  // shiftless-volunteer "Registrations" table, which should only ever show
+  // volunteer rows (a stray attendee/speaker row here would otherwise be
+  // mixed in unfiltered, which is more visible now that this table has a
+  // Role column).
+  query = type === 'attendee'
+    ? query.eq('attendee_type', 'attendee')
+    : query.eq('attendee_type', 'volunteer');
 
   const { data, error } = await query;
 
