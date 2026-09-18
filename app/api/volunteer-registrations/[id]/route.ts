@@ -144,24 +144,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         updates.is_waitlisted = false;
       }
     } else if (currentAnchor === 'panel') {
-      if (attendee_type === 'volunteer') {
-        // Becomes that panel's Volunteer Staff — stays panel_id-scoped
-        // (panels can have volunteers whenever panels are enabled, no
-        // separate "does this event allow volunteers" gate needed) rather
-        // than leaving the panel for the event-wide shiftless-volunteer
-        // pool, which wouldn't exist on a panels-only event anyway. Staff
-        // rows aren't counted in the panel's attendee capacity (only
-        // attendee_type='attendee' rows are), so there's nothing to check.
-        const { error: assignError } = await service.from('panel_assignments').insert({
-          panel_id: reg.panel_id, registration_id: reg.id, role: 'volunteer', assigned_by: user.id,
-        });
-        if (assignError && assignError.code !== '23505') {
-          return NextResponse.json({ error: assignError.message }, { status: 500 });
-        }
-        updates.is_waitlisted = false;
-      }
-      // attendee <-> speaker: stays on the panel, shared capacity pool
-      // already accounts for this row — no check needed either direction.
+      // attendee/speaker/volunteer all stay on the panel via a simple
+      // in-place flip — same mechanism as the original "Promote to
+      // Speaker," now covering "Volunteer" too (panels can have volunteer
+      // staff whenever panels are enabled; no separate event-level gate).
+      // No capacity check: an in-place update never changes the panel's
+      // real confirmed headcount (see the capacity fix in
+      // app/api/events/[id]/panels/route.ts — every confirmed row counts
+      // toward panel.capacity regardless of type, so relabeling one
+      // doesn't add or remove an occupant). Deliberately never touches
+      // panel_assignments — that table is only for attaching an existing
+      // OTHER registration via "Assign Speaker"/"Assign Staff", which must
+      // never mutate that other registration's own attendee_type.
+      updates.is_waitlisted = false;
     } else if (attendee_type !== reg.attendee_type) {
       const err = attendee_type === 'attendee'
         ? await checkAttendeeCapacity()

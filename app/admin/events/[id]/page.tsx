@@ -1120,7 +1120,7 @@ interface PanelRegistration {
   phone: string | null;
   registered_at: string;
   is_waitlisted: boolean;
-  attendee_type: 'attendee' | 'speaker';
+  attendee_type: 'attendee' | 'speaker' | 'volunteer';
 }
 
 interface PanelAssignmentRow {
@@ -1263,8 +1263,9 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
 
   const attendees = registrations.filter((r) => r.attendee_type === 'attendee');
   const promotedSpeakers = registrations.filter((r) => r.attendee_type === 'speaker');
+  const promotedVolunteers = registrations.filter((r) => r.attendee_type === 'volunteer');
   const assignedSpeakers = assignments.filter((a) => a.role === 'speaker');
-  const staff = assignments.filter((a) => a.role === 'volunteer');
+  const assignedStaff = assignments.filter((a) => a.role === 'volunteer');
 
   return (
     <>
@@ -1387,14 +1388,22 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
 
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Volunteer Staff ({staff.length})</h4>
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Volunteer Staff ({promotedVolunteers.length + assignedStaff.length})</h4>
                             {canManage && <AssignPersonControl panelId={panel.id} role="volunteer" onAssigned={() => loadDetail(panel.id)} />}
                           </div>
-                          {staff.length === 0 ? (
+                          {promotedVolunteers.length === 0 && assignedStaff.length === 0 ? (
                             <p className="text-sm text-gray-400">No staff assigned yet.</p>
                           ) : (
                             <div className="space-y-1">
-                              {staff.map((a) => (
+                              {promotedVolunteers.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
+                                  <span>{r.name} <span className="text-gray-400">({r.email})</span></span>
+                                  {canManage && (
+                                    <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                  )}
+                                </div>
+                              ))}
+                              {assignedStaff.map((a) => (
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
                                     {a.registration?.name} <span className="text-gray-400">({a.registration?.email})</span>
