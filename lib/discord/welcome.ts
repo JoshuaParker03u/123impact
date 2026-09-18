@@ -1,10 +1,18 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { sendChannelMessage } from './dm';
+import { baseEmbed } from './embed';
 
-const WELCOME_MESSAGE = [
-  "👋 Thanks for adding 123impact! Use `/signup` in this server to browse upcoming volunteer shifts, panels, and events, and register right from Discord.",
-  'An org admin can change which channel `/signup` responds in, or where announcements like this one are posted, from Settings → Integrations on 123impact.',
-].join('\n\n');
+// A function, not a module-level constant — baseEmbed() stamps the current
+// time, which would otherwise freeze at whenever this module first loaded.
+function buildWelcomeEmbed() {
+  return baseEmbed({
+    title: '👋 Thanks for adding 123impact!',
+    description: [
+      "Use `/signup` in this server to browse upcoming volunteer shifts, panels, and events, and register right from Discord.",
+      'An org admin can change which channel `/signup` responds in, or where announcements like this one are posted, from **Settings → Integrations** on 123impact.',
+    ].join('\n\n'),
+  });
+}
 
 // Sends the one-time welcome/instructions message to a channel, marking
 // platform_connections.welcome_message_sent_at so it's never repeated.
@@ -26,7 +34,7 @@ export async function maybeSendWelcomeMessage(
 
   if (!connection || connection.welcome_message_sent_at) return;
 
-  const result = await sendChannelMessage(channelId, WELCOME_MESSAGE);
+  const result = await sendChannelMessage(channelId, { embeds: [buildWelcomeEmbed()] });
   if (result.success) {
     await service
       .from('platform_connections')

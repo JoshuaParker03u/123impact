@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { sendDirectMessage } from '@/lib/discord/dm';
+import { baseEmbed } from '@/lib/discord/embed';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -199,8 +200,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // were reached via the bot in the first place).
   if (attendee_type !== undefined && attendee_type !== reg.attendee_type && reg.discord_user_id) {
     const name = contextName ?? event.title;
-    const message = `Your role for **${name}** has been updated to **${ROLE_LABELS[attendee_type]}**.`;
-    sendDirectMessage(reg.discord_user_id, message).catch((e) => console.error('role-change DM error:', e));
+    const embed = baseEmbed({
+      title: 'Role updated',
+      description: `Your role for **${name}** has been updated to **${ROLE_LABELS[attendee_type]}**.`,
+    });
+    sendDirectMessage(reg.discord_user_id, { embeds: [embed] }).catch((e) => console.error('role-change DM error:', e));
   }
 
   return NextResponse.json(updated);

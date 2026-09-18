@@ -1,7 +1,9 @@
-// Builds the message text for event/panel "advertise on Discord" posts.
-// Plain markdown, not embeds — Discord auto-unfurls the signup link into a
-// rich preview using the signup page's opengraph-image, so a hand-built
-// embed would just be a redundant second card under the message.
+// Builds the message payload for event/panel "advertise on Discord" posts —
+// an embed (shared look via baseEmbed) plus a Sign Up link button, rather
+// than a plain-text blob. Structured fields keep every announcement in the
+// same shape instead of each one being its own paragraph layout.
+
+import { baseEmbed, linkButton, MessagePayload, DiscordEmbedField } from './embed';
 
 function formatTime(time: string | null | undefined): string {
   if (!time) return '';
@@ -27,14 +29,20 @@ function formatDateRange(date: string, endDate: string | null): string {
 export function buildEventAnnouncement(
   event: { title: string; description: string | null; date: string; end_date: string | null; time: string; location: string },
   signupUrl: string
-): string {
-  const lines = [
-    `📢 **${event.title}**`,
-    [formatDateRange(event.date, event.end_date), formatTime(event.time), event.location].filter(Boolean).join(' · '),
+): MessagePayload {
+  const fields: DiscordEmbedField[] = [
+    { name: 'When', value: [formatDateRange(event.date, event.end_date), formatTime(event.time)].filter(Boolean).join(' · '), inline: true },
   ];
-  if (event.description) lines.push(event.description);
-  lines.push(`Sign up: ${signupUrl}`);
-  return lines.join('\n\n');
+  if (event.location) fields.push({ name: 'Where', value: event.location, inline: true });
+
+  return {
+    embeds: [baseEmbed({
+      title: `📢 ${event.title}`,
+      description: event.description || undefined,
+      fields,
+    })],
+    components: [linkButton('Sign Up', signupUrl)],
+  };
 }
 
 export function buildPanelAnnouncement(
@@ -42,7 +50,7 @@ export function buildPanelAnnouncement(
   event: { title: string; date: string; end_date: string | null },
   signupUrl: string,
   speakerNames: string[] = []
-): string {
+): MessagePayload {
   // The panel's own day when it's set (useful on a multi-day event to say
   // which day this specific panel falls on), else the event's date/range —
   // a panel should never post with no date at all just because panel_date
@@ -50,17 +58,26 @@ export function buildPanelAnnouncement(
   const dateStr = panel.panel_date ? formatDate(panel.panel_date) : formatDateRange(event.date, event.end_date);
   const timeStr = `${formatTime(panel.start_time)}–${formatTime(panel.end_time)}`;
 
-  const lines = [
-    `📢 **${panel.name}** — a panel at ${event.title}`,
-    [dateStr, timeStr, panel.location].filter(Boolean).join(' · '),
+  const fields: DiscordEmbedField[] = [
+    { name: 'When', value: [dateStr, timeStr].filter(Boolean).join(' · '), inline: true },
   ];
-  if (panel.description) lines.push(panel.description);
-  if (speakerNames.length > 0) lines.push(`🎤 Featured speaker${speakerNames.length > 1 ? 's' : ''}: ${speakerNames.join(', ')}`);
-  lines.push(
-    panel.available > 0
+  if (panel.location) fields.push({ name: 'Where', value: panel.location, inline: true });
+  if (speakerNames.length > 0) {
+    fields.push({ name: `Featured speaker${speakerNames.length > 1 ? 's' : ''}`, value: speakerNames.join(', ') });
+  }
+  fields.push({
+    name: 'Availability',
+    value: panel.available > 0
       ? `${panel.available} ${panel.available === 1 ? 'spot' : 'spots'} left`
-      : panel.allow_waitlist ? 'Full — waitlist open' : 'Currently full'
-  );
-  lines.push(`Sign up: ${signupUrl}`);
-  return lines.join('\n\n');
+      : panel.allow_waitlist ? 'Full — waitlist open' : 'Currently full',
+  });
+
+  return {
+    embeds: [baseEmbed({
+      title: `📢 ${panel.name}`,
+      description: [panel.description, `_a panel at ${event.title}_`].filter(Boolean).join('\n\n'),
+      fields,
+    })],
+    components: [linkButton('Sign Up', signupUrl)],
+  };
 }

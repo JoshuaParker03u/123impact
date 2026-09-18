@@ -1,3 +1,5 @@
+import { MessagePayload } from './embed';
+
 const DISCORD_API = 'https://discord.com/api/v10';
 
 function authHeaders() {
@@ -25,8 +27,10 @@ export interface DmResult {
 
 // Sends a single Discord DM. Never throws — a failed DM (DMs closed, left
 // the guild, blocked the bot — Discord error 50007 is the common case) is
-// an expected, non-fatal outcome, not an exception.
-export async function sendDirectMessage(discordUserId: string, content: string): Promise<DmResult> {
+// an expected, non-fatal outcome, not an exception. Accepts either plain
+// text or a full { embeds, components } payload for a richer message.
+export async function sendDirectMessage(discordUserId: string, payload: string | MessagePayload): Promise<DmResult> {
+  const body = typeof payload === 'string' ? { content: payload } : payload;
   try {
     const channelRes = await withRetry(() =>
       fetch(`${DISCORD_API}/users/@me/channels`, {
@@ -42,7 +46,7 @@ export async function sendDirectMessage(discordUserId: string, content: string):
       fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       })
     );
     if (!sendRes.ok) throw new Error(`send DM failed: ${sendRes.status} ${await sendRes.text()}`);
@@ -54,16 +58,17 @@ export async function sendDirectMessage(discordUserId: string, content: string):
 }
 
 // Posts directly to a guild channel — no DM-channel-creation step needed,
-// unlike sendDirectMessage. Same never-throws contract. Returns the new
-// message's id so callers can track it (e.g. to delete a stale announcement
-// on the next re-post).
-export async function sendChannelMessage(channelId: string, content: string): Promise<DmResult> {
+// unlike sendDirectMessage. Same never-throws contract, same string-or-rich
+// payload flexibility. Returns the new message's id so callers can track it
+// (e.g. to delete a stale announcement on the next re-post).
+export async function sendChannelMessage(channelId: string, payload: string | MessagePayload): Promise<DmResult> {
+  const body = typeof payload === 'string' ? { content: payload } : payload;
   try {
     const res = await withRetry(() =>
       fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       })
     );
     if (!res.ok) throw new Error(`send channel message failed: ${res.status} ${await res.text()}`);
