@@ -2053,7 +2053,7 @@ export default function AdminEventDetailPage() {
   const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [showMessageComposer, setShowMessageComposer] = useState(false);
   const [messageShiftId, setMessageShiftId] = useState<string | undefined>(undefined);
-  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string } | null>(null);
+  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string; id: string } | null>(null);
 
   async function handleDeleteShift(shiftId: string, filled: number) {
     const msg = filled > 0
@@ -2521,7 +2521,7 @@ export default function AdminEventDetailPage() {
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
                             {streamerMode ? redact(r.email, 'email', streamerMode) : (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                 <Mail className="w-3 h-3" />{r.email}
                               </button>
                             )}
@@ -2606,7 +2606,7 @@ export default function AdminEventDetailPage() {
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
                             {streamerMode ? redact(r.email, 'email', streamerMode) : (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                 <Mail className="w-3 h-3" />{r.email}
                               </button>
                             )}
@@ -2812,7 +2812,7 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
                                           <td className="py-2 pr-4">
                                             {streamerMode ? redact(v.email, 'email', streamerMode) : (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                                 <Mail className="w-3 h-3" />{v.email}
                                               </button>
                                             )}
@@ -2878,7 +2878,7 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
                                           <td className="py-2 pr-4">
                                             {streamerMode ? redact(v.email, 'email', streamerMode) : (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                                 <Mail className="w-3 h-3" />{v.email}
                                               </button>
                                             )}
@@ -2999,6 +2999,7 @@ export default function AdminEventDetailPage() {
         onClose={() => setMessageVolunteer(null)}
         volunteerEmail={messageVolunteer?.email}
         volunteerName={messageVolunteer?.name}
+        volunteerRegistrationId={messageVolunteer?.id}
       />
 
       {checkInModal && (

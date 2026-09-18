@@ -13,9 +13,15 @@ interface MessageComposerProps {
   shiftId?: string;
   volunteerEmail?: string;
   volunteerName?: string;
+  // The specific registration being messaged — required for a Discord DM to
+  // go out on an individual send, since email alone isn't a unique key (one
+  // person can have several registrations) and can't be traced back to a
+  // discord_user_id reliably.
+  volunteerRegistrationId?: string;
 }
 
-type RecipientType = 'event' | 'shift' | 'volunteer';
+type RecipientType = 'event' | 'shift' | 'panel' | 'volunteer';
+type CountRow = { email: string; discord_user_id: string | null };
 
 export default function MessageComposer({
   isOpen,
@@ -24,6 +30,7 @@ export default function MessageComposer({
   shiftId,
   volunteerEmail,
   volunteerName,
+  volunteerRegistrationId,
 }: MessageComposerProps) {
   // When opened with a preset event or shift (e.g. "Message Volunteers" from
   // an event's manage page, or the message action on a specific shift), the
@@ -38,13 +45,16 @@ export default function MessageComposer({
   );
   const [selectedEvent, setSelectedEvent] = useState(eventId || '');
   const [selectedShift, setSelectedShift] = useState(shiftId || '');
+  const [selectedPanel, setSelectedPanel] = useState('');
   const [recipientCount, setRecipientCount] = useState(volunteerEmail ? 1 : 0);
+  const [dmCount, setDmCount] = useState(0);
   const [waitlistFilter, setWaitlistFilter] = useState<'all' | 'confirmed' | 'waitlisted'>('all');
   const [roleFilter, setRoleFilter] = useState<Set<'volunteer' | 'attendee' | 'speaker'>>(
     new Set(['volunteer', 'attendee', 'speaker'])
   );
   const [events, setEvents] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
+  const [panels, setPanels] = useState<{ id: string; name: string }[]>([]);
   const [sendMode, setSendMode] = useState<'now' | 'scheduled'>('now');
   const [scheduledFor, setScheduledFor] = useState('');
   const [loading, setLoading] = useState(false);
@@ -71,6 +81,7 @@ export default function MessageComposer({
         setRecipientType('event');
         setSelectedEvent(eventId);
         loadShifts(eventId);
+        loadPanels(eventId);
       }
       if (shiftId) {
         setRecipientType('shift');
@@ -80,12 +91,15 @@ export default function MessageComposer({
   }, [isOpen, eventId, shiftId, volunteerEmail]);
 
   useEffect(() => {
-    if (selectedEvent) loadShifts(selectedEvent);
+    if (selectedEvent) {
+      loadShifts(selectedEvent);
+      loadPanels(selectedEvent);
+    }
   }, [selectedEvent]);
 
   useEffect(() => {
     if (recipientType !== 'volunteer') updateRecipientCount();
-  }, [recipientType, selectedEvent, selectedShift, waitlistFilter, roleFilter]);
+  }, [recipientType, selectedEvent, selectedShift, selectedPanel, waitlistFilter, roleFilter]);
 
   async function loadEvents() {
     let query = supabase.from('events').select('id, title').order('title');
@@ -103,34 +117,56 @@ export default function MessageComposer({
     setShifts(data || []);
   }
 
+  async function loadPanels(evId: string) {
+    const res = await fetch(`/api/events/${evId}/panels`);
+    setPanels(res.ok ? await res.json() : []);
+  }
+
   async function updateRecipientCount() {
     setLoading(true);
     let count = 0;
+    let dms = 0;
     try {
       if (recipientType === 'event' && selectedEvent && roleFilter.size > 0) {
         // Query by event_id directly (set on every registration, shift-based or
         // shiftless) rather than joining through shifts — a purely shiftless
         // event has no shift rows at all, so the old shifts-first join always
         // returned zero recipients for those events.
-        let q = supabase.from('volunteer_registrations').select('email')
+        let q = supabase.from('volunteer_registrations').select('email, discord_user_id')
           .eq('event_id', selectedEvent)
           .in('attendee_type', [...roleFilter]);
         if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
         const { data } = await q;
-        count = new Set(data?.map((r: any) => r.email) || []).size;
+        const rows = (data ?? []) as CountRow[];
+        const unique = rows.filter((r, i, self) => i === self.findIndex((x) => x.email === r.email));
+        count = unique.length;
+        dms = unique.filter((r) => r.discord_user_id).length;
       } else if (recipientType === 'shift' && selectedShift) {
         let q = supabase
           .from('volunteer_registrations')
-          .select('*', { count: 'exact', head: true })
+          .select('email, discord_user_id')
           .eq('shift_id', selectedShift);
         if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
-        const { count: c } = await q;
-        count = c || 0;
+        const { data } = await q;
+        const rows = (data ?? []) as CountRow[];
+        count = rows.length;
+        dms = rows.filter((r) => r.discord_user_id).length;
+      } else if (recipientType === 'panel' && selectedPanel && roleFilter.size > 0) {
+        let q = supabase.from('volunteer_registrations').select('email, discord_user_id')
+          .eq('panel_id', selectedPanel)
+          .in('attendee_type', [...roleFilter]);
+        if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+        const { data } = await q;
+        const rows = (data ?? []) as CountRow[];
+        const unique = rows.filter((r, i, self) => i === self.findIndex((x) => x.email === r.email));
+        count = unique.length;
+        dms = unique.filter((r) => r.discord_user_id).length;
       }
     } catch (e) {
       console.error('Error counting recipients:', e);
     }
     setRecipientCount(count);
+    setDmCount(dms);
     setLoading(false);
   }
 
@@ -153,20 +189,23 @@ export default function MessageComposer({
           recipientType,
           eventId: selectedEvent || null,
           shiftId: recipientType === 'shift' ? selectedShift : null,
+          panelId: recipientType === 'panel' ? selectedPanel : null,
+          registrationId: recipientType === 'volunteer' ? volunteerRegistrationId : null,
           volunteerEmail: recipientType === 'volunteer' ? volunteerEmail : null,
           volunteerName:  recipientType === 'volunteer' ? volunteerName  : null,
           scheduledFor: sendMode === 'scheduled' ? scheduledFor : null,
           waitlistFilter,
-          roles: recipientType === 'event' ? [...roleFilter] : null,
+          roles: (recipientType === 'event' || recipientType === 'panel') ? [...roleFilter] : null,
         }),
       });
 
       const data = await response.json();
       if (response.ok) {
+        const dmNote = data.dmCount > 0 ? ` (including ${data.dmCount} via Discord DM)` : '';
         if (data.scheduled) {
-          alert(`Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}.`);
+          alert(`Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}.`);
         } else {
-          alert(`Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}!`);
+          alert(`Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}!`);
         }
         onClose();
         setSubject('');
@@ -202,6 +241,7 @@ export default function MessageComposer({
                 >
                   <option value="event">Volunteers by Event</option>
                   <option value="shift">Volunteers by Shift</option>
+                  <option value="panel">Volunteers by Panel</option>
                 </select>
               </div>
             )}
@@ -273,10 +313,44 @@ export default function MessageComposer({
               </>
             )}
 
-            {/* Role filter — only meaningful for event-wide sends; shift
+            {recipientType === 'panel' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Event</label>
+                  <select
+                    value={selectedEvent}
+                    onChange={(e) => !sendToLocked && setSelectedEvent(e.target.value)}
+                    disabled={sendToLocked}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 ${
+                      sendToLocked ? 'opacity-70 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="">Choose an event...</option>
+                    {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
+                  </select>
+                </div>
+                {selectedEvent && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Panel</label>
+                    <select
+                      value={selectedPanel}
+                      onChange={(e) => setSelectedPanel(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Choose a panel...</option>
+                      {panels.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Role filter — meaningful for event-wide and panel sends; shift
                 registrations are always Volunteers, since Attendees/Speakers
                 never pick a shift. */}
-            {recipientType === 'event' && (
+            {(recipientType === 'event' || recipientType === 'panel') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Roles</label>
                 <div className="flex flex-col gap-1.5 text-sm text-gray-700 dark:text-gray-300">
@@ -320,7 +394,11 @@ export default function MessageComposer({
 
             <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                {loading ? 'Calculating...' : `This message will be sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}`}
+                {loading
+                  ? 'Calculating...'
+                  : `This message will be sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}${
+                      dmCount > 0 ? ` (including ${dmCount} via Discord DM)` : ''
+                    }`}
               </p>
             </div>
 

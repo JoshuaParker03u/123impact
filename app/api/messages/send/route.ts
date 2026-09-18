@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { subject, message, recipientType, eventId, shiftId, volunteerEmail, volunteerName, scheduledFor, waitlistFilter = 'all' } = body;
+  const { subject, message, recipientType, eventId, shiftId, panelId, registrationId, volunteerEmail, volunteerName, scheduledFor, waitlistFilter = 'all' } = body;
   const roles: string[] = Array.isArray(body.roles) && body.roles.length > 0
     ? body.roles
     : ['volunteer', 'attendee', 'speaker'];
@@ -77,6 +77,17 @@ export async function POST(request: Request) {
 
   let organizationId: string | null = null;
 
+  // Map a set of panel ids to the org ids that own them (panel → event → org).
+  async function orgIdsForPanels(panelIds: string[]): Promise<string[]> {
+    if (panelIds.length === 0) return [];
+    const { data: panelRows } = await serviceSupabase
+      .from('panels')
+      .select('event_id')
+      .in('id', panelIds);
+    const eventIds = [...new Set((panelRows ?? []).map((p: { event_id: string }) => p.event_id).filter(Boolean))];
+    return orgIdsForEvents(eventIds);
+  }
+
   if (recipientType === 'event' && eventId) {
     const { data: ev } = await serviceSupabase
       .from('events')
@@ -87,10 +98,24 @@ export async function POST(request: Request) {
   } else if (recipientType === 'shift' && shiftId) {
     const [orgFromShift] = await orgIdsForShifts([shiftId]);
     organizationId = orgFromShift ?? null;
+  } else if (recipientType === 'panel' && panelId) {
+    const [orgFromPanel] = await orgIdsForPanels([panelId]);
+    organizationId = orgFromPanel ?? null;
+  } else if (recipientType === 'volunteer' && registrationId) {
+    // A specific registration id resolves its org directly and unambiguously
+    // (unlike email, which isn't unique — one person can have several
+    // registrations). event_id is set regardless of shift/panel/shiftless anchor.
+    const { data: reg } = await serviceSupabase
+      .from('volunteer_registrations')
+      .select('event_id')
+      .eq('id', registrationId)
+      .single();
+    const regOrgIds = reg?.event_id ? await orgIdsForEvents([reg.event_id]) : [];
+    organizationId = regOrgIds.find((id) => callerOrgIds.has(id)) ?? null;
   } else if (recipientType === 'volunteer' && volunteerEmail) {
-    // The email must belong to a registration in an org the caller administers.
-    // event_id is set on every registration (shift-based or shiftless), so this
-    // correctly resolves the org even for volunteers with no shift_id at all.
+    // Legacy fallback for a caller that only has an email, not a
+    // registration id — no reliable way to resolve a Discord account here,
+    // so DM sending is skipped for this path (see recipients resolution).
     const { data: regs } = await serviceSupabase
       .from('volunteer_registrations')
       .select('event_id')
@@ -152,11 +177,29 @@ export async function POST(request: Request) {
       }
       const { data } = await query;
       recipients = data || [];
+    } else if (recipientType === 'panel' && panelId) {
+      let query = serviceSupabase
+        .from('volunteer_registrations')
+        .select('name, email, discord_user_id')
+        .eq('panel_id', panelId)
+        .in('attendee_type', roles);
+      if (waitlistFilter !== 'all') {
+        query = query.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+      }
+      const { data } = await query;
+      recipients = data || [];
+    } else if (recipientType === 'volunteer' && registrationId) {
+      const { data: reg } = await serviceSupabase
+        .from('volunteer_registrations')
+        .select('name, email, discord_user_id')
+        .eq('id', registrationId)
+        .single();
+      recipients = reg ? [reg] : [];
     } else if (recipientType === 'volunteer' && volunteerEmail) {
-      // No registration id available for this mode, so there's no reliable
-      // way to resolve a Discord account for it — email isn't a unique key
-      // on volunteer_registrations (one person can have several shift
-      // registrations). DM sending is intentionally skipped for this mode.
+      // Legacy fallback with no registration id — email isn't a unique key
+      // on volunteer_registrations (one person can have several
+      // registrations), so there's no reliable way to resolve a Discord
+      // account here. DM sending is skipped for this path only.
       recipients = [{ name: volunteerName || '', email: volunteerEmail }];
     }
 
@@ -171,10 +214,11 @@ export async function POST(request: Request) {
     }
 
     const emails = uniqueRecipients.map(r => r.email);
+    const dmCount = uniqueRecipients.filter((r) => r.discord_user_id).length;
 
-    // The messages.recipient_type CHECK constraint allows only
-    // 'all' | 'event' | 'shift' | 'individual'. A single-volunteer send is
-    // recorded as 'individual'.
+    // The messages.recipient_type CHECK constraint allows
+    // 'all' | 'event' | 'shift' | 'panel' | 'individual'. A single-volunteer
+    // send is recorded as 'individual'.
     const dbRecipientType = recipientType === 'volunteer' ? 'individual' : recipientType;
 
     // ── Scheduled send ──────────────────────────────────────────────────────
@@ -192,6 +236,7 @@ export async function POST(request: Request) {
           recipient_emails: emails,
           event_id:         eventId || null,
           shift_id:         shiftId || null,
+          panel_id:         panelId || null,
           sent_by:          user.id,
           recipient_count:  recipientCount,
           delivery_status:  'scheduled',
@@ -216,6 +261,7 @@ export async function POST(request: Request) {
         status:          'pending',
         event_id:        eventId || null,
         shift_id:        shiftId || null,
+        panel_id:        panelId || null,
         discord_user_id: r.discord_user_id ?? null,
       }));
 
@@ -230,7 +276,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: scheduleError.message }, { status: 500 });
       }
 
-      return NextResponse.json({ success: true, scheduled: true, recipientCount });
+      return NextResponse.json({ success: true, scheduled: true, recipientCount, dmCount });
     }
 
     // ── Immediate send ──────────────────────────────────────────────────────
@@ -260,6 +306,7 @@ export async function POST(request: Request) {
       recipient_emails: emails,
       event_id:         eventId || null,
       shift_id:         shiftId || null,
+      panel_id:         panelId || null,
       sent_by:          user.id,
       recipient_count:  recipientCount,
       delivery_status:  deliveryStatus,
@@ -274,7 +321,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, recipientCount });
+    return NextResponse.json({ success: true, recipientCount, dmCount });
   } catch (error: any) {
     console.error('Send message error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

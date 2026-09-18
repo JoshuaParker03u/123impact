@@ -774,6 +774,7 @@ function AdminVolunteersPage() {
           onClose={() => setMessageVolunteer(null)}
           volunteerEmail={messageVolunteer.email}
           volunteerName={messageVolunteer.name}
+          volunteerRegistrationId={messageVolunteer.id}
         />
       )}
 
