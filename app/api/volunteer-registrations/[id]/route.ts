@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { sendDirectMessage } from '@/lib/discord/dm';
 
 type Params = { params: Promise<{ id: string }> };
 
 const VALID_TYPES = ['volunteer', 'attendee', 'speaker'] as const;
 type AttendeeType = typeof VALID_TYPES[number];
+
+const ROLE_LABELS: Record<AttendeeType, string> = {
+  volunteer: 'Volunteer',
+  attendee:  'Attendee',
+  speaker:   'Speaker',
+};
 
 // PATCH /api/volunteer-registrations/[id]
 // Body: { is_waitlisted?: boolean, attendee_type?: 'volunteer' | 'attendee' | 'speaker' }
@@ -60,20 +67,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data: reg } = await service
     .from('volunteer_registrations')
-    .select('id, shift_id, event_id, panel_id, attendee_type')
+    .select('id, shift_id, event_id, panel_id, attendee_type, discord_user_id')
     .eq('id', registrationId)
     .single();
 
   if (!reg) return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
 
-  // Resolve org via whichever scope this registration carries.
+  // Resolve org via whichever scope this registration carries. Also grabs a
+  // human-readable name for the role-change DM below — the panel's own name
+  // when panel-anchored (role changes never leave the panel), else the
+  // event's title.
   let eventId: string | null = null;
+  let contextName: string | null = null;
   if (reg.shift_id) {
     const { data: shift } = await service.from('shifts').select('event_id').eq('id', reg.shift_id).single();
     eventId = shift?.event_id ?? null;
   } else if (reg.panel_id) {
-    const { data: panel } = await service.from('panels').select('event_id').eq('id', reg.panel_id).single();
+    const { data: panel } = await service.from('panels').select('event_id, name').eq('id', reg.panel_id).single();
     eventId = panel?.event_id ?? null;
+    contextName = panel?.name ?? null;
   } else {
     eventId = reg.event_id;
   }
@@ -82,7 +94,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data: event } = await service
     .from('events')
-    .select('organization_id, is_shiftless, shiftless_capacity, attendee_enabled, attendee_capacity, speaker_enabled')
+    .select('title, organization_id, is_shiftless, shiftless_capacity, attendee_enabled, attendee_capacity, speaker_enabled')
     .eq('id', eventId)
     .single();
 
@@ -180,6 +192,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Best-effort — never blocks or fails the role change itself. Only fires
+  // on a genuine change (never a no-op reselection), and only when this
+  // registration is linked to a Discord account (i.e. they signed up or
+  // were reached via the bot in the first place).
+  if (attendee_type !== undefined && attendee_type !== reg.attendee_type && reg.discord_user_id) {
+    const name = contextName ?? event.title;
+    const message = `Your role for **${name}** has been updated to **${ROLE_LABELS[attendee_type]}**.`;
+    sendDirectMessage(reg.discord_user_id, message).catch((e) => console.error('role-change DM error:', e));
+  }
+
   return NextResponse.json(updated);
 }
 
