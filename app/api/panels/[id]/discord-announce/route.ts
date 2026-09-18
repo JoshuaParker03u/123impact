@@ -37,12 +37,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: panel } = await service
     .from('panels')
-    .select('id, name, description, start_time, end_time, panel_date, location, capacity, allow_waitlist, events!inner(id, event_id, title, organization_id)')
+    .select('id, name, description, start_time, end_time, panel_date, location, capacity, allow_waitlist, events!inner(id, event_id, title, organization_id, date, end_date)')
     .eq('id', panelId)
     .single();
   if (!panel) return NextResponse.json({ error: 'Panel not found' }, { status: 404 });
 
-  const event = (panel as any).events as { id: string; event_id: string; title: string; organization_id: string };
+  const event = (panel as any).events as { id: string; event_id: string; title: string; organization_id: string; date: string; end_date: string | null };
 
   const { data: membership } = await service
     .from('organization_admins')
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || '';
   const signupUrl = `${origin}/events/${event.event_id}/signup/attendee?panel=${panel.id}`;
-  const message = buildPanelAnnouncement({ ...panel, available }, event.title, signupUrl, speakerNames);
+  const message = buildPanelAnnouncement({ ...panel, available }, event, signupUrl, speakerNames);
 
   const result = await sendChannelMessage(connection.announcement_channel_id, message);
   if (!result.success) {

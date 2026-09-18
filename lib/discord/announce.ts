@@ -20,17 +20,17 @@ function formatDate(date: string): string {
   });
 }
 
+function formatDateRange(date: string, endDate: string | null): string {
+  return endDate && endDate !== date ? `${formatDate(date)} – ${formatDate(endDate)}` : formatDate(date);
+}
+
 export function buildEventAnnouncement(
   event: { title: string; description: string | null; date: string; end_date: string | null; time: string; location: string },
   signupUrl: string
 ): string {
-  const dateStr = event.end_date && event.end_date !== event.date
-    ? `${formatDate(event.date)} – ${formatDate(event.end_date)}`
-    : formatDate(event.date);
-
   const lines = [
     `📢 **${event.title}**`,
-    [dateStr, formatTime(event.time), event.location].filter(Boolean).join(' · '),
+    [formatDateRange(event.date, event.end_date), formatTime(event.time), event.location].filter(Boolean).join(' · '),
   ];
   if (event.description) lines.push(event.description);
   lines.push(`Sign up: ${signupUrl}`);
@@ -39,15 +39,19 @@ export function buildEventAnnouncement(
 
 export function buildPanelAnnouncement(
   panel: { name: string; description: string | null; panel_date: string | null; start_time: string; end_time: string; location: string | null; capacity: number; allow_waitlist: boolean; available: number },
-  eventTitle: string,
+  event: { title: string; date: string; end_date: string | null },
   signupUrl: string,
   speakerNames: string[] = []
 ): string {
-  const dateStr = panel.panel_date ? formatDate(panel.panel_date) : null;
+  // The panel's own day when it's set (useful on a multi-day event to say
+  // which day this specific panel falls on), else the event's date/range —
+  // a panel should never post with no date at all just because panel_date
+  // wasn't filled in.
+  const dateStr = panel.panel_date ? formatDate(panel.panel_date) : formatDateRange(event.date, event.end_date);
   const timeStr = `${formatTime(panel.start_time)}–${formatTime(panel.end_time)}`;
 
   const lines = [
-    `📢 **${panel.name}** — a panel at ${eventTitle}`,
+    `📢 **${panel.name}** — a panel at ${event.title}`,
     [dateStr, timeStr, panel.location].filter(Boolean).join(' · '),
   ];
   if (panel.description) lines.push(panel.description);
