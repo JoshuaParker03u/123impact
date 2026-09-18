@@ -171,6 +171,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
   const searchParams = useSearchParams()
   const refToken = searchParams.get('ref')
   const inviteToken = searchParams.get('token')
+  const panelParam = searchParams.get('panel')
 
   const [event, setEvent]                 = useState<Event | null>(null)
   const [shifts, setShifts]               = useState<Shift[]>([])
@@ -229,7 +230,15 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
           // GET /api/events/:id/panels — public, not catch-all-routed so it
           // doesn't use apiFetch's {data} envelope convention
           const panelsRes = await fetch(`/api/events/${eventData.id}/panels`)
-          if (panelsRes.ok) setPanels(await panelsRes.json())
+          if (panelsRes.ok) {
+            const panelsData: Panel[] = await panelsRes.json()
+            setPanels(panelsData)
+            // Deep link from a Discord panel announcement (?panel=<id>) —
+            // preselect it so the visitor doesn't have to find it themselves.
+            if (panelParam && panelsData.some((p) => p.id === panelParam)) {
+              setSelectedPanelId(panelParam)
+            }
+          }
         }
 
         // Fetch co-sponsors (fire-and-forget, non-blocking)

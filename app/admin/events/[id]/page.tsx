@@ -28,7 +28,7 @@ import {
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
   AlertTriangle, QrCode, Download, BarChart2, Radio, Link2, Copy,
-  CheckCircle2, WifiOff, RotateCcw, UserPlus, Repeat, Mic,
+  CheckCircle2, WifiOff, RotateCcw, UserPlus, Repeat, Mic, Send,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -1190,13 +1190,14 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
   );
 }
 
-function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Event; canManage: boolean }) {
+function PanelsTab({ eventId, event, canManage, discordReady }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean }) {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPanelModal, setShowPanelModal] = useState(false);
   const [editingPanel, setEditingPanel] = useState<Panel | null>(null);
   const [deletingPanel, setDeletingPanel] = useState<Panel | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [postingDiscordId, setPostingDiscordId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [registrations, setRegistrations] = useState<PanelRegistration[]>([]);
   const [assignments, setAssignments] = useState<PanelAssignmentRow[]>([]);
@@ -1259,6 +1260,14 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
     if (expandedId) loadDetail(expandedId);
   }
 
+  async function postPanelToDiscord(panelId: string) {
+    setPostingDiscordId(panelId);
+    const res = await fetch(`/api/panels/${panelId}/discord-announce`, { method: 'POST' });
+    setPostingDiscordId(null);
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
+    alert('Posted to Discord!');
+  }
+
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
 
   const attendees = registrations.filter((r) => r.attendee_type === 'attendee');
@@ -1311,6 +1320,18 @@ function PanelsTab({ eventId, event, canManage }: { eventId: string; event: Even
                   </div>
                   {canManage && (
                     <div className="flex items-center gap-2 shrink-0">
+                      {discordReady && (
+                        <span
+                          role="button"
+                          title="Post to Discord"
+                          onClick={(e) => { e.stopPropagation(); postPanelToDiscord(panel.id); }}
+                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          {postingDiscordId === panel.id
+                            ? <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                            : <Send className="w-4 h-4 text-gray-500" />}
+                        </span>
+                      )}
                       <span
                         role="button"
                         onClick={(e) => { e.stopPropagation(); setEditingPanel(panel); setShowPanelModal(true); }}
@@ -1754,6 +1775,8 @@ export default function AdminEventDetailPage() {
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
   const [customDomain, setCustomDomain] = useState<string | null>(null);
+  const [discordAnnouncementChannelId, setDiscordAnnouncementChannelId] = useState<string | null>(null);
+  const [postingDiscord, setPostingDiscord] = useState(false);
   const [syncing, setSyncing]     = useState(false);
   const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -1793,6 +1816,12 @@ export default function AdminEventDetailPage() {
     if (domainRes.ok) {
       const domainJson = await domainRes.json();
       setCustomDomain(domainJson?.status === 'active' ? domainJson.subdomain : null);
+    }
+
+    const connectionsRes = await fetch(`/api/organizations/${data.organization_id}/connections`);
+    if (connectionsRes.ok) {
+      const connectionsJson = await connectionsRes.json();
+      setDiscordAnnouncementChannelId(connectionsJson?.discord?.announcement_channel_id ?? null);
     }
 
     // Fetch registration counts
@@ -2091,6 +2120,15 @@ export default function AdminEventDetailPage() {
     }
   }
 
+  async function postEventToDiscord() {
+    if (!event) return;
+    setPostingDiscord(true);
+    const res = await fetch(`/api/events/${event.id}/discord-announce`, { method: 'POST' });
+    setPostingDiscord(false);
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
+    alert('Posted to Discord!');
+  }
+
   async function handleDeleteEvent() {
     if (!event) return;
     setDeletingEvent(true);
@@ -2274,6 +2312,16 @@ export default function AdminEventDetailPage() {
               >
                 <Mail className="w-4 h-4" /> Message Volunteers
               </Button>
+              {canManage && discordAnnouncementChannelId && (
+                <Button
+                  variant="outline"
+                  onClick={postEventToDiscord}
+                  disabled={postingDiscord}
+                  className="w-full justify-start gap-2"
+                >
+                  {postingDiscord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Post to Discord
+                </Button>
+              )}
               {canManage && (
                 <>
                   <Button
@@ -2390,7 +2438,7 @@ export default function AdminEventDetailPage() {
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
         ) : activeTab === 'panels' && event.panels_enabled ? (
-          <PanelsTab eventId={event.id} event={event} canManage={canManage} />
+          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} />
         ) : activeTab === 'attendees' && event.attendee_enabled ? (
           <>
             {loadingAttendeeRegs ? (
