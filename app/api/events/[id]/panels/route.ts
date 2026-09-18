@@ -41,13 +41,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Counts every confirmed registration against the panel regardless of
+  // attendee_type (attendee, promoted speaker, or volunteer staff) — matches
+  // what POST /api/panel-registrations actually enforces (which has no
+  // attendee_type filter either), so this "available"/"is_full" figure
+  // can't drift from what a real signup attempt would encounter.
   const panelIds = (data ?? []).map((p) => p.id);
   const { data: regRows } = panelIds.length
     ? await service
         .from('volunteer_registrations')
         .select('panel_id, is_waitlisted')
         .in('panel_id', panelIds)
-        .eq('attendee_type', 'attendee')
     : { data: [] as { panel_id: string; is_waitlisted: boolean }[] };
 
   const countMap = (regRows ?? []).reduce<Record<string, { filled: number; waitlisted: number }>>((acc, r) => {
