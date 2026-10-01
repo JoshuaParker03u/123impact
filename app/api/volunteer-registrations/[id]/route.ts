@@ -4,11 +4,11 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { sendDirectMessage } from '@/lib/discord/dm';
 import { baseEmbed } from '@/lib/discord/embed';
+import { VALID_ATTENDEE_TYPES, countsNeededFor, planRoleReassignment, type AttendeeType, type Anchor } from '@/lib/volunteer-registrations/role-reassignment';
 
 type Params = { params: Promise<{ id: string }> };
 
-const VALID_TYPES = ['volunteer', 'attendee', 'speaker'] as const;
-type AttendeeType = typeof VALID_TYPES[number];
+const VALID_TYPES = VALID_ATTENDEE_TYPES;
 
 const ROLE_LABELS: Record<AttendeeType, string> = {
   volunteer: 'Volunteer',
@@ -112,75 +112,36 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const updates: Record<string, unknown> = {};
+  let updates: Record<string, unknown> = {};
 
   if (attendee_type !== undefined) {
-    const currentAnchor: 'shift' | 'panel' | 'event' = reg.shift_id ? 'shift' : reg.panel_id ? 'panel' : 'event';
+    const currentAnchor: Anchor = reg.shift_id ? 'shift' : reg.panel_id ? 'panel' : 'event';
+    const currentType = reg.attendee_type as AttendeeType;
 
-    async function checkAttendeeCapacity() {
-      if (!event!.attendee_enabled) return 'Event does not allow attendee registration';
-      if (event!.attendee_capacity) {
-        const { count } = await service
-          .from('volunteer_registrations')
-          .select('*', { count: 'exact', head: true })
-          .eq('event_id', eventId)
-          .eq('attendee_type', 'attendee');
-        if ((count ?? 0) >= event!.attendee_capacity) return 'This event is full';
-      }
-      return null;
-    }
+    const needed = countsNeededFor({ currentAnchor, currentType, newType: attendee_type, event });
+    const [attendeeCountRes, shiftlessCountRes] = await Promise.all([
+      needed.attendeeCount
+        ? service.from('volunteer_registrations').select('*', { count: 'exact', head: true }).eq('event_id', eventId).eq('attendee_type', 'attendee')
+        : Promise.resolve({ count: undefined }),
+      needed.shiftlessVolunteerCount
+        ? service.from('volunteer_registrations').select('*', { count: 'exact', head: true }).eq('event_id', eventId).is('shift_id', null).eq('attendee_type', 'volunteer')
+        : Promise.resolve({ count: undefined }),
+    ]);
 
-    async function checkShiftlessCapacity() {
-      if (!event!.is_shiftless) return 'Event does not allow shiftless registration';
-      if (event!.shiftless_capacity) {
-        const { count } = await service
-          .from('volunteer_registrations')
-          .select('*', { count: 'exact', head: true })
-          .eq('event_id', eventId)
-          .is('shift_id', null)
-          .eq('attendee_type', 'volunteer');
-        if ((count ?? 0) >= event!.shiftless_capacity) return 'This event is full';
-      }
-      return null;
-    }
+    // Panel-anchored transitions deliberately never touch panel_assignments
+    // — that table is only for attaching an existing OTHER registration via
+    // "Assign Speaker"/"Assign Staff", which must never mutate that other
+    // registration's own attendee_type.
+    const result = planRoleReassignment({
+      currentAnchor,
+      currentType,
+      newType: attendee_type,
+      event,
+      counts: { attendeeCount: attendeeCountRes.count ?? undefined, shiftlessVolunteerCount: shiftlessCountRes.count ?? undefined },
+    });
 
-    function checkSpeakerAllowed() {
-      return event!.speaker_enabled ? null : 'Event does not allow speaker registration';
-    }
-
-    if (currentAnchor === 'shift') {
-      if (attendee_type !== 'volunteer') {
-        // Leaving the shift for an event-level role.
-        const err = attendee_type === 'attendee' ? await checkAttendeeCapacity() : checkSpeakerAllowed();
-        if (err) return NextResponse.json({ error: err }, { status: err === 'This event is full' ? 409 : 400 });
-        updates.shift_id = null;
-        updates.is_waitlisted = false;
-      }
-    } else if (currentAnchor === 'panel') {
-      // attendee/speaker/volunteer all stay on the panel via a simple
-      // in-place flip — same mechanism as the original "Promote to
-      // Speaker," now covering "Volunteer" too (panels can have volunteer
-      // staff whenever panels are enabled; no separate event-level gate).
-      // No capacity check: an in-place update never changes the panel's
-      // real confirmed headcount (see the capacity fix in
-      // app/api/events/[id]/panels/route.ts — every confirmed row counts
-      // toward panel.capacity regardless of type, so relabeling one
-      // doesn't add or remove an occupant). Deliberately never touches
-      // panel_assignments — that table is only for attaching an existing
-      // OTHER registration via "Assign Speaker"/"Assign Staff", which must
-      // never mutate that other registration's own attendee_type.
-      updates.is_waitlisted = false;
-    } else if (attendee_type !== reg.attendee_type) {
-      const err = attendee_type === 'attendee'
-        ? await checkAttendeeCapacity()
-        : attendee_type === 'volunteer'
-        ? await checkShiftlessCapacity()
-        : checkSpeakerAllowed();
-      if (err) return NextResponse.json({ error: err }, { status: err === 'This event is full' ? 409 : 400 });
-      updates.is_waitlisted = false;
-    }
-
-    updates.attendee_type = attendee_type;
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: result.error.status });
+    updates = { ...updates, ...result.updates };
   }
 
   if (is_waitlisted !== undefined) updates.is_waitlisted = is_waitlisted;
