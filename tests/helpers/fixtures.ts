@@ -99,6 +99,10 @@ export async function createTestShift(
     .from('shifts')
     .insert({
       event_id: eventId,
+      // Human-readable per-event shift number -- NOT NULL, unique per
+      // event_id. Tests never display it, so a random int avoids collisions
+      // within a single event without needing a real per-event counter.
+      shift_id: Math.floor(Math.random() * 1_000_000_000),
       name: tag('shift'),
       start_time: '09:00',
       end_time: '12:00',
