@@ -165,7 +165,7 @@ export default function EventTemplatesPage() {
               </div>
 
               {canManage && (
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
                       setEditingTemplate(template);
@@ -175,6 +175,7 @@ export default function EventTemplatesPage() {
                   >
                     Edit
                   </button>
+                  <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
                   <button
                     onClick={() => setDeletingTemplate(template)}
                     className="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"

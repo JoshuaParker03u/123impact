@@ -2,12 +2,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { sendDirectMessage } from '@/lib/discord/dm';
+import { baseEmbed } from '@/lib/discord/embed';
 
 type Params = { params: Promise<{ id: string }> };
 
+const VALID_TYPES = ['volunteer', 'attendee', 'speaker'] as const;
+type AttendeeType = typeof VALID_TYPES[number];
+
+const ROLE_LABELS: Record<AttendeeType, string> = {
+  volunteer: 'Volunteer',
+  attendee:  'Attendee',
+  speaker:   'Speaker',
+};
+
 // PATCH /api/volunteer-registrations/[id]
-// Promotes a waitlisted registration to confirmed (is_waitlisted = false).
-// Requires org admin access for the event.
+// Body: { is_waitlisted?: boolean, attendee_type?: 'volunteer' | 'attendee' | 'speaker' }
+//
+// attendee_type isn't just a label — a row's shift_id/panel_id anchor
+// determines what capacity it counts against, so a role change sometimes
+// also means leaving that anchor:
+//  - shift-anchored -> attendee/speaker: leaves the shift (shift_id cleared),
+//    gated by the event's attendee/speaker settings.
+//  - panel-anchored -> attendee/speaker: stays on the panel, free flip
+//    either direction against the panel's one shared capacity pool (this is
+//    "Promote to Speaker", generalized to also allow demoting back).
+//  - panel-anchored -> volunteer: leaves the panel, becomes a shiftless
+//    volunteer, gated by the event's shiftless settings.
+//  - unanchored (shiftless volunteer / attendee / event-level speaker):
+//    reassign freely among the three, each gated by its own event setting.
+// A reselection of the current value is always a no-op and never
+// capacity-checked — the row already counts toward its own bucket, so a
+// fresh count would wrongly reject an at-capacity no-op.
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id: registrationId } = await params;
 
@@ -33,27 +59,44 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { data: { user } } = await session.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Fetch the registration to find its shift → event → org
+  const body = await req.json().catch(() => ({}));
+  const { is_waitlisted, attendee_type } = body as { is_waitlisted?: boolean; attendee_type?: AttendeeType };
+
+  if (attendee_type !== undefined && !VALID_TYPES.includes(attendee_type)) {
+    return NextResponse.json({ error: 'Invalid attendee_type' }, { status: 400 });
+  }
+
   const { data: reg } = await service
     .from('volunteer_registrations')
-    .select('id, shift_id, is_waitlisted')
+    .select('id, shift_id, event_id, panel_id, attendee_type, discord_user_id')
     .eq('id', registrationId)
     .single();
 
   if (!reg) return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
 
-  const { data: shift } = await service
-    .from('shifts')
-    .select('event_id')
-    .eq('id', reg.shift_id)
-    .single();
+  // Resolve org via whichever scope this registration carries. Also grabs a
+  // human-readable name for the role-change DM below — the panel's own name
+  // when panel-anchored (role changes never leave the panel), else the
+  // event's title.
+  let eventId: string | null = null;
+  let contextName: string | null = null;
+  if (reg.shift_id) {
+    const { data: shift } = await service.from('shifts').select('event_id').eq('id', reg.shift_id).single();
+    eventId = shift?.event_id ?? null;
+  } else if (reg.panel_id) {
+    const { data: panel } = await service.from('panels').select('event_id, name').eq('id', reg.panel_id).single();
+    eventId = panel?.event_id ?? null;
+    contextName = panel?.name ?? null;
+  } else {
+    eventId = reg.event_id;
+  }
 
-  if (!shift) return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
+  if (!eventId) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
   const { data: event } = await service
     .from('events')
-    .select('organization_id')
-    .eq('id', shift.event_id)
+    .select('title, organization_id, is_shiftless, shiftless_capacity, attendee_enabled, attendee_capacity, speaker_enabled')
+    .eq('id', eventId)
     .single();
 
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -69,14 +112,101 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  const updates: Record<string, unknown> = {};
+
+  if (attendee_type !== undefined) {
+    const currentAnchor: 'shift' | 'panel' | 'event' = reg.shift_id ? 'shift' : reg.panel_id ? 'panel' : 'event';
+
+    async function checkAttendeeCapacity() {
+      if (!event!.attendee_enabled) return 'Event does not allow attendee registration';
+      if (event!.attendee_capacity) {
+        const { count } = await service
+          .from('volunteer_registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', eventId)
+          .eq('attendee_type', 'attendee');
+        if ((count ?? 0) >= event!.attendee_capacity) return 'This event is full';
+      }
+      return null;
+    }
+
+    async function checkShiftlessCapacity() {
+      if (!event!.is_shiftless) return 'Event does not allow shiftless registration';
+      if (event!.shiftless_capacity) {
+        const { count } = await service
+          .from('volunteer_registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', eventId)
+          .is('shift_id', null)
+          .eq('attendee_type', 'volunteer');
+        if ((count ?? 0) >= event!.shiftless_capacity) return 'This event is full';
+      }
+      return null;
+    }
+
+    function checkSpeakerAllowed() {
+      return event!.speaker_enabled ? null : 'Event does not allow speaker registration';
+    }
+
+    if (currentAnchor === 'shift') {
+      if (attendee_type !== 'volunteer') {
+        // Leaving the shift for an event-level role.
+        const err = attendee_type === 'attendee' ? await checkAttendeeCapacity() : checkSpeakerAllowed();
+        if (err) return NextResponse.json({ error: err }, { status: err === 'This event is full' ? 409 : 400 });
+        updates.shift_id = null;
+        updates.is_waitlisted = false;
+      }
+    } else if (currentAnchor === 'panel') {
+      // attendee/speaker/volunteer all stay on the panel via a simple
+      // in-place flip — same mechanism as the original "Promote to
+      // Speaker," now covering "Volunteer" too (panels can have volunteer
+      // staff whenever panels are enabled; no separate event-level gate).
+      // No capacity check: an in-place update never changes the panel's
+      // real confirmed headcount (see the capacity fix in
+      // app/api/events/[id]/panels/route.ts — every confirmed row counts
+      // toward panel.capacity regardless of type, so relabeling one
+      // doesn't add or remove an occupant). Deliberately never touches
+      // panel_assignments — that table is only for attaching an existing
+      // OTHER registration via "Assign Speaker"/"Assign Staff", which must
+      // never mutate that other registration's own attendee_type.
+      updates.is_waitlisted = false;
+    } else if (attendee_type !== reg.attendee_type) {
+      const err = attendee_type === 'attendee'
+        ? await checkAttendeeCapacity()
+        : attendee_type === 'volunteer'
+        ? await checkShiftlessCapacity()
+        : checkSpeakerAllowed();
+      if (err) return NextResponse.json({ error: err }, { status: err === 'This event is full' ? 409 : 400 });
+      updates.is_waitlisted = false;
+    }
+
+    updates.attendee_type = attendee_type;
+  }
+
+  if (is_waitlisted !== undefined) updates.is_waitlisted = is_waitlisted;
+
   const { data: updated, error } = await service
     .from('volunteer_registrations')
-    .update({ is_waitlisted: false })
+    .update(updates)
     .eq('id', registrationId)
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Best-effort — never blocks or fails the role change itself. Only fires
+  // on a genuine change (never a no-op reselection), and only when this
+  // registration is linked to a Discord account (i.e. they signed up or
+  // were reached via the bot in the first place).
+  if (attendee_type !== undefined && attendee_type !== reg.attendee_type && reg.discord_user_id) {
+    const name = contextName ?? event.title;
+    const embed = baseEmbed({
+      title: 'Role updated',
+      description: `Your role for **${name}** has been updated to **${ROLE_LABELS[attendee_type]}**.`,
+    });
+    sendDirectMessage(reg.discord_user_id, { embeds: [embed] }).catch((e) => console.error('role-change DM error:', e));
+  }
+
   return NextResponse.json(updated);
 }
 

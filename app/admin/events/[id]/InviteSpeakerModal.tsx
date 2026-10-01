@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Loader2, Clock } from 'lucide-react';
+import { Loader2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import FloatingWindow from '@/components/FloatingWindow';
 
 interface ExistingInvite {
   email: string;
@@ -48,18 +49,7 @@ export default function InviteSpeakerModal({ onClose, onInvite, existingInvites 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Invite a Speaker</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <FloatingWindow title="Invite a Speaker" onClose={onClose} maxWidthClassName="max-w-md">
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           They&apos;ll get a unique link to confirm — no account required. Set the topic now so they don&apos;t have to.
         </p>
@@ -117,7 +107,6 @@ export default function InviteSpeakerModal({ onClose, onInvite, existingInvites 
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Send Invite
           </Button>
         </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }

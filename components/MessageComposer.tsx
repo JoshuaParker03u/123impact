@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { getBrowserClient } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { REDACTED_EMAIL } from '@/lib/redact';
-import { X } from 'lucide-react';
+import FloatingWindow from '@/components/FloatingWindow';
 
 interface MessageComposerProps {
   isOpen: boolean;
@@ -13,9 +15,15 @@ interface MessageComposerProps {
   shiftId?: string;
   volunteerEmail?: string;
   volunteerName?: string;
+  // The specific registration being messaged — required for a Discord DM to
+  // go out on an individual send, since email alone isn't a unique key (one
+  // person can have several registrations) and can't be traced back to a
+  // discord_user_id reliably.
+  volunteerRegistrationId?: string;
 }
 
-type RecipientType = 'event' | 'shift' | 'volunteer';
+type RecipientType = 'event' | 'shift' | 'panel' | 'volunteer';
+type CountRow = { email: string; discord_user_id: string | null };
 
 export default function MessageComposer({
   isOpen,
@@ -24,6 +32,7 @@ export default function MessageComposer({
   shiftId,
   volunteerEmail,
   volunteerName,
+  volunteerRegistrationId,
 }: MessageComposerProps) {
   // When opened with a preset event or shift (e.g. "Message Volunteers" from
   // an event's manage page, or the message action on a specific shift), the
@@ -38,20 +47,40 @@ export default function MessageComposer({
   );
   const [selectedEvent, setSelectedEvent] = useState(eventId || '');
   const [selectedShift, setSelectedShift] = useState(shiftId || '');
+  const [selectedPanel, setSelectedPanel] = useState('');
   const [recipientCount, setRecipientCount] = useState(volunteerEmail ? 1 : 0);
+  const [dmCount, setDmCount] = useState(0);
   const [waitlistFilter, setWaitlistFilter] = useState<'all' | 'confirmed' | 'waitlisted'>('all');
   const [roleFilter, setRoleFilter] = useState<Set<'volunteer' | 'attendee' | 'speaker'>>(
     new Set(['volunteer', 'attendee', 'speaker'])
   );
   const [events, setEvents] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
+  const [panels, setPanels] = useState<{ id: string; name: string }[]>([]);
   const [sendMode, setSendMode] = useState<'now' | 'scheduled'>('now');
   const [scheduledFor, setScheduledFor] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  // Set once a send/schedule attempt completes — shown in place of a native
+  // alert(). 'success' replaces the whole form with a confirmation (nothing
+  // left to edit); 'error' shows a banner and leaves the form intact so the
+  // draft isn't lost and the user can just retry.
+  const [sendResult, setSendResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const { currentOrganization } = useOrganization() as { currentOrganization: { id: string } | null };
+  const { currentOrganization, user } = useOrganization() as { currentOrganization: { id: string } | null; user: { user_metadata?: { timezone?: string } } | null };
   const supabase = getBrowserClient();
+
+  // The <input type="datetime-local"> value is a bare wall-clock string with
+  // no timezone attached — "5:55 PM" on its own. Interpreting that naive
+  // string is ambiguous unless it's pinned to a specific zone: the account's
+  // chosen timezone (Settings → Timezone) when set, else wherever this
+  // browser currently is. Without pinning it explicitly, a plain
+  // `new Date(scheduledFor)` gets parsed as local time of whatever runtime
+  // reads it — which on the server is UTC, not the admin's actual timezone,
+  // so a message scheduled for "5:55 PM" could fire hours off from what was
+  // intended.
+  const timezone = user?.user_metadata?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   useEffect(() => {
     if (isOpen) {
@@ -61,6 +90,8 @@ export default function MessageComposer({
       setMessage('');
       setSendMode('now');
       setScheduledFor('');
+      setFormError(null);
+      setSendResult(null);
       if (volunteerEmail) {
         setRecipientType('volunteer');
         setRecipientCount(1);
@@ -71,6 +102,7 @@ export default function MessageComposer({
         setRecipientType('event');
         setSelectedEvent(eventId);
         loadShifts(eventId);
+        loadPanels(eventId);
       }
       if (shiftId) {
         setRecipientType('shift');
@@ -80,12 +112,15 @@ export default function MessageComposer({
   }, [isOpen, eventId, shiftId, volunteerEmail]);
 
   useEffect(() => {
-    if (selectedEvent) loadShifts(selectedEvent);
+    if (selectedEvent) {
+      loadShifts(selectedEvent);
+      loadPanels(selectedEvent);
+    }
   }, [selectedEvent]);
 
   useEffect(() => {
     if (recipientType !== 'volunteer') updateRecipientCount();
-  }, [recipientType, selectedEvent, selectedShift, waitlistFilter, roleFilter]);
+  }, [recipientType, selectedEvent, selectedShift, selectedPanel, waitlistFilter, roleFilter]);
 
   async function loadEvents() {
     let query = supabase.from('events').select('id, title').order('title');
@@ -103,43 +138,72 @@ export default function MessageComposer({
     setShifts(data || []);
   }
 
+  async function loadPanels(evId: string) {
+    const res = await fetch(`/api/events/${evId}/panels`);
+    setPanels(res.ok ? await res.json() : []);
+  }
+
   async function updateRecipientCount() {
     setLoading(true);
     let count = 0;
+    let dms = 0;
     try {
       if (recipientType === 'event' && selectedEvent && roleFilter.size > 0) {
         // Query by event_id directly (set on every registration, shift-based or
         // shiftless) rather than joining through shifts — a purely shiftless
         // event has no shift rows at all, so the old shifts-first join always
         // returned zero recipients for those events.
-        let q = supabase.from('volunteer_registrations').select('email')
+        let q = supabase.from('volunteer_registrations').select('email, discord_user_id')
           .eq('event_id', selectedEvent)
           .in('attendee_type', [...roleFilter]);
         if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
         const { data } = await q;
-        count = new Set(data?.map((r: any) => r.email) || []).size;
+        const rows = (data ?? []) as CountRow[];
+        const unique = rows.filter((r, i, self) => i === self.findIndex((x) => x.email === r.email));
+        count = unique.length;
+        dms = unique.filter((r) => r.discord_user_id).length;
       } else if (recipientType === 'shift' && selectedShift) {
         let q = supabase
           .from('volunteer_registrations')
-          .select('*', { count: 'exact', head: true })
+          .select('email, discord_user_id')
           .eq('shift_id', selectedShift);
         if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
-        const { count: c } = await q;
-        count = c || 0;
+        const { data } = await q;
+        const rows = (data ?? []) as CountRow[];
+        count = rows.length;
+        dms = rows.filter((r) => r.discord_user_id).length;
+      } else if (recipientType === 'panel' && selectedPanel && roleFilter.size > 0) {
+        let q = supabase.from('volunteer_registrations').select('email, discord_user_id')
+          .eq('panel_id', selectedPanel)
+          .in('attendee_type', [...roleFilter]);
+        if (waitlistFilter !== 'all') q = q.eq('is_waitlisted', waitlistFilter === 'waitlisted');
+        const { data } = await q;
+        const rows = (data ?? []) as CountRow[];
+        const unique = rows.filter((r, i, self) => i === self.findIndex((x) => x.email === r.email));
+        count = unique.length;
+        dms = unique.filter((r) => r.discord_user_id).length;
       }
     } catch (e) {
       console.error('Error counting recipients:', e);
     }
     setRecipientCount(count);
+    setDmCount(dms);
     setLoading(false);
   }
 
   async function handleSend() {
-    if (!subject || !message) { alert('Please fill in subject and message'); return; }
-    if (recipientCount === 0) { alert('No recipients selected'); return; }
+    setFormError(null);
+    setSendResult(null);
+    if (!subject || !message) { setFormError('Please fill in subject and message'); return; }
+    if (recipientCount === 0) { setFormError('No recipients selected'); return; }
+    // Pin the naive picker value to the account's chosen timezone (or this
+    // browser's, as a fallback) to get a real, unambiguous instant — see the
+    // `timezone` comment above for why this can't just be `new Date(...)`.
+    const scheduledInstant = scheduledFor ? fromZonedTime(scheduledFor, timezone) : null;
+
     if (sendMode === 'scheduled') {
-      if (!scheduledFor) { alert('Please choose a date and time to schedule the message'); return; }
-      if (new Date(scheduledFor) <= new Date()) { alert('Scheduled time must be in the future'); return; }
+      if (!scheduledFor) { setFormError('Please choose a date and time to schedule the message'); return; }
+      if (scheduledInstant! <= new Date()) { setFormError('Scheduled time must be in the future'); return; }
     }
 
     setSending(true);
@@ -153,49 +217,63 @@ export default function MessageComposer({
           recipientType,
           eventId: selectedEvent || null,
           shiftId: recipientType === 'shift' ? selectedShift : null,
+          panelId: recipientType === 'panel' ? selectedPanel : null,
+          registrationId: recipientType === 'volunteer' ? volunteerRegistrationId : null,
           volunteerEmail: recipientType === 'volunteer' ? volunteerEmail : null,
           volunteerName:  recipientType === 'volunteer' ? volunteerName  : null,
-          scheduledFor: sendMode === 'scheduled' ? scheduledFor : null,
+          scheduledFor: sendMode === 'scheduled' ? scheduledInstant!.toISOString() : null,
           waitlistFilter,
-          roles: recipientType === 'event' ? [...roleFilter] : null,
+          roles: (recipientType === 'event' || recipientType === 'panel') ? [...roleFilter] : null,
         }),
       });
 
       const data = await response.json();
       if (response.ok) {
-        if (data.scheduled) {
-          alert(`Message scheduled for ${new Date(scheduledFor).toLocaleString()} — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}.`);
-        } else {
-          alert(`Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}!`);
-        }
-        onClose();
-        setSubject('');
-        setMessage('');
-        setSendMode('now');
-        setScheduledFor('');
+        const dmNote = data.dmCount > 0 ? ` (including ${data.dmCount} via Discord DM)` : '';
+        const text = data.scheduled
+          ? `Message scheduled for ${formatInTimeZone(scheduledInstant!, timezone, 'PPpp')} (${timezone}) — will be sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}.`
+          : `Message sent to ${data.recipientCount} recipient${data.recipientCount !== 1 ? 's' : ''}${dmNote}!`;
+        setSendResult({ type: 'success', text });
       } else {
-        alert(`Error: ${data.error}`);
+        setSendResult({ type: 'error', text: data.error ?? 'Failed to send message' });
       }
     } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      setSendResult({ type: 'error', text: e.message ?? 'Failed to send message' });
     } finally {
       setSending(false);
     }
   }
 
+  function handleDone() {
+    onClose();
+    setSubject('');
+    setMessage('');
+    setSendMode('now');
+    setScheduledFor('');
+    setSendResult(null);
+  }
+
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Send Message</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-6 h-6" />
-            </button>
-          </div>
+  if (sendResult?.type === 'success') {
+    return (
+      <FloatingWindow title="Message Sent" onClose={handleDone} maxWidthClassName="max-w-md">
+        <div className="flex items-start gap-3 mb-6">
+          <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-gray-700 dark:text-gray-300">{sendResult.text}</p>
+        </div>
+        <button
+          onClick={handleDone}
+          className="w-full bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90 text-white py-2 px-4 rounded-lg"
+        >
+          Done
+        </button>
+      </FloatingWindow>
+    );
+  }
 
+  return (
+    <FloatingWindow title="Send Message" onClose={onClose} maxWidthClassName="max-w-2xl">
           <div className="space-y-4">
             {/* Send to selector — hidden for individual-volunteer sends and
                 whenever opened with a preset event/shift (the mode is
@@ -211,6 +289,7 @@ export default function MessageComposer({
                 >
                   <option value="event">Volunteers by Event</option>
                   <option value="shift">Volunteers by Shift</option>
+                  <option value="panel">Volunteers by Panel</option>
                 </select>
               </div>
             )}
@@ -282,10 +361,44 @@ export default function MessageComposer({
               </>
             )}
 
-            {/* Role filter — only meaningful for event-wide sends; shift
+            {recipientType === 'panel' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Event</label>
+                  <select
+                    value={selectedEvent}
+                    onChange={(e) => !sendToLocked && setSelectedEvent(e.target.value)}
+                    disabled={sendToLocked}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 ${
+                      sendToLocked ? 'opacity-70 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="">Choose an event...</option>
+                    {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
+                  </select>
+                </div>
+                {selectedEvent && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Panel</label>
+                    <select
+                      value={selectedPanel}
+                      onChange={(e) => setSelectedPanel(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Choose a panel...</option>
+                      {panels.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Role filter — meaningful for event-wide and panel sends; shift
                 registrations are always Volunteers, since Attendees/Speakers
                 never pick a shift. */}
-            {recipientType === 'event' && (
+            {(recipientType === 'event' || recipientType === 'panel') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Roles</label>
                 <div className="flex flex-col gap-1.5 text-sm text-gray-700 dark:text-gray-300">
@@ -329,7 +442,11 @@ export default function MessageComposer({
 
             <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                {loading ? 'Calculating...' : `This message will be sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}`}
+                {loading
+                  ? 'Calculating...'
+                  : `This message will be sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}${
+                      dmCount > 0 ? ` (including ${dmCount} via Discord DM)` : ''
+                    }`}
               </p>
             </div>
 
@@ -374,19 +491,30 @@ export default function MessageComposer({
                 ))}
               </div>
               {sendMode === 'scheduled' && (
-                <input
-                  type="datetime-local"
-                  value={scheduledFor}
-                  min={(() => {
-                    const d = new Date(Date.now() + 60000);
-                    const pad = (n: number) => String(n).padStart(2, '0');
-                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                  })()}
-                  onChange={(e) => setScheduledFor(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
-                />
+                <>
+                  <input
+                    type="datetime-local"
+                    value={scheduledFor}
+                    min={formatInTimeZone(new Date(Date.now() + 60000), timezone, "yyyy-MM-dd'T'HH:mm")}
+                    onChange={(e) => setScheduledFor(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Time zone: {timezone}
+                    {user?.user_metadata?.timezone
+                      ? ' (from your account settings)'
+                      : " (this browser's — set one under Settings for a fixed value)"}
+                  </p>
+                </>
               )}
             </div>
+
+            {(formError || sendResult?.type === 'error') && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-400">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{formError || sendResult?.text}</span>
+              </div>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button
@@ -406,8 +534,6 @@ export default function MessageComposer({
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }

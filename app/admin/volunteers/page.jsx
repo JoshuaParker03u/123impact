@@ -6,6 +6,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase';
 import MessageComposer from '@/components/MessageComposer';
+import MessagesSection from '@/components/admin/MessagesSection';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,20 @@ function VolunteerAvatar({ name }) {
       {initials}
     </div>
   );
+}
+
+// A registration is anchored to at most one of shift_id/panel_id — this
+// picks whichever applies (or "Direct registration" for a shiftless/
+// event-level one) instead of a column that only ever showed shift info.
+function anchorLabel(volunteer) {
+  if (volunteer.shift_id) return volunteer.shifts?.name || '—';
+  if (volunteer.panel_id) return volunteer.panels?.name || '—';
+  return 'Direct registration';
+}
+function anchorTimes(volunteer) {
+  if (volunteer.shift_id) return volunteer.shifts;
+  if (volunteer.panel_id) return volunteer.panels;
+  return null;
 }
 
 // Compares plain "YYYY-MM-DD" strings directly rather than going through
@@ -230,6 +245,7 @@ function AdminVolunteersPage() {
   const [removingVolunteer, setRemovingVolunteer] = useState(null);
   const [removing, setRemoving] = useState(false);
   const searchParams = useSearchParams();
+  const [sectionTab, setSectionTab] = useState(searchParams.get('tab') === 'messages' ? 'messages' : 'volunteers');
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -285,9 +301,16 @@ function AdminVolunteersPage() {
           phone,
           registered_at,
           shift_id,
+          panel_id,
           event_id,
           attendee_type,
           shifts (
+            id,
+            name,
+            start_time,
+            end_time
+          ),
+          panels (
             id,
             name,
             start_time,
@@ -475,6 +498,32 @@ function AdminVolunteersPage() {
           </p>
         </div>
 
+        {/* Section tabs — Messages lives here rather than its own nav entry */}
+        <div className="mb-6 border-b dark:border-gray-700">
+          <nav className="flex gap-4">
+            {[
+              { id: 'volunteers', label: 'Volunteers' },
+              { id: 'messages',   label: 'Messages' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSectionTab(tab.id)}
+                className={`pb-3 px-2 font-medium transition-colors ${
+                  sectionTab === tab.id
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {sectionTab === 'messages' && <MessagesSection />}
+
+        {sectionTab === 'volunteers' && (
+        <>
         {/* Filters */}
         <Card className="p-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -597,7 +646,7 @@ function AdminVolunteersPage() {
                     <tr>
                       <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Volunteer</th>
                       <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Event</th>
-                      <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Shift</th>
+                      <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Shift / Panel</th>
                       <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Registered</th>
                       <th className="text-left p-4 font-semibold text-gray-700 dark:text-gray-300">Check-in</th>
                       <th className="p-4" />
@@ -630,10 +679,10 @@ function AdminVolunteersPage() {
                           <p className="text-sm text-gray-600 dark:text-gray-400">{volunteer.events?.date || ''}</p>
                         </td>
                         <td className="p-4">
-                          <p className="font-medium text-gray-900 dark:text-gray-100">{volunteer.shift_id ? (volunteer.shifts?.name || '—') : 'Direct registration'}</p>
-                          {volunteer.shift_id && (
+                          <p className="font-medium text-gray-900 dark:text-gray-100">{anchorLabel(volunteer)}</p>
+                          {anchorTimes(volunteer) && (
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                              {volunteer.shifts?.start_time || ''} - {volunteer.shifts?.end_time || ''}
+                              {anchorTimes(volunteer)?.start_time || ''} - {anchorTimes(volunteer)?.end_time || ''}
                               {volunteer.hours > 0 && ` (${volunteer.hours}h)`}
                             </p>
                           )}
@@ -657,7 +706,7 @@ function AdminVolunteersPage() {
                             <button
                               onClick={() => setRemovingVolunteer(volunteer)}
                               className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                              title="Remove from shift"
+                              title="Remove registration"
                             >
                               <X className="w-4 h-4" />
                             </button>
@@ -696,7 +745,7 @@ function AdminVolunteersPage() {
                       <button
                         onClick={() => setRemovingVolunteer(volunteer)}
                         className="ml-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors flex-shrink-0"
-                        title="Remove from shift"
+                        title="Remove registration"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -709,11 +758,11 @@ function AdminVolunteersPage() {
                       <p className="text-gray-500 dark:text-gray-400 text-xs">{volunteer.events?.date || ''}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Shift</p>
-                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{volunteer.shift_id ? (volunteer.shifts?.name || '—') : 'Direct registration'}</p>
-                      {volunteer.shift_id && (
+                      <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Shift / Panel</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{anchorLabel(volunteer)}</p>
+                      {anchorTimes(volunteer) && (
                         <p className="text-gray-500 dark:text-gray-400 text-xs">
-                          {volunteer.shifts?.start_time || ''} – {volunteer.shifts?.end_time || ''}
+                          {anchorTimes(volunteer)?.start_time || ''} – {anchorTimes(volunteer)?.end_time || ''}
                           {volunteer.hours > 0 && ` (${volunteer.hours}h)`}
                         </p>
                       )}
@@ -745,6 +794,8 @@ function AdminVolunteersPage() {
             <p className="text-gray-600 dark:text-gray-400">No volunteers match your filters</p>
           </Card>
         )}
+        </>
+        )}
       </div>
 
       {messageVolunteer && (
@@ -753,6 +804,7 @@ function AdminVolunteersPage() {
           onClose={() => setMessageVolunteer(null)}
           volunteerEmail={messageVolunteer.email}
           volunteerName={messageVolunteer.name}
+          volunteerRegistrationId={messageVolunteer.id}
         />
       )}
 
@@ -761,7 +813,7 @@ function AdminVolunteersPage() {
           title="Remove Volunteer"
           message={
             <>
-              Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removingVolunteer.name}</span> from {removingVolunteer.shift_id ? removingVolunteer.shifts?.name : (removingVolunteer.events?.title || 'this event')}?
+              Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removingVolunteer.name}</span> from {removingVolunteer.shift_id ? removingVolunteer.shifts?.name : removingVolunteer.panel_id ? removingVolunteer.panels?.name : (removingVolunteer.events?.title || 'this event')}?
             </>
           }
           confirmLabel="Remove"

@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { X, Upload, Link as LinkIcon, ImageOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import FloatingWindow from '@/components/FloatingWindow';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -224,20 +225,8 @@ export default function CreateOrganizationModal({ onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b dark:border-gray-800">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Create Organization</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+    <FloatingWindow title="Create Organization" onClose={onClose} maxWidthClassName="max-w-2xl">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Global error */}
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">
@@ -365,7 +354,6 @@ export default function CreateOrganizationModal({ onClose, onSuccess }) {
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }

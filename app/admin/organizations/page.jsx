@@ -10,6 +10,7 @@ import CheckoutModal from '@/components/admin/CheckoutModal';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import FloatingWindow from '@/components/FloatingWindow';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Upload, Link as LinkIcon, X, Loader2, Check, AlertTriangle,
@@ -265,13 +266,7 @@ function InviteModal({ orgId, onClose, onSent, userRole }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <Card className="w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Invite Member</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="w-5 h-5" /></button>
-        </div>
-
+    <FloatingWindow title="Invite Member" onClose={onClose} maxWidthClassName="max-w-md">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email address</label>
@@ -309,15 +304,16 @@ function InviteModal({ orgId, onClose, onSent, userRole }) {
             </div>
           )}
 
-          <div className="flex gap-3 pt-1">
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
             <Button type="submit" disabled={!valid || sending} className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90 disabled:opacity-50">
               {sending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending…</> : <><Send className="w-4 h-4 mr-2" />Send Invitation</>}
             </Button>
           </div>
         </form>
-      </Card>
-    </div>
+    </FloatingWindow>
   );
 }
 
@@ -847,14 +843,8 @@ function ImportModal({ orgId, platform, onClose, onImported }) {
   const platformLabel = platform === 'luma' ? 'Luma' : 'Eventbrite';
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between p-5 border-b dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Import from {platformLabel}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="w-5 h-5" /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5">
+    <FloatingWindow title={`Import from ${platformLabel}`} onClose={onClose} maxWidthClassName="max-w-lg" noPadding>
+        <div className="max-h-[50vh] overflow-y-auto p-5">
           {loading && <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>}
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           {!loading && !error && events.length === 0 && (
@@ -900,14 +890,13 @@ function ImportModal({ orgId, platform, onClose, onImported }) {
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }
 
 function IntegrationsTab({ orgId }) {
   const searchParams = useSearchParams();
-  const [connections, setConnections] = useState({ luma: null, eventbrite: null });
+  const [connections, setConnections] = useState({ luma: null, eventbrite: null, discord: null });
   const [loading, setLoading]         = useState(true);
   const [lumaKey, setLumaKey]         = useState('');
   const [savingLuma, setSavingLuma]   = useState(false);
@@ -917,11 +906,17 @@ function IntegrationsTab({ orgId }) {
   const [importModal, setImportModal] = useState(null);
   const [toast, setToast]             = useState('');
   const [oauthError, setOauthError]   = useState('');
+  const [discordChannels, setDiscordChannels] = useState(null);
+  const [savingChannel, setSavingChannel]     = useState(false);
+  const [savingAnnouncementChannel, setSavingAnnouncementChannel] = useState(false);
 
   const OAUTH_ERRORS = {
     eventbrite_already_connected: 'This Eventbrite account is already connected to another organization.',
     eventbrite_denied:  'Eventbrite authorization was cancelled.',
     eventbrite_failed:  'Eventbrite connection failed. Please try again.',
+    discord_already_connected: 'This Discord server is already connected to another organization.',
+    discord_denied:     'Discord authorization was cancelled.',
+    discord_failed:     'Discord connection failed. Please try again.',
     invalid_state:      'Invalid OAuth state. Please try again.',
   };
 
@@ -941,6 +936,36 @@ function IntegrationsTab({ orgId }) {
 
   useEffect(() => { if (orgId) loadConnections(); }, [orgId]);
 
+  useEffect(() => {
+    if (!orgId || !connections.discord) { setDiscordChannels(null); return; }
+    fetch(`/api/organizations/${orgId}/discord/channels`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setDiscordChannels)
+      .catch(() => setDiscordChannels([]));
+  }, [orgId, connections.discord]);
+
+  async function saveDiscordChannel(channelId) {
+    setSavingChannel(true);
+    await fetch(`/api/organizations/${orgId}/connections`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'discord', channel_id: channelId || null }),
+    });
+    setSavingChannel(false);
+    loadConnections();
+  }
+
+  async function saveAnnouncementChannel(channelId) {
+    setSavingAnnouncementChannel(true);
+    await fetch(`/api/organizations/${orgId}/connections`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'discord', announcement_channel_id: channelId || null }),
+    });
+    setSavingAnnouncementChannel(false);
+    loadConnections();
+  }
+
   async function connectLuma() {
     if (!lumaKey.trim()) return;
     setSavingLuma(true); setLumaError(''); setLumaSuccess(false);
@@ -957,8 +982,13 @@ function IntegrationsTab({ orgId }) {
     finally { setSavingLuma(false); }
   }
 
+  const PLATFORM_LABELS = { luma: 'Luma', eventbrite: 'Eventbrite', discord: 'Discord' };
+
   async function disconnect(platform) {
-    if (!confirm(`Disconnect ${platform === 'luma' ? 'Luma' : 'Eventbrite'}? Sync will stop but your imported events will not be affected.`)) return;
+    const confirmMsg = platform === 'discord'
+      ? 'Disconnect Discord? The bot will lose access to this server.'
+      : `Disconnect ${PLATFORM_LABELS[platform]}? Sync will stop but your imported events will not be affected.`;
+    if (!confirm(confirmMsg)) return;
     setDisconnecting(platform);
     await fetch(`/api/organizations/${orgId}/connections`, {
       method: 'DELETE',
@@ -990,6 +1020,11 @@ function IntegrationsTab({ orgId }) {
       key: 'eventbrite',
       label: 'Eventbrite',
       description: 'Import events from your Eventbrite organization via OAuth.',
+    },
+    {
+      key: 'discord',
+      label: 'Discord',
+      description: "Connect your organization's Discord server so a future bot can post event signups there.",
     },
   ];
 
@@ -1037,7 +1072,12 @@ function IntegrationsTab({ orgId }) {
                 <div className="flex items-center gap-2 shrink-0">
                   {conn && (
                     <>
-                      <Button size="sm" variant="outline" onClick={() => setImportModal(key)}>Import Events</Button>
+                      {key !== 'discord' && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setImportModal(key)}>Import Events</Button>
+                          <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
+                        </>
+                      )}
                       <Button size="sm" variant="outline" onClick={() => disconnect(key)} disabled={disconnecting === key} className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20">
                         {disconnecting === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Disconnect'}
                       </Button>
@@ -1046,6 +1086,11 @@ function IntegrationsTab({ orgId }) {
                   {!conn && key === 'eventbrite' && (
                     <Button size="sm" onClick={() => window.location.href = `/api/auth/integrations/eventbrite?org_id=${orgId}`}>
                       Connect Eventbrite
+                    </Button>
+                  )}
+                  {!conn && key === 'discord' && (
+                    <Button size="sm" onClick={() => window.location.href = `/api/auth/integrations/discord?org_id=${orgId}`}>
+                      Connect Discord
                     </Button>
                   )}
                 </div>
@@ -1071,7 +1116,7 @@ function IntegrationsTab({ orgId }) {
                 </div>
               )}
 
-              {conn && (
+              {conn && key !== 'discord' && (
                 <div className="mt-4 pt-4 border-t dark:border-gray-700">
                   <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-gray-700 dark:text-gray-300">
                     <input type="checkbox" className="rounded"
@@ -1079,6 +1124,46 @@ function IntegrationsTab({ orgId }) {
                       onChange={e => toggleSync(key, e.target.checked)} />
                     Automatically import new events added to this account (nightly)
                   </label>
+                </div>
+              )}
+
+              {conn && key === 'discord' && (
+                <div className="mt-4 pt-4 border-t dark:border-gray-700 space-y-2">
+                  <label className="block text-sm text-gray-700 dark:text-gray-300">
+                    Command channel
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    /signup only responds in this channel. Leave unset to allow it anywhere.
+                  </p>
+                  <select
+                    className="w-full max-w-xs px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    value={conn.channel_id ?? ''}
+                    disabled={savingChannel || discordChannels === null}
+                    onChange={e => saveDiscordChannel(e.target.value)}
+                  >
+                    <option value="">Any channel</option>
+                    {(discordChannels ?? []).map(c => (
+                      <option key={c.id} value={c.id}>#{c.name}</option>
+                    ))}
+                  </select>
+
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 pt-2">
+                    Announcement Channel
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    Where the bot posts announcements (starting with its welcome message, with event and panel announcements coming later). We recommend a channel only the bot can post to, so these don&apos;t get lost in regular chat. Nothing is posted until you set this.
+                  </p>
+                  <select
+                    className="w-full max-w-xs px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    value={conn.announcement_channel_id ?? ''}
+                    disabled={savingAnnouncementChannel || discordChannels === null}
+                    onChange={e => saveAnnouncementChannel(e.target.value)}
+                  >
+                    <option value="">Select a channel…</option>
+                    {(discordChannels ?? []).map(c => (
+                      <option key={c.id} value={c.id}>#{c.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
             </div>
@@ -1277,6 +1362,9 @@ function MembersTab({ org, currentUserId, userRole }) {
                   >
                     <Crown className="w-4 h-4" />
                   </button>
+                )}
+                {canEditRole && canRemove && (
+                  <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                 )}
                 {canRemove && (
                   <button

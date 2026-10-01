@@ -3,6 +3,8 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { lumaValidateKey } from '@/lib/platforms/luma';
+import { maybeSendWelcomeMessage } from '@/lib/discord/welcome';
+import { leaveGuild } from '@/lib/discord/api';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -52,15 +54,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: rows } = await service
     .from('platform_connections')
-    .select('platform, sync_new_events, connected_at, external_org_id')
+    .select('platform, sync_new_events, connected_at, external_org_id, channel_id, announcement_channel_id')
     .eq('organization_id', orgId);
 
-  const connections = { luma: null as any, eventbrite: null as any };
+  const connections = { luma: null as any, eventbrite: null as any, discord: null as any };
   for (const row of rows ?? []) {
-    connections[row.platform as 'luma' | 'eventbrite'] = {
-      connected:       true,
-      sync_new_events: row.sync_new_events,
-      connected_at:    row.connected_at,
+    connections[row.platform as 'luma' | 'eventbrite' | 'discord'] = {
+      connected:                true,
+      sync_new_events:          row.sync_new_events,
+      connected_at:             row.connected_at,
+      external_org_id:          row.external_org_id,
+      channel_id:               row.channel_id,
+      announcement_channel_id:  row.announcement_channel_id,
     };
   }
 
@@ -120,7 +125,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/organizations/[id]/connections
-// Body: { platform, sync_new_events: boolean }
+// Body: { platform, sync_new_events?: boolean, channel_id?: string | null, announcement_channel_id?: string | null }
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id: orgId } = await params;
   const cookieStore = await cookies();
@@ -132,14 +137,27 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { platform, sync_new_events } = await req.json();
+  const { platform, sync_new_events, channel_id, announcement_channel_id } = await req.json();
+  const updates: Record<string, unknown> = {};
+  if (sync_new_events !== undefined) updates.sync_new_events = sync_new_events;
+  if (channel_id !== undefined) updates.channel_id = channel_id;
+  if (announcement_channel_id !== undefined) updates.announcement_channel_id = announcement_channel_id;
+
   const { error } = await service
     .from('platform_connections')
-    .update({ sync_new_events })
+    .update(updates)
     .eq('organization_id', orgId)
     .eq('platform', platform);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // First time an org points announcements at a channel, greet it there —
+  // covers guilds where the join-time system-channel post never happened.
+  if (platform === 'discord' && announcement_channel_id) {
+    maybeSendWelcomeMessage(service, orgId, announcement_channel_id)
+      .catch((e) => console.error('maybeSendWelcomeMessage error:', e));
+  }
+
   return NextResponse.json({ success: true });
 }
 
@@ -157,6 +175,21 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   const { platform } = await req.json();
+
+  // Fetch the guild id before deleting so the bot can leave it afterward —
+  // disconnecting in the app but leaving the bot sitting in the server's
+  // member list is confusing and looks like the disconnect didn't work.
+  let guildId: string | null = null;
+  if (platform === 'discord') {
+    const { data: row } = await service
+      .from('platform_connections')
+      .select('external_org_id')
+      .eq('organization_id', orgId)
+      .eq('platform', 'discord')
+      .maybeSingle();
+    guildId = row?.external_org_id ?? null;
+  }
+
   const { error } = await service
     .from('platform_connections')
     .delete()
@@ -164,5 +197,12 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     .eq('platform', platform);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Best-effort: the disconnect itself already succeeded, so a Discord API
+  // hiccup here shouldn't be reported as a failed disconnect.
+  if (guildId) {
+    leaveGuild(guildId).catch((e) => console.error('leaveGuild error:', e));
+  }
+
   return NextResponse.json({ success: true });
 }

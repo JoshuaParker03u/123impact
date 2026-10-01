@@ -6,10 +6,12 @@ import { getBrowserClient } from '@/lib/supabase';
 import EventModal from '@/components/admin/EventModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail, CalendarClock } from 'lucide-react';
+import FloatingWindow from '@/components/FloatingWindow';
+import { Calendar, MapPin, Users, Clock, Plus, Edit, Trash2, ChevronDown, ChevronUp, Loader2, Search, ArrowRight, Copy, AlertTriangle, Mail, CalendarClock, Send } from 'lucide-react';
 import Link from 'next/link';
 import MessageComposer from '@/components/MessageComposer';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
+import DiscordPostConfirmModal from '@/components/DiscordPostConfirmModal';
 import SeriesManagerModal from '@/components/admin/SeriesManagerModal';
 
 const supabase = getBrowserClient();
@@ -31,6 +33,7 @@ export default function AdminEventsPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedEvent, setExpandedEvent] = useState(null);
+  const [expandedPanelsEvent, setExpandedPanelsEvent] = useState(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -45,6 +48,11 @@ export default function AdminEventsPage() {
   const [messagingEvent, setMessagingEvent] = useState(null);
   const [manageSeriesId, setManageSeriesId] = useState(null);
   const [orgPlan, setOrgPlan] = useState('free');
+  const [discordAnnouncementChannelId, setDiscordAnnouncementChannelId] = useState(null);
+  const [discordAnnouncementChannelName, setDiscordAnnouncementChannelName] = useState(null);
+  const [discordAnnounceEvent, setDiscordAnnounceEvent] = useState(null);
+  const [postingDiscordId, setPostingDiscordId] = useState(null);
+  const [discordResult, setDiscordResult] = useState(null);
 
   // Fetch events when organization changes
   useEffect(() => {
@@ -98,6 +106,23 @@ export default function AdminEventsPage() {
       }, {});
     }
 
+    // Panels are service-role-only at the RLS level (no client-read policy —
+    // same as event_speaker_invites), so they can't be embedded in the
+    // select above the way shifts can. Fetch each panels-enabled event's
+    // panels through the existing public API route instead, which already
+    // computes filled/waitlisted the same way the panel capacity fix
+    // elsewhere in the app does.
+    const panelsEnabledEvents = (data || []).filter(e => e.panels_enabled);
+    const panelsByEvent = {};
+    if (panelsEnabledEvents.length > 0) {
+      const results = await Promise.all(
+        panelsEnabledEvents.map(e =>
+          fetch(`/api/events/${e.id}/panels`).then(r => (r.ok ? r.json() : []))
+        )
+      );
+      panelsEnabledEvents.forEach((e, i) => { panelsByEvent[e.id] = results[i]; });
+    }
+
     // Count attendee/speaker registrations per event (these are shiftless,
     // so they aren't covered by the shift_id-scoped query above)
     const eventIds = (data || []).map(e => e.id);
@@ -122,6 +147,7 @@ export default function AdminEventsPage() {
         filled:    countMap[shift.id]?.filled    ?? 0,
         waitlisted: countMap[shift.id]?.waitlisted ?? 0,
       })),
+      panels: panelsByEvent[event.id] || [],
       attendeeCount: roleCountMap[event.id]?.attendee ?? 0,
       speakerCount:  roleCountMap[event.id]?.speaker ?? 0,
     }));
@@ -136,6 +162,37 @@ export default function AdminEventsPage() {
       .eq('id', currentOrganization.id)
       .maybeSingle();
     setOrgPlan(orgData?.plan ?? 'free');
+
+    // Fetch Discord announcement-channel status once per org, so every
+    // event row can show the "Post to Discord" action without a fetch each
+    const connectionsRes = await fetch(`/api/organizations/${currentOrganization.id}/connections`);
+    if (connectionsRes.ok) {
+      const connectionsJson = await connectionsRes.json();
+      const announcementChannelId = connectionsJson?.discord?.announcement_channel_id ?? null;
+      setDiscordAnnouncementChannelId(announcementChannelId);
+      if (announcementChannelId) {
+        fetch(`/api/organizations/${currentOrganization.id}/discord/channels`)
+          .then((r) => (r.ok ? r.json() : []))
+          .then((channels) => {
+            setDiscordAnnouncementChannelName(channels.find((c) => c.id === announcementChannelId)?.name ?? null);
+          })
+          .catch(() => {});
+      } else {
+        setDiscordAnnouncementChannelName(null);
+      }
+    }
+  };
+
+  const postEventToDiscord = async (eventId) => {
+    setPostingDiscordId(eventId);
+    const res = await fetch(`/api/events/${eventId}/discord-announce`, { method: 'POST' });
+    setPostingDiscordId(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setDiscordResult(data.error ?? 'Failed to post to Discord');
+      return;
+    }
+    setDiscordResult('success');
   };
 
   const handleCreateEvent = () => {
@@ -342,6 +399,7 @@ export default function AdminEventsPage() {
           <div className="space-y-4">
             {visibleEvents.map((event) => {
               const isExpanded = expandedEvent === event.id;
+              const isPanelsExpanded = expandedPanelsEvent === event.id;
               const totalVolunteers = event.shifts?.reduce((sum, shift) => sum + (shift.filled || 0), 0) || 0;
               const totalCapacity   = event.shifts?.reduce((sum, shift) => sum + shift.capacity, 0) || 0;
               const totalWaitlisted = event.shifts?.reduce((sum, shift) => sum + (shift.waitlisted || 0), 0) || 0;
@@ -416,7 +474,21 @@ export default function AdminEventsPage() {
                           <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
                         )}
                       </div>
-                      <div className="flex gap-2 mt-3 sm:mt-0 sm:ml-4">
+                      <div className="flex items-center gap-2 mt-3 sm:mt-0 sm:ml-4">
+                        {isAdmin && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeletingEvent(event)}
+                              title="Delete event"
+                              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                            <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
+                          </>
+                        )}
                         {isAdmin && (
                           <Button
                             variant="outline"
@@ -461,15 +533,14 @@ export default function AdminEventsPage() {
                               : <Copy className="w-4 h-4" />}
                           </Button>
                         )}
-                        {isAdmin && (
+                        {isAdmin && discordAnnouncementChannelId && (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setDeletingEvent(event)}
-                            title="Delete event"
-                            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/20"
+                            onClick={() => { setDiscordResult(null); setDiscordAnnounceEvent(event); }}
+                            title="Post to Discord"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Send className="w-4 h-4" />
                           </Button>
                         )}
                       </div>
@@ -489,6 +560,7 @@ export default function AdminEventsPage() {
                             >
                               Complete
                             </button>
+                            <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                             <button
                               onClick={() => resolveEventStatus(event.id, 'cancelled')}
                               className="text-xs px-2 py-1 rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
@@ -500,18 +572,28 @@ export default function AdminEventsPage() {
                       </div>
                     )}
 
-                    {/* Shifts Toggle / Manage footer */}
+                    {/* Shifts/Panels Toggle / Manage footer */}
                     <div className="flex items-center justify-between pt-4 border-t dark:border-gray-700">
-                      {!event.is_shiftless && (
-                        <button
-                          onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
-                          className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
-                        >
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          {event.shifts?.length || 0} Shifts
-                        </button>
-                      )}
-                      {event.is_shiftless && <span />}
+                      <div className="flex items-center gap-4">
+                        {!event.is_shiftless && (
+                          <button
+                            onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
+                            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            {event.shifts?.length || 0} Shifts
+                          </button>
+                        )}
+                        {event.panels_enabled && (
+                          <button
+                            onClick={() => setExpandedPanelsEvent(isPanelsExpanded ? null : event.id)}
+                            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            {isPanelsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            {event.panels?.length || 0} Panels
+                          </button>
+                        )}
+                      </div>
                       <Link
                         href={`/admin/events/${event.event_id}`}
                         className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
@@ -550,6 +632,54 @@ export default function AdminEventsPage() {
                                       <Clock className="w-3 h-3" />
                                       {shift.start_time} - {shift.end_time}
                                     </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Panels List (Collapsible) */}
+                  {isPanelsExpanded && event.panels_enabled && (
+                    <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-6">
+                      {!event.panels || event.panels.length === 0 ? (
+                        <p className="text-gray-600 dark:text-gray-400 text-center py-4">No panels yet. Add one to get started!</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {event.panels.map((panel) => {
+                            const spotsLeft = panel.capacity - (panel.filled || 0);
+                            const isFull = spotsLeft <= 0;
+
+                            return (
+                              <div
+                                key={panel.id}
+                                className="bg-white dark:bg-gray-800 rounded-lg p-4 flex justify-between items-center"
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
+                                    <span className={`text-sm font-medium ${isFull ? 'text-red-600' : 'text-green-600'}`}>
+                                      {panel.filled || 0}/{panel.capacity} registered
+                                    </span>
+                                    {panel.waitlisted > 0 && (
+                                      <span className="text-xs text-amber-600 dark:text-amber-400">{panel.waitlisted} waitlisted</span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{panel.description}</p>
+                                  <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      {panel.start_time} - {panel.end_time}
+                                    </span>
+                                    {panel.location && (
+                                      <span className="flex items-center gap-1">
+                                        <MapPin className="w-3 h-3" />
+                                        {panel.location}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -607,6 +737,16 @@ export default function AdminEventsPage() {
             seriesId={manageSeriesId}
             onClose={() => setManageSeriesId(null)}
             onChanged={fetchEvents}
+          />
+        )}
+
+        {discordAnnounceEvent && (
+          <DiscordPostConfirmModal
+            channelName={discordAnnouncementChannelName}
+            loading={postingDiscordId === discordAnnounceEvent.id}
+            result={discordResult}
+            onCancel={() => setDiscordAnnounceEvent(null)}
+            onConfirm={() => postEventToDiscord(discordAnnounceEvent.id)}
           />
         )}
 
@@ -693,10 +833,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="max-w-lg w-full">
-        <div className="p-6">
-          <h2 className="text-2xl font-bold mb-6">{shift ? 'Edit Shift' : 'Create Shift'}</h2>
+    <FloatingWindow title={shift ? 'Edit Shift' : 'Create Shift'} onClose={onClose} maxWidthClassName="max-w-lg">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Shift Name</label>
@@ -773,8 +910,6 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
               </Button>
             </div>
           </form>
-        </div>
-      </Card>
-    </div>
+    </FloatingWindow>
   );
 }

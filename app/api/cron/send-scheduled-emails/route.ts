@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { sendEmail, filterOptedOut } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
+import { sendDirectMessage } from '@/lib/discord/dm';
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -32,6 +33,18 @@ export async function GET(request: Request) {
     const allowed = new Set(
       await filterOptedOut(supabase, emails.map(e => e.volunteer_email))
     );
+
+    // Resolve which Discord account (if any) to DM for each row. Rows from
+    // the admin-scheduled-message path already carry discord_user_id
+    // directly; rows from the automated-template path only carry
+    // volunteer_registration_id, so those need one batched join.
+    const regIds = [...new Set(
+      emails.filter(e => !e.discord_user_id && e.volunteer_registration_id).map(e => e.volunteer_registration_id)
+    )];
+    const { data: regs } = regIds.length > 0
+      ? await supabase.from('volunteer_registrations').select('id, discord_user_id').in('id', regIds)
+      : { data: [] as any[] };
+    const discordByRegId = new Map((regs ?? []).map((r: any) => [r.id, r.discord_user_id]));
 
     // Look up org branding (name/logo) for each email's organization
     const orgIds = [...new Set(emails.map(e => e.organization_id).filter(Boolean))];
@@ -94,6 +107,24 @@ export async function GET(request: Request) {
           })
           .eq('id', email.id);
         failCount++;
+      }
+
+      // DM delivery is independent of the email outcome above — a DM can
+      // succeed or fail without affecting the email's status/counts, and
+      // vice versa.
+      try {
+        const discordUserId = email.discord_user_id ?? discordByRegId.get(email.volunteer_registration_id) ?? null;
+        if (!discordUserId) {
+          await supabase.from('scheduled_emails').update({ dm_status: 'skipped' }).eq('id', email.id);
+        } else {
+          const dmResult = await sendDirectMessage(discordUserId, `${email.subject}\n\n${email.body}`);
+          await supabase
+            .from('scheduled_emails')
+            .update({ dm_status: dmResult.success ? 'sent' : 'failed' })
+            .eq('id', email.id);
+        }
+      } catch (dmError) {
+        console.error('scheduled DM error:', dmError);
       }
     }
 

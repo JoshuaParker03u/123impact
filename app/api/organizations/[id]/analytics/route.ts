@@ -43,25 +43,15 @@ export async function fetchOrgAnalytics(service: any, orgId: string) {
 
   const eventIds = events.map((e: any) => e.id);
 
-  // All shifts for these events
-  const { data: shifts } = await service
-    .from('shifts')
-    .select('id, event_id')
-    .in('event_id', eventIds);
-
-  const shiftToEvent: Record<string, string> = {};
-  (shifts ?? []).forEach((s: any) => { shiftToEvent[s.id] = s.event_id; });
-  const allShiftIds = Object.keys(shiftToEvent);
-
-  if (allShiftIds.length === 0) {
-    return { new_vs_returning: { new: 0, returning: 0 }, per_event: [], volunteer_base_over_time: [], total_hours: 0 };
-  }
-
-  // All registrations (volunteers only) across the org
+  // All volunteer registrations across the org, regardless of anchor (shift,
+  // panel, or unanchored/shiftless) — event_id is populated on every
+  // registration row no matter which anchor it has, so querying by it
+  // directly avoids the shift_id-first join silently dropping whole
+  // categories of registration.
   const { data: allRegs } = await service
     .from('volunteer_registrations')
-    .select('id, email, shift_id, registered_at, shifts (start_time, end_time)')
-    .in('shift_id', allShiftIds)
+    .select('id, email, event_id, registered_at, shifts (start_time, end_time)')
+    .in('event_id', eventIds)
     .eq('attendee_type', 'volunteer')
     .order('registered_at', { ascending: true });
 
@@ -79,20 +69,16 @@ export async function fetchOrgAnalytics(service: any, orgId: string) {
   let totalHours = 0;
   for (const reg of regs as any[]) {
     if (!checkedInSet.has(reg.id)) continue;
-    const eventId = shiftToEvent[reg.shift_id];
-    if (!eventId) continue;
     const hours = shiftDurationHours(reg.shifts?.start_time, reg.shifts?.end_time);
-    hoursByEvent[eventId] = (hoursByEvent[eventId] ?? 0) + hours;
+    hoursByEvent[reg.event_id] = (hoursByEvent[reg.event_id] ?? 0) + hours;
     totalHours += hours;
   }
 
   // Build per-event registration lists
   const regsByEvent: Record<string, { email: string; registered_at: string }[]> = {};
-  for (const reg of regs) {
-    const eventId = shiftToEvent[reg.shift_id];
-    if (!eventId) continue;
-    if (!regsByEvent[eventId]) regsByEvent[eventId] = [];
-    regsByEvent[eventId].push({ email: reg.email, registered_at: reg.registered_at });
+  for (const reg of regs as any[]) {
+    if (!regsByEvent[reg.event_id]) regsByEvent[reg.event_id] = [];
+    regsByEvent[reg.event_id].push({ email: reg.email, registered_at: reg.registered_at });
   }
 
   // Compute new vs returning per event:

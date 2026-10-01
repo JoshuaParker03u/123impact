@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Loader2, CalendarClock, Ban, Trash2 } from 'lucide-react';
+import { Loader2, CalendarClock, Ban, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import FloatingWindow from '@/components/FloatingWindow';
 import { getBrowserClient } from '@/lib/supabase';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 
@@ -88,17 +88,12 @@ export default function SeriesManagerModal({ seriesId, onClose, onChanged }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <Card className="p-6 w-full max-w-lg max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <CalendarClock className="w-5 h-5 text-indigo-600" /> Manage Series
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <>
+      <FloatingWindow
+        title={<><CalendarClock className="w-5 h-5 text-indigo-600" /> Manage Series</>}
+        onClose={onClose}
+        maxWidthClassName="max-w-lg"
+      >
         {loading ? (
           <div className="flex justify-center py-10">
             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -108,7 +103,7 @@ export default function SeriesManagerModal({ seriesId, onClose, onChanged }) {
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               Select occurrences below, then cancel or delete them all at once.
             </p>
-            <div className="flex-1 overflow-y-auto space-y-1.5 mb-4 pr-1">
+            <div className="max-h-[50vh] overflow-y-auto space-y-1.5 mb-4 pr-1">
               {events.map((e) => (
                 <label
                   key={e.id}
@@ -148,7 +143,7 @@ export default function SeriesManagerModal({ seriesId, onClose, onChanged }) {
             </div>
           </>
         )}
-      </Card>
+      </FloatingWindow>
 
       {confirmingDelete && (
         <ConfirmDeleteModal
@@ -160,6 +155,6 @@ export default function SeriesManagerModal({ seriesId, onClose, onChanged }) {
           onConfirm={deleteSelected}
         />
       )}
-    </div>
+    </>
   );
 }

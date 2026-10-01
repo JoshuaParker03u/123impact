@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import FloatingWindow from '@/components/FloatingWindow';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import AnalyticsTab from './AnalyticsTab';
 import LiveTab from './LiveTab';
@@ -16,7 +17,9 @@ import EventbriteAttendeesTab from './EventbriteAttendeesTab';
 import CheckInQRModal from './CheckInQRModal';
 import InviteSpeakerModal from './InviteSpeakerModal';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
+import DiscordPostConfirmModal from '@/components/DiscordPostConfirmModal';
 import ShiftModal from '@/components/admin/ShiftModal';
+import PanelModal from '@/components/admin/PanelModal';
 import EventModal from '@/components/admin/EventModal';
 import SetRecurringModal from '@/components/admin/SetRecurringModal';
 import MessageComposer from '@/components/MessageComposer';
@@ -26,7 +29,7 @@ import {
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
   Trash2, RefreshCw, Pencil, X, Crown, Shield, User,
   AlertTriangle, QrCode, Download, BarChart2, Radio, Link2, Copy,
-  CheckCircle2, WifiOff, RotateCcw, UserPlus, Repeat,
+  CheckCircle2, WifiOff, RotateCcw, UserPlus, Repeat, Mic, Send,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -41,6 +44,7 @@ interface Volunteer {
   registered_at: string;
   is_waitlisted?: boolean;
   checked_in_at?: string | null;
+  attendee_type?: 'volunteer' | 'attendee' | 'speaker';
 }
 
 interface Shift {
@@ -77,6 +81,9 @@ interface Event {
   attendee_enabled?: boolean;
   attendee_capacity?: number | null;
   speaker_enabled?: boolean;
+  panels_enabled?: boolean;
+  event_format?: 'in_person' | 'online' | 'hybrid';
+  online_url?: string | null;
   platform_source?: 'luma' | 'eventbrite' | null;
   external_id?: string | null;
   platform_image?: string | null;
@@ -140,6 +147,27 @@ function formatDateRange(start: string, end?: string | null): string {
     ? e.getDate().toString()
     : e.toLocaleDateString(undefined, opts);
   return `${sStr}–${eStr}`;
+}
+
+type AttendeeTypeValue = 'volunteer' | 'attendee' | 'speaker';
+
+// Shared role dropdown used everywhere a registration is listed (Attendees
+// tab, Shifts tab, Panels tab) — reassigns attendee_type via
+// PATCH /api/volunteer-registrations/[id], which handles the structural
+// side of a role change (leaving a shift/panel when needed) server-side.
+function RoleSelect({ value, onChange, disabled }: { value: AttendeeTypeValue; onChange: (v: AttendeeTypeValue) => void; disabled?: boolean }) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value as AttendeeTypeValue)}
+      className="text-xs border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50"
+    >
+      <option value="volunteer">Volunteer</option>
+      <option value="attendee">Attendee</option>
+      <option value="speaker">Speaker</option>
+    </select>
+  );
 }
 
 function statusBadge(status: Assignment['status']) {
@@ -271,15 +299,7 @@ function AddAdminModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b dark:border-gray-800">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add Event Admin</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <FloatingWindow title="Add Event Admin" onClose={onClose} maxWidthClassName="max-w-md" noPadding>
         <div className="px-6 py-4 space-y-4">
           {/* Search / email field */}
           <div className="relative">
@@ -462,8 +482,7 @@ function AddAdminModal({
             {isExternal ? 'Send Invitation' : 'Add Admin'}
           </Button>
         </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }
 
@@ -500,12 +519,7 @@ function EditExpiryModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm">
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b dark:border-gray-800">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Edit Expiry</h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
-        </div>
+    <FloatingWindow title="Edit Expiry" onClose={onClose} maxWidthClassName="max-w-sm" noPadding>
         <div className="px-6 py-4">
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
             Updating expiry for <strong>{redact(assignment.user_name || assignment.email, assignment.user_name ? 'name' : 'email', streamerMode)}</strong>
@@ -522,8 +536,7 @@ function EditExpiryModal({
             Save
           </Button>
         </div>
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }
 
@@ -661,6 +674,7 @@ function EventAdminsTab({
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
+                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
                         <button
                           onClick={() => revoke(a.id)}
                           disabled={revoking === a.id}
@@ -942,14 +956,17 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
 
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {i.status === 'pending' && (
-                        <button
-                          onClick={() => copyLink(i)}
-                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                          title="Copy invite link"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          {copiedId === i.id ? 'Copied!' : 'Copy Link'}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => copyLink(i)}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            title="Copy invite link"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            {copiedId === i.id ? 'Copied!' : 'Copy Link'}
+                          </button>
+                          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
+                        </>
                       )}
                       {i.status === 'accepted' && (
                         editingId === i.id ? (
@@ -1076,6 +1093,398 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
 }
 
 // ---------------------------------------------------------------------------
+// Panels Tab
+// ---------------------------------------------------------------------------
+
+interface Panel {
+  id: string;
+  event_id: string;
+  name: string;
+  description: string | null;
+  start_time: string;
+  end_time: string;
+  panel_date: string | null;
+  location: string | null;
+  online_url: string | null;
+  capacity: number;
+  allow_waitlist: boolean;
+  filled: number;
+  waitlisted: number;
+  available: number;
+  is_full: boolean;
+}
+
+interface PanelRegistration {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  registered_at: string;
+  is_waitlisted: boolean;
+  attendee_type: 'attendee' | 'speaker' | 'volunteer';
+}
+
+interface PanelAssignmentRow {
+  id: string;
+  role: 'speaker' | 'volunteer';
+  registration: { id: string; name: string; email: string; speaker_topic: string | null } | null;
+}
+
+interface PoolCandidate {
+  id: string;
+  name: string;
+  email: string;
+  speaker_topic: string | null;
+}
+
+function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; role: 'speaker' | 'volunteer'; onAssigned: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [candidates, setCandidates] = useState<PoolCandidate[] | null>(null);
+  const [assigning, setAssigning] = useState<string | null>(null);
+
+  async function loadPool() {
+    setCandidates(null);
+    const res = await fetch(`/api/panels/${panelId}/pool?role=${role}`);
+    if (res.ok) setCandidates(await res.json());
+  }
+
+  async function assign(registrationId: string) {
+    setAssigning(registrationId);
+    const res = await fetch(`/api/panels/${panelId}/assignments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registration_id: registrationId, role }),
+    });
+    setAssigning(null);
+    if (!res.ok) { alert((await res.json()).error ?? 'Failed to assign'); return; }
+    setOpen(false);
+    onAssigned();
+  }
+
+  return (
+    <div className="relative inline-block">
+      <Button size="sm" variant="outline" onClick={() => { setOpen(!open); if (!open) loadPool(); }}>
+        <UserPlus className="w-3.5 h-3.5 mr-1" />{role === 'speaker' ? 'Assign Speaker' : 'Assign Staff'}
+      </Button>
+      {open && (
+        <div className="absolute z-10 mt-1 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          {candidates === null ? (
+            <div className="p-3 text-center"><Loader2 className="w-4 h-4 animate-spin inline text-gray-400" /></div>
+          ) : candidates.length === 0 ? (
+            <p className="p-3 text-sm text-gray-500">No {role === 'speaker' ? 'unassigned speakers' : 'volunteers'} available.</p>
+          ) : (
+            candidates.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => assign(c.id)}
+                disabled={assigning === c.id}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b last:border-0 border-gray-100 dark:border-gray-800"
+              >
+                <div className="font-medium text-gray-900 dark:text-gray-100">{c.name}</div>
+                <div className="text-xs text-gray-500">{c.email}{c.speaker_topic ? ` · ${c.speaker_topic}` : ''}</div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean; discordChannelName: string | null }) {
+  const [panels, setPanels] = useState<Panel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPanelModal, setShowPanelModal] = useState(false);
+  const [editingPanel, setEditingPanel] = useState<Panel | null>(null);
+  const [deletingPanel, setDeletingPanel] = useState<Panel | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmingDiscordId, setConfirmingDiscordId] = useState<string | null>(null);
+  const [postingDiscordId, setPostingDiscordId] = useState<string | null>(null);
+  const [discordResult, setDiscordResult] = useState<'success' | string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [registrations, setRegistrations] = useState<PanelRegistration[]>([]);
+  const [assignments, setAssignments] = useState<PanelAssignmentRow[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch(`/api/events/${eventId}/panels`);
+    if (res.ok) setPanels(await res.json());
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, [eventId]);
+
+  async function loadDetail(panelId: string) {
+    setLoadingDetail(true);
+    const [regsRes, assignRes] = await Promise.all([
+      fetch(`/api/panels/${panelId}/registrations`),
+      fetch(`/api/panels/${panelId}/assignments`),
+    ]);
+    if (regsRes.ok) setRegistrations(await regsRes.json());
+    if (assignRes.ok) setAssignments(await assignRes.json());
+    setLoadingDetail(false);
+  }
+
+  function toggleExpand(panelId: string) {
+    if (expandedId === panelId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(panelId);
+    loadDetail(panelId);
+  }
+
+  async function deletePanel() {
+    if (!deletingPanel) return;
+    setDeleting(true);
+    await fetch(`/api/panels/${deletingPanel.id}`, { method: 'DELETE' });
+    setDeleting(false);
+    setDeletingPanel(null);
+    if (expandedId === deletingPanel.id) setExpandedId(null);
+    load();
+  }
+
+  // Attendee <-> speaker flips freely within the panel; picking "Volunteer"
+  // means leaving the panel entirely (server clears panel_id and becomes a
+  // shiftless volunteer) — either way this list needs a fresh load after.
+  async function setPanelRegistrationRole(registrationId: string, attendee_type: AttendeeTypeValue) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendee_type }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
+    if (expandedId) loadDetail(expandedId);
+  }
+
+  async function unassign(assignmentId: string) {
+    await fetch(`/api/panel-assignments/${assignmentId}`, { method: 'DELETE' });
+    if (expandedId) loadDetail(expandedId);
+  }
+
+  async function postPanelToDiscord(panelId: string) {
+    setPostingDiscordId(panelId);
+    const res = await fetch(`/api/panels/${panelId}/discord-announce`, { method: 'POST' });
+    setPostingDiscordId(null);
+    if (!res.ok) { setDiscordResult((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
+    setDiscordResult('success');
+  }
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
+
+  const attendees = registrations.filter((r) => r.attendee_type === 'attendee');
+  const promotedSpeakers = registrations.filter((r) => r.attendee_type === 'speaker');
+  const promotedVolunteers = registrations.filter((r) => r.attendee_type === 'volunteer');
+  const assignedSpeakers = assignments.filter((a) => a.role === 'speaker');
+  const assignedStaff = assignments.filter((a) => a.role === 'volunteer');
+
+  return (
+    <>
+      {canManage && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={() => { setEditingPanel(null); setShowPanelModal(true); }} className="bg-gradient-to-br from-blue-600 to-purple-600 hover:opacity-90">
+            <Plus className="w-4 h-4 mr-1" />Create Panel
+          </Button>
+        </div>
+      )}
+
+      {panels.length === 0 ? (
+        <Card className="p-8 text-center text-gray-500">No panels yet.</Card>
+      ) : (
+        <div className="space-y-3">
+          {panels.map((panel) => {
+            const expanded = expandedId === panel.id;
+            return (
+              <Card key={panel.id} className="overflow-hidden">
+                <button onClick={() => toggleExpand(panel.id)} className="w-full flex items-center justify-between p-4 text-left">
+                  <div className="flex items-center gap-3">
+                    <span className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 shrink-0">
+                      {expanded ? <ChevronUp className="w-5 h-5 text-gray-500 dark:text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-500 dark:text-gray-400" />}
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
+                        {panel.is_full && !panel.allow_waitlist && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium">Full</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                        {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)}
+                        {panel.location ? ` · ${panel.location}` : ''} · {panel.filled}/{panel.capacity} registered
+                        {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
+                      </p>
+                      {(event.event_format === 'online' || event.event_format === 'hybrid') && !panel.online_url && (
+                        <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          <AlertTriangle className="w-3 h-3 shrink-0" /> No online URL set yet
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {canManage && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      {discordReady && (
+                        <span
+                          role="button"
+                          title="Post to Discord"
+                          onClick={(e) => { e.stopPropagation(); setDiscordResult(null); setConfirmingDiscordId(panel.id); }}
+                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          {postingDiscordId === panel.id
+                            ? <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                            : <Send className="w-4 h-4 text-gray-500" />}
+                        </span>
+                      )}
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); setEditingPanel(panel); setShowPanelModal(true); }}
+                        className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                      >
+                        <Pencil className="w-4 h-4 text-gray-500" />
+                      </span>
+                      <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); setDeletingPanel(panel); }}
+                        className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </span>
+                    </div>
+                  )}
+                </button>
+
+                {expanded && (
+                  <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-6">
+                    {loadingDetail ? (
+                      <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+                    ) : (
+                      <>
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Attendees ({attendees.length})</h4>
+                          {attendees.length === 0 ? (
+                            <p className="text-sm text-gray-400">No attendees yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {attendees.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1">
+                                  <span className="text-gray-700 dark:text-gray-300">
+                                    {r.name} <span className="text-gray-400">({r.email})</span>
+                                    {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
+                                  </span>
+                                  {canManage && (
+                                    <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Speakers ({promotedSpeakers.length + assignedSpeakers.length})</h4>
+                            {canManage && <AssignPersonControl panelId={panel.id} role="speaker" onAssigned={() => loadDetail(panel.id)} />}
+                          </div>
+                          {promotedSpeakers.length === 0 && assignedSpeakers.length === 0 ? (
+                            <p className="text-sm text-gray-400">No speakers yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {promotedSpeakers.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
+                                  <span>{r.name} <span className="text-gray-400">({r.email})</span></span>
+                                  {canManage && (
+                                    <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                  )}
+                                </div>
+                              ))}
+                              {assignedSpeakers.map((a) => (
+                                <div key={a.id} className="flex items-center justify-between text-sm py-1">
+                                  <span className="text-gray-700 dark:text-gray-300">
+                                    {a.registration?.name} <span className="text-gray-400">({a.registration?.email})</span>
+                                  </span>
+                                  {canManage && (
+                                    <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Volunteer Staff ({promotedVolunteers.length + assignedStaff.length})</h4>
+                            {canManage && <AssignPersonControl panelId={panel.id} role="volunteer" onAssigned={() => loadDetail(panel.id)} />}
+                          </div>
+                          {promotedVolunteers.length === 0 && assignedStaff.length === 0 ? (
+                            <p className="text-sm text-gray-400">No staff assigned yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {promotedVolunteers.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
+                                  <span>{r.name} <span className="text-gray-400">({r.email})</span></span>
+                                  {canManage && (
+                                    <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                  )}
+                                </div>
+                              ))}
+                              {assignedStaff.map((a) => (
+                                <div key={a.id} className="flex items-center justify-between text-sm py-1">
+                                  <span className="text-gray-700 dark:text-gray-300">
+                                    {a.registration?.name} <span className="text-gray-400">({a.registration?.email})</span>
+                                  </span>
+                                  {canManage && (
+                                    <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {showPanelModal && (
+        <PanelModal
+          panel={editingPanel}
+          event={event}
+          onClose={() => setShowPanelModal(false)}
+          onSave={() => { setShowPanelModal(false); load(); }}
+        />
+      )}
+
+      {deletingPanel && (
+        <ConfirmDeleteModal
+          title="Delete Panel"
+          message={<>This will permanently delete <span className="font-medium text-gray-900 dark:text-gray-100">{deletingPanel.name}</span> and all of its registrations. This cannot be undone.</>}
+          loading={deleting}
+          onCancel={() => setDeletingPanel(null)}
+          onConfirm={deletePanel}
+        />
+      )}
+
+      {confirmingDiscordId && (
+        <DiscordPostConfirmModal
+          channelName={discordChannelName}
+          loading={postingDiscordId === confirmingDiscordId}
+          result={discordResult}
+          onCancel={() => setConfirmingDiscordId(null)}
+          onConfirm={() => postPanelToDiscord(confirmingDiscordId)}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // QR Codes Tab
 // ---------------------------------------------------------------------------
 
@@ -1090,7 +1499,7 @@ interface QRInstance {
   target_role: 'volunteer' | 'attendee';
 }
 
-function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: string | null }) {
+function QRCodesTab({ eventId, customDomain, canManage, discordReady, discordChannelName }: { eventId: string; customDomain: string | null; canManage: boolean; discordReady: boolean; discordChannelName: string | null }) {
   const [instances, setInstances]         = useState<QRInstance[]>([]);
   const [eventSlug, setEventSlug]         = useState('');
   const [attendeeEnabled, setAttendeeEnabled] = useState(false);
@@ -1101,6 +1510,17 @@ function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: 
   const [showAddForm, setShowAddForm]     = useState<'qr' | 'link' | null>(null);
   const [regenerating, setRegenerating]   = useState<string | null>(null);
   const [previewId, setPreviewId]         = useState<string | null>(null);
+  const [confirmingDiscord, setConfirmingDiscord] = useState(false);
+  const [postingDiscord, setPostingDiscord] = useState(false);
+  const [discordResult, setDiscordResult] = useState<'success' | string | null>(null);
+
+  async function postEventToDiscord() {
+    setPostingDiscord(true);
+    const res = await fetch(`/api/events/${eventId}/discord-announce`, { method: 'POST' });
+    setPostingDiscord(false);
+    if (!res.ok) { setDiscordResult((await res.json().catch(() => ({}))).error ?? 'Failed to post to Discord'); return; }
+    setDiscordResult('success');
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1186,6 +1606,20 @@ function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: 
 
   return (
     <>
+      {canManage && discordReady && (
+        <Card className="p-4 mb-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="font-medium text-gray-900 dark:text-gray-100">Discord</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Post an announcement with a signup link to {discordChannelName ? `#${discordChannelName}` : 'your announcement channel'}.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => { setDiscordResult(null); setConfirmingDiscord(true); }} className="gap-1.5 text-sm">
+            <Send className="w-4 h-4" /> Post to Discord
+          </Button>
+        </Card>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           QR placements and tracking links — all scans/clicks tracked anonymously (date only, no PII).
@@ -1351,6 +1785,16 @@ function QRCodesTab({ eventId, customDomain }: { eventId: string; customDomain: 
         <strong>Personal check-in codes</strong> — Each registrant also has their own unique QR code
         for check-in on event day. Staff can scan it at the door. No setup required.
       </div>
+
+      {confirmingDiscord && (
+        <DiscordPostConfirmModal
+          channelName={discordChannelName}
+          loading={postingDiscord}
+          result={discordResult}
+          onCancel={() => setConfirmingDiscord(false)}
+          onConfirm={postEventToDiscord}
+        />
+      )}
     </>
   );
 }
@@ -1371,14 +1815,16 @@ export default function AdminEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'shifts' | 'attendees' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
-  const [shiftlessRegs, setShiftlessRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
+  const [activeTab, setActiveTab] = useState<'shifts' | 'attendees' | 'panels' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
+  const [shiftlessRegs, setShiftlessRegs] = useState<Volunteer[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
-  const [attendeeRegs, setAttendeeRegs] = useState<{ id: string; name: string; email: string; phone: string | null; registered_at: string; checked_in_at?: string | null }[]>([]);
+  const [attendeeRegs, setAttendeeRegs] = useState<Volunteer[]>([]);
   const [loadingAttendeeRegs, setLoadingAttendeeRegs] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
   const [customDomain, setCustomDomain] = useState<string | null>(null);
+  const [discordAnnouncementChannelId, setDiscordAnnouncementChannelId] = useState<string | null>(null);
+  const [discordAnnouncementChannelName, setDiscordAnnouncementChannelName] = useState<string | null>(null);
   const [syncing, setSyncing]     = useState(false);
   const [syncResult, setSyncResult] = useState<{ changed: string[]; lastSyncedAt: string } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -1387,6 +1833,8 @@ export default function AdminEventDetailPage() {
   const [deletingEvent, setDeletingEvent] = useState(false);
   const [removeVolunteerTarget, setRemoveVolunteerTarget] = useState<{ registrationId: string; shiftId: string; isWaitlisted: boolean; name: string } | null>(null);
   const [removingVolunteer, setRemovingVolunteer] = useState(false);
+  const [removeAttendeeTarget, setRemoveAttendeeTarget] = useState<{ registrationId: string; name: string } | null>(null);
+  const [removingAttendee, setRemovingAttendee] = useState(false);
   const [checkInModal, setCheckInModal] = useState<{ registrationId: string; name: string } | null>(null);
 
   const { currentOrganization } = useOrganization() as any;
@@ -1418,6 +1866,23 @@ export default function AdminEventDetailPage() {
     if (domainRes.ok) {
       const domainJson = await domainRes.json();
       setCustomDomain(domainJson?.status === 'active' ? domainJson.subdomain : null);
+    }
+
+    const connectionsRes = await fetch(`/api/organizations/${data.organization_id}/connections`);
+    if (connectionsRes.ok) {
+      const connectionsJson = await connectionsRes.json();
+      const announcementChannelId = connectionsJson?.discord?.announcement_channel_id ?? null;
+      setDiscordAnnouncementChannelId(announcementChannelId);
+      if (announcementChannelId) {
+        // Best-effort — only used to show a friendly "#channel-name" in the
+        // post-to-Discord confirmation instead of a raw channel id.
+        fetch(`/api/organizations/${data.organization_id}/discord/channels`)
+          .then((r) => (r.ok ? r.json() : []))
+          .then((channels: { id: string; name: string }[]) => {
+            setDiscordAnnouncementChannelName(channels.find((c) => c.id === announcementChannelId)?.name ?? null);
+          })
+          .catch(() => {});
+      }
     }
 
     // Fetch registration counts
@@ -1475,6 +1940,22 @@ export default function AdminEventDetailPage() {
     const res = await fetch(`/api/events/${eventId}/shiftless-registrations?type=attendee`);
     if (res.ok) setAttendeeRegs(await res.json());
     setLoadingAttendeeRegs(false);
+  }
+
+  // Reassigns a registration's role from the Attendees or Registrations
+  // (shiftless) table. A change can move the row between these two lists
+  // (or out to a panel/speaker slot not shown on either), so both are
+  // reloaded rather than patching local state in place.
+  async function setEventLevelRole(registrationId: string, attendee_type: AttendeeTypeValue) {
+    if (!event) return;
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendee_type }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
+    loadAttendeeRegs(event.id);
+    loadShiftlessRegs(event.id);
   }
 
   function checkInUrl(registrationId: string): string {
@@ -1572,7 +2053,7 @@ export default function AdminEventDetailPage() {
   const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [showMessageComposer, setShowMessageComposer] = useState(false);
   const [messageShiftId, setMessageShiftId] = useState<string | undefined>(undefined);
-  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string } | null>(null);
+  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string; id: string } | null>(null);
 
   async function handleDeleteShift(shiftId: string, filled: number) {
     const msg = filled > 0
@@ -1629,6 +2110,37 @@ export default function AdminEventDetailPage() {
     });
   }
 
+  // Reassigning a shift volunteer to attendee/speaker always means leaving
+  // the shift (see PATCH /api/volunteer-registrations/[id]) — a
+  // "Volunteer" reselection is a harmless no-op there, but any other choice
+  // removes the row from this shift's list entirely, same shape as
+  // removeVolunteer.
+  async function setShiftVolunteerRole(registrationId: string, shiftId: string, isWaitlisted: boolean, attendee_type: AttendeeTypeValue) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendee_type }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
+    if (attendee_type === 'volunteer') return;
+
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        shifts: prev.shifts.map((s) => {
+          if (s.id !== shiftId) return s;
+          return {
+            ...s,
+            filled:     isWaitlisted ? (s.filled ?? 0) : Math.max(0, (s.filled ?? 0) - 1),
+            waitlisted: isWaitlisted ? Math.max(0, (s.waitlisted ?? 0) - 1) : (s.waitlisted ?? 0),
+            volunteers: (s.volunteers ?? []).filter((v) => v.id !== registrationId),
+          };
+        }),
+      };
+    });
+  }
+
   async function removeVolunteer() {
     if (!removeVolunteerTarget) return;
     const { registrationId, shiftId, isWaitlisted } = removeVolunteerTarget;
@@ -1653,6 +2165,19 @@ export default function AdminEventDetailPage() {
         }),
       };
     });
+  }
+
+  async function removeAttendee() {
+    if (!removeAttendeeTarget) return;
+    const { registrationId } = removeAttendeeTarget;
+    setRemovingAttendee(true);
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, { method: 'DELETE' });
+    setRemovingAttendee(false);
+    if (!res.ok) { alert('Failed to remove attendee.'); return; }
+
+    setRemoveAttendeeTarget(null);
+    setAttendeeRegs((prev) => prev.filter((r) => r.id !== registrationId));
+    setShiftlessRegs((prev) => prev.filter((r) => r.id !== registrationId));
   }
 
   async function handleDuplicateEvent() {
@@ -1817,6 +2342,13 @@ export default function AdminEventDetailPage() {
               {event.description && (
                 <p className="mt-3 text-gray-700 dark:text-gray-300">{event.description}</p>
               )}
+
+              {(event.event_format === 'online' || event.event_format === 'hybrid') && !event.online_url && (
+                <div className="flex items-center gap-1.5 mt-3 text-sm text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  No online URL set yet — attendees won&apos;t be able to join until you add one{canManage ? ' in Edit Event' : ''}.
+                </div>
+              )}
             </div>
 
             {/* Action buttons */}
@@ -1873,6 +2405,7 @@ export default function AdminEventDetailPage() {
                       <Repeat className="w-4 h-4" /> Set as Recurring
                     </Button>
                   )}
+                  <hr className="border-gray-200 dark:border-gray-700" />
                   <Button
                     variant="outline"
                     onClick={() => setShowDeleteEventModal(true)}
@@ -1904,6 +2437,11 @@ export default function AdminEventDetailPage() {
               {event.attendee_enabled && (
                 <button onClick={() => setActiveTab('attendees')} className={tabClass(activeTab === 'attendees')}>
                   <Users className="w-4 h-4" />Attendees ({attendeeRegs.length})
+                </button>
+              )}
+              {event.panels_enabled && (
+                <button onClick={() => setActiveTab('panels')} className={tabClass(activeTab === 'panels')}>
+                  <Mic className="w-4 h-4" />Panels
                 </button>
               )}
               <button onClick={() => setActiveTab('analytics')} className={tabClass(activeTab === 'analytics')}>
@@ -1951,9 +2489,11 @@ export default function AdminEventDetailPage() {
         ) : activeTab === 'live' ? (
           <LiveTab eventId={event.id} />
         ) : activeTab === 'qr' ? (
-          <QRCodesTab eventId={event.id} customDomain={customDomain} />
+          <QRCodesTab eventId={event.id} customDomain={customDomain} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} />
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
+        ) : activeTab === 'panels' && event.panels_enabled ? (
+          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} />
         ) : activeTab === 'attendees' && event.attendee_enabled ? (
           <>
             {loadingAttendeeRegs ? (
@@ -1970,7 +2510,9 @@ export default function AdminEventDetailPage() {
                         <th className="pb-2 font-medium">Email</th>
                         <th className="pb-2 font-medium">Phone</th>
                         <th className="pb-2 font-medium">Registered</th>
+                        <th className="pb-2 font-medium">Role</th>
                         <th className="pb-2 font-medium">Check-in</th>
+                        {canManage && <th className="pb-2 font-medium"></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1979,13 +2521,20 @@ export default function AdminEventDetailPage() {
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
                             {streamerMode ? redact(r.email, 'email', streamerMode) : (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                 <Mail className="w-3 h-3" />{r.email}
                               </button>
                             )}
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                          <td className="py-2 pr-4">
+                            {canManage ? (
+                              <RoleSelect value={r.attendee_type ?? 'attendee'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                            ) : (
+                              <span className="text-xs capitalize">{r.attendee_type ?? 'attendee'}</span>
+                            )}
+                          </td>
                           <td className="py-2">
                             {r.checked_in_at ? (
                               <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
@@ -2011,6 +2560,17 @@ export default function AdminEventDetailPage() {
                               </div>
                             )}
                           </td>
+                          {canManage && (
+                            <td className="py-2 pl-4 text-right">
+                              <button
+                                onClick={() => setRemoveAttendeeTarget({ registrationId: r.id, name: r.name })}
+                                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                                title="Remove attendee"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -2035,7 +2595,9 @@ export default function AdminEventDetailPage() {
                         <th className="pb-2 font-medium">Email</th>
                         <th className="pb-2 font-medium">Phone</th>
                         <th className="pb-2 font-medium">Registered</th>
+                        <th className="pb-2 font-medium">Role</th>
                         <th className="pb-2 font-medium">Check-in</th>
+                        {canManage && <th className="pb-2 font-medium"></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -2044,13 +2606,20 @@ export default function AdminEventDetailPage() {
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
                             {streamerMode ? redact(r.email, 'email', streamerMode) : (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                 <Mail className="w-3 h-3" />{r.email}
                               </button>
                             )}
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
+                          <td className="py-2 pr-4">
+                            {canManage ? (
+                              <RoleSelect value={r.attendee_type ?? 'volunteer'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                            ) : (
+                              <span className="text-xs capitalize">{r.attendee_type ?? 'volunteer'}</span>
+                            )}
+                          </td>
                           <td className="py-2">
                             {r.checked_in_at ? (
                               <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
@@ -2076,6 +2645,17 @@ export default function AdminEventDetailPage() {
                               </div>
                             )}
                           </td>
+                          {canManage && (
+                            <td className="py-2 pl-4 text-right">
+                              <button
+                                onClick={() => setRemoveAttendeeTarget({ registrationId: r.id, name: r.name })}
+                                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                                title="Remove registration"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -2126,22 +2706,32 @@ export default function AdminEventDetailPage() {
                         onClick={() => toggleShift(shift.id)}
                         onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? toggleShift(shift.id) : undefined}
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                            {event.end_date && shift.shift_date && (
-                              <span className="mr-1 font-medium text-gray-600 dark:text-gray-300">
-                                {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                              </span>
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <span className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 shrink-0">
+                            {loadingVolunteers === shift.id
+                              ? <Loader2 className="w-4 h-4 animate-spin text-gray-500 dark:text-gray-400" />
+                              : isOpen
+                                ? <ChevronUp className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                : <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                            }
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 dark:text-gray-100">{shift.name}</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                              {event.end_date && shift.shift_date && (
+                                <span className="mr-1 font-medium text-gray-600 dark:text-gray-300">
+                                  {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                              )}
+                              {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {' – '}
+                              {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {overnight && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400 font-medium">+1</span>}
+                            </p>
+                            {shift.description && (
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
                             )}
-                            {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {' – '}
-                            {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {overnight && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400 font-medium">+1</span>}
-                          </p>
-                          {shift.description && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{shift.description}</p>
-                          )}
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2 ml-4">
@@ -2180,6 +2770,7 @@ export default function AdminEventDetailPage() {
                               >
                                 <Mail className="w-3.5 h-3.5 text-blue-500" />
                               </button>
+                              <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDeleteShift(shift.id, (shift.filled ?? 0) + (shift.waitlisted ?? 0)); }}
                                 className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
@@ -2189,12 +2780,6 @@ export default function AdminEventDetailPage() {
                               </button>
                             </>
                           )}
-                          {loadingVolunteers === shift.id
-                            ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                            : isOpen
-                              ? <ChevronUp className="w-4 h-4 text-gray-400" />
-                              : <ChevronDown className="w-4 h-4 text-gray-400" />
-                          }
                         </div>
                       </div>
 
@@ -2216,6 +2801,7 @@ export default function AdminEventDetailPage() {
                                         <th className="pb-2 font-medium">Email</th>
                                         <th className="pb-2 font-medium">Phone</th>
                                         <th className="pb-2 font-medium">Registered</th>
+                                        <th className="pb-2 font-medium">Role</th>
                                         <th className="pb-2 font-medium">Check-in</th>
                                         <th className="pb-2 font-medium"></th>
                                       </tr>
@@ -2226,7 +2812,7 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
                                           <td className="py-2 pr-4">
                                             {streamerMode ? redact(v.email, 'email', streamerMode) : (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                                 <Mail className="w-3 h-3" />{v.email}
                                               </button>
                                             )}
@@ -2234,6 +2820,13 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 pr-4">
+                                            {canManage ? (
+                                              <RoleSelect value={v.attendee_type ?? 'volunteer'} onChange={(type) => setShiftVolunteerRole(v.id, shift.id, false, type)} />
+                                            ) : (
+                                              <span className="text-xs capitalize">{v.attendee_type ?? 'volunteer'}</span>
+                                            )}
                                           </td>
                                           <td className="py-2 pr-4">
                                             {v.checked_in_at ? (
@@ -2275,7 +2868,7 @@ export default function AdminEventDetailPage() {
                                       ))}
                                       {waitlisting.length > 0 && (
                                         <tr>
-                                          <td colSpan={6} className="pt-3 pb-2 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                                          <td colSpan={7} className="pt-3 pb-2 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
                                             Waitlist ({waitlisting.length})
                                           </td>
                                         </tr>
@@ -2285,7 +2878,7 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
                                           <td className="py-2 pr-4">
                                             {streamerMode ? redact(v.email, 'email', streamerMode) : (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                                 <Mail className="w-3 h-3" />{v.email}
                                               </button>
                                             )}
@@ -2293,6 +2886,13 @@ export default function AdminEventDetailPage() {
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
                                             {new Date(v.registered_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 pr-4">
+                                            {canManage ? (
+                                              <RoleSelect value={v.attendee_type ?? 'volunteer'} onChange={(type) => setShiftVolunteerRole(v.id, shift.id, true, type)} />
+                                            ) : (
+                                              <span className="text-xs capitalize">{v.attendee_type ?? 'volunteer'}</span>
+                                            )}
                                           </td>
                                           <td className="py-2 pr-4">
                                             {v.checked_in_at ? (
@@ -2328,6 +2928,7 @@ export default function AdminEventDetailPage() {
                                                 >
                                                   Promote
                                                 </button>
+                                                <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
                                                 <button
                                                   onClick={() => setRemoveVolunteerTarget({ registrationId: v.id, shiftId: shift.id, isWaitlisted: true, name: v.name })}
                                                   className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
@@ -2398,6 +2999,7 @@ export default function AdminEventDetailPage() {
         onClose={() => setMessageVolunteer(null)}
         volunteerEmail={messageVolunteer?.email}
         volunteerName={messageVolunteer?.name}
+        volunteerRegistrationId={messageVolunteer?.id}
       />
 
       {checkInModal && (
@@ -2435,6 +3037,21 @@ export default function AdminEventDetailPage() {
           loading={removingVolunteer}
           onCancel={() => setRemoveVolunteerTarget(null)}
           onConfirm={removeVolunteer}
+        />
+      )}
+
+      {removeAttendeeTarget && (
+        <ConfirmDeleteModal
+          title="Remove Registration"
+          message={
+            <>
+              Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removeAttendeeTarget.name}</span>&apos;s registration for this event? They will need to sign up again to rejoin.
+            </>
+          }
+          confirmLabel="Remove"
+          loading={removingAttendee}
+          onCancel={() => setRemoveAttendeeTarget(null)}
+          onConfirm={removeAttendee}
         />
       )}
     </>

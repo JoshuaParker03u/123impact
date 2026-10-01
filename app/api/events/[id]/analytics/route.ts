@@ -66,14 +66,17 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
 
   if (!event) return null;
 
-  // All shifts for this event
-  const { data: shifts } = await service
-    .from('shifts')
-    .select('id')
+  // All registrations for this event, regardless of anchor (shift, panel, or
+  // unanchored/shiftless) — event_id is populated on every registration row
+  // no matter which anchor it has, so this is the one query that can't
+  // silently exclude a whole category the way a shift_id-first join would.
+  const { data: regs } = await service
+    .from('volunteer_registrations')
+    .select('id, email, attendee_type, registered_at, shift_id, shifts (start_time, end_time)')
     .eq('event_id', eventId);
 
-  const shiftIds = (shifts ?? []).map((s: any) => s.id);
-  if (shiftIds.length === 0) {
+  const allRegs = regs ?? [];
+  if (allRegs.length === 0) {
     return {
       event,
       total_registrations: 0,
@@ -87,13 +90,6 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
     };
   }
 
-  // All registrations for this event
-  const { data: regs } = await service
-    .from('volunteer_registrations')
-    .select('id, email, attendee_type, registered_at, shift_id, shifts (start_time, end_time)')
-    .in('shift_id', shiftIds);
-
-  const allRegs = regs ?? [];
   const regIds = allRegs.map((r: any) => r.id);
 
   // Check-ins for these registrations
@@ -114,27 +110,22 @@ export async function fetchAnalyticsData(service: any, eventId: string) {
 
   let returningEmails = new Set<string>();
   if (emails.length > 0) {
-    // Get all registrations for this org's events BEFORE this event's first registration
-    const { data: orgShifts } = await service
-      .from('shifts')
+    // Get all registrations for this org's OTHER events, before this event's
+    // first registration — via event_id directly so a panel or shiftless
+    // registration on a prior event still counts as a "returning" signal.
+    const { data: otherEvents } = await service
+      .from('events')
       .select('id')
-      .in('event_id',
-        // subquery: all event IDs for this org except the current one
-        (await service
-          .from('events')
-          .select('id')
-          .eq('organization_id', event.organization_id)
-          .neq('id', eventId)
-          .then((r: any) => (r.data ?? []).map((e: any) => e.id)))
-      );
+      .eq('organization_id', event.organization_id)
+      .neq('id', eventId);
 
-    const otherShiftIds = (orgShifts ?? []).map((s: any) => s.id);
+    const otherEventIds = (otherEvents ?? []).map((e: any) => e.id);
 
-    if (otherShiftIds.length > 0) {
+    if (otherEventIds.length > 0) {
       const { data: priorRegs } = await service
         .from('volunteer_registrations')
         .select('email')
-        .in('shift_id', otherShiftIds)
+        .in('event_id', otherEventIds)
         .in('email', emails)
         .lt('registered_at', earliestRegDate);
 
