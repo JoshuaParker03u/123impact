@@ -965,7 +965,7 @@ function IntegrationsTab({ orgId }) {
     eventbrite_already_connected: 'This Eventbrite account is already connected to another organization.',
     eventbrite_denied:  'Eventbrite authorization was cancelled.',
     eventbrite_failed:  'Eventbrite connection failed. Please try again.',
-    discord_already_connected: 'This Discord server is already connected to another organization.',
+    discord_already_connected: 'This Discord server is already connected to a different 123impact organization. The bot may have joined anyway during authorization, but it won\'t respond there. To use this server here, that organization needs to disconnect it first, or you can choose a different server.',
     discord_denied:     'Discord authorization was cancelled.',
     discord_failed:     'Discord connection failed. Please try again.',
     invalid_state:      'Invalid OAuth state. Please try again.',
