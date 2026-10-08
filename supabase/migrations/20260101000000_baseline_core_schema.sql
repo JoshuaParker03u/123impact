@@ -361,32 +361,48 @@ $$;
 -- policy on these 5 tables is created, guarded or first-time, by a later
 -- tracked migration -- leave those to run normally).
 
+-- DROP POLICY IF EXISTS guards added retroactively: this file's CREATE
+-- POLICY statements originally assumed a database where these 8 tables'
+-- policies never existed yet (true for staging's shadow replay and local
+-- dev). Production already has every one of these policies live since
+-- before migration tracking began, so an unguarded CREATE POLICY would
+-- abort with "policy already exists" when this file is finally applied
+-- there. The guards are no-ops anywhere the policy doesn't exist yet.
+
+DROP POLICY IF EXISTS "Admins can update their organizations" ON public.organizations;
 CREATE POLICY "Admins can update their organizations" ON public.organizations
   FOR UPDATE USING (auth_is_org_admin(id));
 
+DROP POLICY IF EXISTS "Users can view their organizations" ON public.organizations;
 CREATE POLICY "Users can view their organizations" ON public.organizations
   FOR SELECT USING (id IN (SELECT auth_user_org_ids()));
 
+DROP POLICY IF EXISTS "Admins can create events" ON public.events;
 CREATE POLICY "Admins can create events" ON public.events
   FOR INSERT WITH CHECK (auth_is_org_admin(organization_id));
 
 CREATE OR REPLACE TRIGGER update_events_updated_at BEFORE UPDATE ON public.events
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP POLICY IF EXISTS "Public can view shifts" ON public.shifts;
 CREATE POLICY "Public can view shifts" ON public.shifts
   FOR SELECT TO authenticated, anon USING (true);
 
+DROP POLICY IF EXISTS "Admins can insert shifts" ON public.shifts;
 CREATE POLICY "Admins can insert shifts" ON public.shifts
   FOR INSERT WITH CHECK (event_id IN (SELECT events.id FROM events WHERE events.organization_id IN (SELECT auth_user_org_ids())));
 
+DROP POLICY IF EXISTS "Admins can update shifts" ON public.shifts;
 CREATE POLICY "Admins can update shifts" ON public.shifts
   FOR UPDATE USING (event_id IN (SELECT events.id FROM events WHERE events.organization_id IN (SELECT auth_user_org_ids())));
 
+DROP POLICY IF EXISTS "Admins can delete shifts" ON public.shifts;
 CREATE POLICY "Admins can delete shifts" ON public.shifts
   FOR DELETE USING (event_id IN (SELECT events.id FROM events WHERE events.organization_id IN (SELECT auth_user_org_ids())));
 
 CREATE OR REPLACE TRIGGER update_shifts_updated_at BEFORE UPDATE ON public.shifts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP POLICY IF EXISTS "Public can insert volunteer_registrations" ON public.volunteer_registrations;
 CREATE POLICY "Public can insert volunteer_registrations" ON public.volunteer_registrations
   FOR INSERT TO authenticated, anon WITH CHECK (true);
