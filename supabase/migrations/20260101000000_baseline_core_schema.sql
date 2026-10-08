@@ -38,6 +38,21 @@
 -- at creation time. If something needs it locally, pull it from staging
 -- the same way this file was built.
 
+-- Every ALTER TABLE ... ADD CONSTRAINT below is wrapped in a DO block that
+-- swallows the "already exists" case, for the same reason the policies
+-- above need DROP IF EXISTS: production already has these exact tables and
+-- constraints live since before migration tracking began, and CREATE TABLE
+-- IF NOT EXISTS only skips the CREATE TABLE statement itself -- it does NOT
+-- make the separate ADD CONSTRAINT statements that follow it idempotent.
+-- Postgres raises a different SQLSTATE depending on constraint type (no
+-- single IF NOT EXISTS clause covers all three), confirmed empirically
+-- against a local Postgres instance: a second PRIMARY KEY on a table raises
+-- invalid_table_definition (42P16); a UNIQUE constraint name collision
+-- raises duplicate_table (42P07, since the constraint's backing index
+-- shares the relation namespace); a FOREIGN KEY name collision raises
+-- duplicate_object (42710). Catching all three covers every case here
+-- regardless of which type a given statement is.
+
 CREATE TABLE IF NOT EXISTS public.organizations (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   name text NOT NULL,
@@ -55,7 +70,9 @@ CREATE TABLE IF NOT EXISTS public.organizations (
   updated_at timestamptz DEFAULT now(),
   CONSTRAINT organizations_status_check CHECK (status IN ('active', 'inactive', 'suspended'))
 );
-ALTER TABLE ONLY public.organizations ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organizations ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_organizations_status ON public.organizations (status);
 
@@ -75,12 +92,20 @@ CREATE TABLE IF NOT EXISTS public.events (
   status text DEFAULT 'active',
   updated_at timestamptz
 );
-ALTER TABLE ONLY public.events ADD CONSTRAINT events_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.events ADD CONSTRAINT events_event_id_key UNIQUE (event_id);
-ALTER TABLE ONLY public.events
-  ADD CONSTRAINT events_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
-ALTER TABLE ONLY public.events
-  ADD CONSTRAINT events_primary_owner_id_fkey FOREIGN KEY (primary_owner_id) REFERENCES auth.users(id);
+DO $$ BEGIN
+  ALTER TABLE ONLY public.events ADD CONSTRAINT events_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.events ADD CONSTRAINT events_event_id_key UNIQUE (event_id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.events
+    ADD CONSTRAINT events_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.events
+    ADD CONSTRAINT events_primary_owner_id_fkey FOREIGN KEY (primary_owner_id) REFERENCES auth.users(id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_events_event_id ON public.events (event_id);
 CREATE INDEX IF NOT EXISTS idx_events_organization_id ON public.events (organization_id);
@@ -99,15 +124,25 @@ CREATE TABLE IF NOT EXISTS public.organization_admins (
   -- 20260511000000_add_member_role.sql's unguarded DROP CONSTRAINT succeeds.
   CONSTRAINT organization_admins_role_check CHECK (role IN ('owner', 'admin'))
 );
-ALTER TABLE ONLY public.organization_admins ADD CONSTRAINT organization_admins_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.organization_admins
-  ADD CONSTRAINT organization_admins_organization_id_user_id_key UNIQUE (organization_id, user_id);
-ALTER TABLE ONLY public.organization_admins
-  ADD CONSTRAINT organization_admins_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.organization_admins
-  ADD CONSTRAINT organization_admins_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.organization_admins
-  ADD CONSTRAINT organization_admins_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES auth.users(id);
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_admins ADD CONSTRAINT organization_admins_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_admins
+    ADD CONSTRAINT organization_admins_organization_id_user_id_key UNIQUE (organization_id, user_id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_admins
+    ADD CONSTRAINT organization_admins_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_admins
+    ADD CONSTRAINT organization_admins_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_admins
+    ADD CONSTRAINT organization_admins_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES auth.users(id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.organization_admins ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_org_admins_organization_id ON public.organization_admins (organization_id);
 CREATE INDEX IF NOT EXISTS idx_org_admins_role ON public.organization_admins (role);
@@ -126,10 +161,16 @@ CREATE TABLE IF NOT EXISTS public.shifts (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz
 );
-ALTER TABLE ONLY public.shifts ADD CONSTRAINT shifts_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.shifts ADD CONSTRAINT unique_event_shift UNIQUE (event_id, shift_id);
-ALTER TABLE ONLY public.shifts
-  ADD CONSTRAINT shifts_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id) ON DELETE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.shifts ADD CONSTRAINT shifts_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.shifts ADD CONSTRAINT unique_event_shift UNIQUE (event_id, shift_id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.shifts
+    ADD CONSTRAINT shifts_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_shifts_event_id ON public.shifts (event_id);
 
@@ -141,10 +182,16 @@ CREATE TABLE IF NOT EXISTS public.volunteer_registrations (
   phone text,
   registered_at timestamptz DEFAULT now()
 );
-ALTER TABLE ONLY public.volunteer_registrations ADD CONSTRAINT volunteer_registrations_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.volunteer_registrations ADD CONSTRAINT unique_email_per_shift UNIQUE (shift_id, email);
-ALTER TABLE ONLY public.volunteer_registrations
-  ADD CONSTRAINT volunteer_registrations_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.shifts(id) ON DELETE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.volunteer_registrations ADD CONSTRAINT volunteer_registrations_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.volunteer_registrations ADD CONSTRAINT unique_email_per_shift UNIQUE (shift_id, email);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.volunteer_registrations
+    ADD CONSTRAINT volunteer_registrations_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.shifts(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.volunteer_registrations ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_registrations_email ON public.volunteer_registrations (email);
 CREATE INDEX IF NOT EXISTS idx_registrations_shift_id ON public.volunteer_registrations (shift_id);
@@ -158,13 +205,21 @@ CREATE TABLE IF NOT EXISTS public.shift_registrations (
   notes text,
   CONSTRAINT shift_registrations_status_check CHECK (status IN ('confirmed', 'cancelled', 'completed'))
 );
-ALTER TABLE ONLY public.shift_registrations ADD CONSTRAINT shift_registrations_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.shift_registrations
-  ADD CONSTRAINT shift_registrations_shift_id_user_id_key UNIQUE (shift_id, user_id);
-ALTER TABLE ONLY public.shift_registrations
-  ADD CONSTRAINT shift_registrations_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.shifts(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.shift_registrations
-  ADD CONSTRAINT shift_registrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.shift_registrations ADD CONSTRAINT shift_registrations_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.shift_registrations
+    ADD CONSTRAINT shift_registrations_shift_id_user_id_key UNIQUE (shift_id, user_id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.shift_registrations
+    ADD CONSTRAINT shift_registrations_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.shifts(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.shift_registrations
+    ADD CONSTRAINT shift_registrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.shift_registrations ENABLE ROW LEVEL SECURITY;
 
 CREATE TABLE IF NOT EXISTS public.organization_volunteers (
@@ -179,13 +234,21 @@ CREATE TABLE IF NOT EXISTS public.organization_volunteers (
   updated_at timestamptz DEFAULT now(),
   CONSTRAINT organization_volunteers_status_check CHECK (status IN ('active', 'inactive', 'banned'))
 );
-ALTER TABLE ONLY public.organization_volunteers ADD CONSTRAINT organization_volunteers_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.organization_volunteers
-  ADD CONSTRAINT organization_volunteers_organization_id_user_id_key UNIQUE (organization_id, user_id);
-ALTER TABLE ONLY public.organization_volunteers
-  ADD CONSTRAINT organization_volunteers_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.organization_volunteers
-  ADD CONSTRAINT organization_volunteers_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_volunteers ADD CONSTRAINT organization_volunteers_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_volunteers
+    ADD CONSTRAINT organization_volunteers_organization_id_user_id_key UNIQUE (organization_id, user_id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_volunteers
+    ADD CONSTRAINT organization_volunteers_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.organization_volunteers
+    ADD CONSTRAINT organization_volunteers_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.organization_volunteers ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_org_volunteers_organization_id ON public.organization_volunteers (organization_id);
 CREATE INDEX IF NOT EXISTS idx_org_volunteers_status ON public.organization_volunteers (status);
@@ -198,10 +261,16 @@ CREATE TABLE IF NOT EXISTS public.usernames (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-ALTER TABLE ONLY public.usernames ADD CONSTRAINT usernames_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.usernames ADD CONSTRAINT usernames_username_key UNIQUE (username);
-ALTER TABLE ONLY public.usernames
-  ADD CONSTRAINT usernames_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.usernames ADD CONSTRAINT usernames_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.usernames ADD CONSTRAINT usernames_username_key UNIQUE (username);
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE ONLY public.usernames
+    ADD CONSTRAINT usernames_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL; END $$;
 ALTER TABLE public.usernames ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_usernames_user_id ON public.usernames (user_id);
 CREATE INDEX IF NOT EXISTS idx_usernames_username ON public.usernames (username);
