@@ -10,8 +10,21 @@ import type { FeedEvent, FeedPerson, FeedSession, FeedSessionPerson, OrgFeedData
 // plain wall-clock values in the org's own timezone, not UTC — convert using
 // the org's declared timezone (falling back to UTC when unset) rather than
 // letting the JS Date constructor guess from the server process's own TZ.
-function toInstant(dateStr: string, timeStr: string, timeZone: string | null): Date {
-  return fromZonedTime(`${dateStr}T${timeStr}:00`, timeZone ?? 'UTC');
+//
+// time isn't guaranteed to be a clean "HH:MM" — this app's own admin code
+// (formatEventTime in app/admin/events/[id]/page.tsx) already has to guard
+// against that for the same columns, likely from platform-synced events.
+// Parse leniently (1-2 digit hour, optional seconds) and return null rather
+// than an Invalid Date on anything else, so the caller can skip just that
+// one event/session instead of the whole feed request blowing up.
+const TIME_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+
+export function toInstant(dateStr: string, timeStr: string, timeZone: string | null): Date | null {
+  const match = TIME_RE.exec(timeStr);
+  if (!match) return null;
+  const [, h, m, s] = match;
+  const instant = fromZonedTime(`${dateStr}T${h.padStart(2, '0')}:${m}:${s ?? '00'}`, timeZone ?? 'UTC');
+  return Number.isNaN(instant.getTime()) ? null : instant;
 }
 
 function buildServiceClient() {
@@ -66,6 +79,10 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
   for (const event of events ?? []) {
     const eventStart = toInstant(event.date, event.time, org.timezone);
     const eventEnd = toInstant(event.end_date ?? event.date, '23:59', org.timezone);
+    if (!eventStart || !eventEnd) {
+      console.error(`public-feed: skipping event ${event.id} — unparseable date/time (date=${event.date}, time=${event.time})`);
+      continue;
+    }
     const status = deriveFeedStatus({
       status: (event.status ?? 'active') as StoredEventStatus,
       start: eventStart,
@@ -109,7 +126,15 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
       if (reg?.public_consent) addPerson(reg);
     }
 
-    const sessions: FeedSession[] = (panels ?? []).map(panel => {
+    const sessions: FeedSession[] = (panels ?? []).flatMap(panel => {
+      const sessionDate = panel.panel_date ?? event.date;
+      const sessionStart = toInstant(sessionDate, panel.start_time, org.timezone);
+      const sessionEnd = toInstant(sessionDate, panel.end_time, org.timezone);
+      if (!sessionStart || !sessionEnd) {
+        console.error(`public-feed: skipping session ${panel.id} — unparseable date/time (date=${sessionDate}, start=${panel.start_time}, end=${panel.end_time})`);
+        return [];
+      }
+
       const sessionPeople: FeedSessionPerson[] = [];
       const seen = new Set<string>();
 
@@ -128,18 +153,17 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
         }
       }
 
-      const sessionDate = panel.panel_date ?? event.date;
-      return {
+      return [{
         id: panel.id,
         title: panel.name,
         description: panel.description,
-        starts: toInstant(sessionDate, panel.start_time, org.timezone),
-        ends: toInstant(sessionDate, panel.end_time, org.timezone),
+        starts: sessionStart,
+        ends: sessionEnd,
         location: panel.location,
         online_url: panel.online_url,
         streamed: panel.online_url !== null,
         people: sessionPeople,
-      };
+      }];
     });
 
     feedEvents.push({
