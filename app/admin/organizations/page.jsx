@@ -335,6 +335,57 @@ function StatusBadge({ status }) {
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{label}</span>;
 }
 
+// A labeled, copyable value — optionally with an "Open" link when it's a
+// URL. Shared by ApiTab's org id / feed URL rows.
+function CopyRow({ label, value, href }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+  return (
+    <div>
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</p>
+      <div className="flex items-center gap-2 border dark:border-gray-700 rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-800/50">
+        <span className="flex-1 truncate font-mono text-xs text-gray-700 dark:text-gray-300">{value}</span>
+        <button onClick={copy} title="Copy" className="shrink-0 text-blue-500 hover:text-blue-700">
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+        {href && (
+          <a href={href} target="_blank" rel="noopener noreferrer" title="Open" className="shrink-0 text-blue-500 hover:text-blue-700">
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Read-only reference for building external integrations against this org's
+// public events feed (app/api/public/organizations/[orgId]/events.json|ics) —
+// the org id these URLs are templated on isn't itself sensitive (it's
+// already passed around in plain URLs/headers elsewhere, e.g. the
+// Discord/Eventbrite connect routes above).
+function ApiTab({ orgId }) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const jsonUrl = `${origin}/api/public/organizations/${orgId}/events.json`;
+  const icsUrl  = `${origin}/api/public/organizations/${orgId}/events.ics`;
+
+  return (
+    <Card className="p-6 space-y-5">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Public events feed</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          A read-only, no-login feed of this org&apos;s events, sessions, and speakers who&apos;ve
+          consented to be listed — for an external site or calendar app to pull from directly.
+        </p>
+      </div>
+      <CopyRow label="Organization ID" value={orgId} />
+      <CopyRow label="JSON feed" value={jsonUrl} href={jsonUrl} />
+      <CopyRow label="iCal feed (subscribe in a calendar app)" value={icsUrl} href={icsUrl} />
+    </Card>
+  );
+}
+
 function DnsRecord({ type, name, value }) {
   const [copied, setCopied] = useState('');
   function copy(text, key) {
@@ -1678,7 +1729,7 @@ function OrganizationsPageContent() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-6 border-b dark:border-gray-700">
-          {['settings', 'members', ...(canManageSettings ? ['integrations', 'custom-domain', 'billing'] : [])].map((tab) => (
+          {['settings', 'members', ...(canManageSettings ? ['integrations', 'custom-domain', 'billing', 'api'] : [])].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
                 activeTab === tab
@@ -1689,7 +1740,8 @@ function OrganizationsPageContent() {
                 : tab === 'members' ? 'Members'
                 : tab === 'integrations' ? 'Integrations'
                 : tab === 'custom-domain' ? 'Custom Domain'
-                : 'Billing'}
+                : tab === 'billing' ? 'Billing'
+                : 'API'}
             </button>
           ))}
         </div>
@@ -1801,6 +1853,11 @@ function OrganizationsPageContent() {
         {/* Billing tab */}
         {activeTab === 'billing' && currentOrganization && (
           <BillingTab orgId={currentOrganization.id} />
+        )}
+
+        {/* API tab */}
+        {activeTab === 'api' && currentOrganization && (
+          <ApiTab orgId={currentOrganization.id} />
         )}
       </div>
     </>

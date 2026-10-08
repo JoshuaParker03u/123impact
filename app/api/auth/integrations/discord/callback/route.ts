@@ -3,7 +3,7 @@ import { after } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { registerGuildCommand } from '@/lib/discord/api';
+import { registerGuildCommand, getGuildName } from '@/lib/discord/api';
 
 // GET /api/auth/integrations/discord/callback
 // Handles Discord's bot-authorization callback. No code exchange happens —
@@ -107,6 +107,19 @@ export async function GET(req: NextRequest) {
     // redirect — worst case the admin needs to disconnect/reconnect once if
     // this fails, which is logged for that troubleshooting.
     after(() => registerGuildCommand(guildId).catch((e) => console.error('registerGuildCommand error:', e)));
+
+    // Best-effort display name, used only as a label (e.g. the public
+    // feed's venue name) — never blocks the connect flow, and a failed
+    // lookup just leaves external_org_name null.
+    after(async () => {
+      const name = await getGuildName(guildId);
+      if (name) {
+        await service.from('platform_connections')
+          .update({ external_org_name: name })
+          .eq('organization_id', orgId)
+          .eq('platform', 'discord');
+      }
+    });
 
     return NextResponse.redirect(`${appUrl}/admin/organizations?tab=integrations&connected=discord`);
   } catch {

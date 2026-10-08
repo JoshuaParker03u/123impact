@@ -1,0 +1,236 @@
+drop extension if exists "pg_net";
+
+drop policy "Anyone can register as volunteer" on "public"."volunteer_registrations";
+
+drop policy "Org admins can manage templates" on "public"."automated_email_templates";
+
+drop policy "Org admins can manage messages" on "public"."messages";
+
+drop policy "Org admins can view scheduled emails" on "public"."scheduled_emails";
+
+drop policy "Public can view shifts" on "public"."shifts";
+
+drop policy "Public can insert volunteer_registrations" on "public"."volunteer_registrations";
+
+alter table "public"."messages" drop constraint "messages_delivery_status_check";
+
+alter table "public"."messages" add column "recipient_emails" text[] default '{}'::text[];
+
+alter table "public"."messages" add column "scheduled_for" timestamp with time zone;
+
+alter table "public"."scheduled_emails" add column "message_id" uuid;
+
+alter table "public"."scheduled_emails" add column "volunteer_email" text;
+
+alter table "public"."scheduled_emails" add column "volunteer_name" text;
+
+alter table "public"."scheduled_emails" add constraint "scheduled_emails_message_id_fkey" FOREIGN KEY (message_id) REFERENCES public.messages(id) ON DELETE CASCADE not valid;
+
+alter table "public"."scheduled_emails" validate constraint "scheduled_emails_message_id_fkey";
+
+alter table "public"."messages" add constraint "messages_delivery_status_check" CHECK ((delivery_status = ANY (ARRAY['sent'::text, 'delivered'::text, 'failed'::text, 'scheduled'::text]))) not valid;
+
+alter table "public"."messages" validate constraint "messages_delivery_status_check";
+
+set check_function_bodies = off;
+
+CREATE OR REPLACE FUNCTION public.auth_is_org_admin(p_org_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.organization_admins
+    WHERE organization_id = p_org_id
+      AND user_id = auth.uid()
+      AND role IN ('owner', 'admin')
+  );
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.auth_is_org_member(p_org_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.organization_admins
+    WHERE organization_id = p_org_id
+      AND user_id = auth.uid()
+  );
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.auth_is_org_owner(p_org_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM organization_admins
+    WHERE organization_id = p_org_id
+      AND user_id = auth.uid()
+      AND (role = 'owner' OR (permissions->>'can_manage_admins')::boolean = true)
+  );
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.auth_user_org_ids()
+ RETURNS SETOF uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT organization_id FROM organization_admins WHERE user_id = auth.uid();
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.can_user_manage_event(p_event_id uuid, p_user_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM events e
+    INNER JOIN organization_admins oa ON oa.organization_id = e.organization_id
+    WHERE e.id = p_event_id 
+      AND oa.user_id = p_user_id
+      AND (oa.role IN ('owner', 'admin') OR (oa.permissions->>'can_edit_events')::boolean = true)
+  ) OR EXISTS (
+    SELECT 1 FROM events e
+    WHERE e.id = p_event_id AND e.primary_owner_id = p_user_id
+  );
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.decrement_shift_filled(p_shift_id uuid)
+ RETURNS void
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  UPDATE shifts
+  SET filled = GREATEST(filled - 1, 0)
+  WHERE id = p_shift_id;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.get_shift_volunteer_count(shift_uuid uuid)
+ RETURNS integer
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT COUNT(*)::INTEGER
+  FROM volunteer_registrations
+  WHERE shift_id = shift_uuid;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.get_user_id_by_identifier(identifier text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  result_user_id UUID;
+BEGIN
+  --First try to find by username
+  SELECT user_id INTO result_user_id
+  FROM public.usernames
+  WHERE LOWER(username) = LOWER(identifier)
+  LIMIT 1;
+  
+ --If not found by username, try to find by email in auth.users
+  IF result_user_id IS NULL THEN
+    SELECT id INTO result_user_id
+    FROM auth.users
+    WHERE LOWER(email) = LOWER(identifier)
+    LIMIT 1;
+  END IF;
+  
+  RETURN result_user_id;
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.is_shift_full(shift_uuid uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT filled >= capacity
+  FROM shifts
+  WHERE id = shift_uuid;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.is_username_available(check_username text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  RETURN NOT EXISTS (
+    SELECT 1 FROM public.usernames 
+    WHERE LOWER(username) = LOWER(check_username)
+  );
+END;
+$function$
+;
+
+
+  create policy "Org admins can manage templates"
+  on "public"."automated_email_templates"
+  as permissive
+  for all
+  to public
+using (public.auth_is_org_admin(organization_id));
+
+
+
+  create policy "Org admins can manage messages"
+  on "public"."messages"
+  as permissive
+  for all
+  to public
+using (public.auth_is_org_admin(organization_id));
+
+
+
+  create policy "Org admins can view scheduled emails"
+  on "public"."scheduled_emails"
+  as permissive
+  for select
+  to public
+using (public.auth_is_org_admin(organization_id));
+
+
+
+  create policy "Public can view shifts"
+  on "public"."shifts"
+  as permissive
+  for select
+  to anon, authenticated
+using (true);
+
+
+
+  create policy "Public can insert volunteer_registrations"
+  on "public"."volunteer_registrations"
+  as permissive
+  for insert
+  to anon, authenticated
+with check (true);
+
+
+

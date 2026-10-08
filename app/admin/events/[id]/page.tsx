@@ -45,6 +45,7 @@ interface Volunteer {
   is_waitlisted?: boolean;
   checked_in_at?: string | null;
   attendee_type?: 'volunteer' | 'attendee' | 'speaker';
+  public_consent?: boolean;
 }
 
 interface Shift {
@@ -167,6 +168,25 @@ function RoleSelect({ value, onChange, disabled }: { value: AttendeeTypeValue; o
       <option value="attendee">Attendee</option>
       <option value="speaker">Speaker</option>
     </select>
+  );
+}
+
+// Admin-set override for someone promoted to speaker after the fact, who
+// never saw the public-consent checkbox at self-registration (that only
+// exists on the speaker-invite signup form). Shown only for speakers —
+// volunteers/attendees never appear in the public feed regardless.
+function ConsentToggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 cursor-pointer" title="Whether this person appears in the org's public events feed">
+      <input
+        type="checkbox"
+        className="rounded"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      Listed on public feed
+    </label>
   );
 }
 
@@ -1122,6 +1142,7 @@ interface PanelRegistration {
   registered_at: string;
   is_waitlisted: boolean;
   attendee_type: 'attendee' | 'speaker' | 'volunteer';
+  public_consent: boolean;
 }
 
 interface PanelAssignmentRow {
@@ -1243,6 +1264,25 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     setDeletingPanel(null);
     if (expandedId === deletingPanel.id) setExpandedId(null);
     load();
+  }
+
+  // Shared by every "Listed on public feed" toggle — a plain boolean with no
+  // structural side effects (unlike a role change), so each call site
+  // applies the result as a local optimistic update rather than a full
+  // refetch.
+  async function patchPublicConsent(registrationId: string, consent: boolean): Promise<boolean> {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ public_consent: consent }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to update'); return false; }
+    return true;
+  }
+
+  async function setPanelRegistrationConsent(registrationId: string, consent: boolean) {
+    if (!(await patchPublicConsent(registrationId, consent))) return;
+    setRegistrations((prev) => prev.map((r) => (r.id === registrationId ? { ...r, public_consent: consent } : r)));
   }
 
   // Attendee <-> speaker flips freely within the panel; picking "Volunteer"
@@ -1394,7 +1434,10 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
                                   <span>{r.name} <span className="text-gray-400">({r.email})</span></span>
                                   {canManage && (
-                                    <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                    <div className="flex items-center gap-2">
+                                      <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(r.id, v)} />
+                                      <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                    </div>
                                   )}
                                 </div>
                               ))}
@@ -1940,6 +1983,17 @@ export default function AdminEventDetailPage() {
     const res = await fetch(`/api/events/${eventId}/shiftless-registrations?type=attendee`);
     if (res.ok) setAttendeeRegs(await res.json());
     setLoadingAttendeeRegs(false);
+  }
+
+  async function setEventLevelConsent(registrationId: string, consent: boolean) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ public_consent: consent }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to update'); return; }
+    setAttendeeRegs((prev) => prev.map((r) => (r.id === registrationId ? { ...r, public_consent: consent } : r)));
+    setShiftlessRegs((prev) => prev.map((r) => (r.id === registrationId ? { ...r, public_consent: consent } : r)));
   }
 
   // Reassigns a registration's role from the Attendees or Registrations
@@ -2530,7 +2584,12 @@ export default function AdminEventDetailPage() {
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
                           <td className="py-2 pr-4">
                             {canManage ? (
-                              <RoleSelect value={r.attendee_type ?? 'attendee'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                              <div className="flex flex-col gap-1">
+                                <RoleSelect value={r.attendee_type ?? 'attendee'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                                {r.attendee_type === 'speaker' && (
+                                  <ConsentToggle checked={!!r.public_consent} onChange={(v) => setEventLevelConsent(r.id, v)} />
+                                )}
+                              </div>
                             ) : (
                               <span className="text-xs capitalize">{r.attendee_type ?? 'attendee'}</span>
                             )}
@@ -2615,7 +2674,12 @@ export default function AdminEventDetailPage() {
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
                           <td className="py-2 pr-4">
                             {canManage ? (
-                              <RoleSelect value={r.attendee_type ?? 'volunteer'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                              <div className="flex flex-col gap-1">
+                                <RoleSelect value={r.attendee_type ?? 'volunteer'} onChange={(v) => setEventLevelRole(r.id, v)} />
+                                {r.attendee_type === 'speaker' && (
+                                  <ConsentToggle checked={!!r.public_consent} onChange={(v) => setEventLevelConsent(r.id, v)} />
+                                )}
+                              </div>
                             ) : (
                               <span className="text-xs capitalize">{r.attendee_type ?? 'volunteer'}</span>
                             )}

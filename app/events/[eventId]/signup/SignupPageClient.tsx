@@ -183,6 +183,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
   const [panels, setPanels]                 = useState<Panel[]>([])
   const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null)
   const [formData, setFormData]             = useState({ name: '', email: '', phone: '', bio: '', topic: '' })
+  const [publicConsent, setPublicConsent]   = useState(false)
   const [submitted, setSubmitted]           = useState(false)
   const [submittedShifts, setSubmittedShifts] = useState<{ id: string; name: string; start_time: string; end_time: string; waitlisted: boolean }[]>([])
   const [submitting, setSubmitting]         = useState(false)
@@ -398,6 +399,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
             phone: formData.phone.trim() || null,
             bio:   formData.bio.trim() || null,
             topic: formData.topic.trim() || null,
+            public_consent: publicConsent,
           }),
         })
         const data = await res.json()
@@ -1010,6 +1012,16 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
                       className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                     />
                   </div>
+                  <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 rounded"
+                      checked={publicConsent}
+                      onChange={(e) => setPublicConsent(e.target.checked)}
+                      disabled={submitting}
+                    />
+                    I consent to being listed publicly (name, bio, photo) on this event&apos;s public schedule.
+                  </label>
                 </>
               )}
 

@@ -19,9 +19,10 @@ npm run dev          # dev server on :3000
 npm run build        # production build
 npm run lint         # eslint
 npx tsc --noEmit     # type check
+npm test             # vitest — route-handler/business-logic regression tests
 ```
 
-There is **no test suite** — verify changes by running the app and type-checking.
+`npm test` runs against a **local** Supabase instance, not staging or production — requires Docker. One-time setup: `npm run db:test:up` (supabase start), copy `.env.test.example` to `.env.test` and fill in the printed URL/keys, then `npm run db:test:reset` to apply migrations. Coverage is deliberately narrow — regression tests for specific bugs found in production/staging testing (panel capacity counting, role-reassignment capacity logic, RLS boundaries on service-role-only tables, the recurring shift_id-first-join bug), not a full suite. Everything else is still verified by running the app and type-checking.
 
 ## Layout
 
