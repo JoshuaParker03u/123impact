@@ -70,7 +70,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data, error } = await service
     .from('volunteer_registrations')
-    .select('id, name, email, phone, registered_at, is_waitlisted, attendee_type')
+    .select('id, name, email, phone, registered_at, is_waitlisted, attendee_type, public_consent')
     .eq('panel_id', panelId)
     .order('registered_at', { ascending: true });
 

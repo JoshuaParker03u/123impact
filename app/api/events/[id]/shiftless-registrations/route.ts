@@ -65,7 +65,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   let query = service
     .from('volunteer_registrations')
-    .select('id, name, email, phone, registered_at, attendee_type')
+    .select('id, name, email, phone, registered_at, attendee_type, public_consent')
     .eq('event_id', eventId)
     .is('shift_id', null)
     .is('panel_id', null)

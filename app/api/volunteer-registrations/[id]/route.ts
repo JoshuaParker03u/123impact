@@ -17,7 +17,14 @@ const ROLE_LABELS: Record<AttendeeType, string> = {
 };
 
 // PATCH /api/volunteer-registrations/[id]
-// Body: { is_waitlisted?: boolean, attendee_type?: 'volunteer' | 'attendee' | 'speaker' }
+// Body: { is_waitlisted?: boolean, attendee_type?: 'volunteer' | 'attendee' | 'speaker', public_consent?: boolean }
+//
+// public_consent gates whether this person appears in the org's public
+// feed (app/api/public/organizations/[orgId]/events.json|ics). It defaults
+// false and is only ever set true by the person's own checkbox at
+// self-registration (app/api/event-speaker-invites/[token]/route.ts) or,
+// for someone promoted to speaker after the fact (who never saw that
+// checkbox), by an admin explicitly opting them in here.
 //
 // attendee_type isn't just a label — a row's shift_id/panel_id anchor
 // determines what capacity it counts against, so a role change sometimes
@@ -60,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { is_waitlisted, attendee_type } = body as { is_waitlisted?: boolean; attendee_type?: AttendeeType };
+  const { is_waitlisted, attendee_type, public_consent } = body as { is_waitlisted?: boolean; attendee_type?: AttendeeType; public_consent?: boolean };
 
   if (attendee_type !== undefined && !VALID_TYPES.includes(attendee_type)) {
     return NextResponse.json({ error: 'Invalid attendee_type' }, { status: 400 });
@@ -145,6 +152,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   if (is_waitlisted !== undefined) updates.is_waitlisted = is_waitlisted;
+  if (public_consent !== undefined) updates.public_consent = public_consent;
 
   const { data: updated, error } = await service
     .from('volunteer_registrations')

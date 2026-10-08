@@ -746,6 +746,7 @@ export type Database = {
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_status: string | null
+          timezone: string | null
           updated_at: string | null
           website: string | null
           zip_code: string | null
@@ -769,6 +770,7 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
+          timezone?: string | null
           updated_at?: string | null
           website?: string | null
           zip_code?: string | null
@@ -792,6 +794,7 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
+          timezone?: string | null
           updated_at?: string | null
           website?: string | null
           zip_code?: string | null
@@ -907,6 +910,7 @@ export type Database = {
           connected_at: string
           connected_by: string | null
           external_org_id: string | null
+          external_org_name: string | null
           id: string
           organization_id: string
           platform: string
@@ -922,6 +926,7 @@ export type Database = {
           connected_at?: string
           connected_by?: string | null
           external_org_id?: string | null
+          external_org_name?: string | null
           id?: string
           organization_id: string
           platform: string
@@ -937,6 +942,7 @@ export type Database = {
           connected_at?: string
           connected_by?: string | null
           external_org_id?: string | null
+          external_org_name?: string | null
           id?: string
           organization_id?: string
           platform?: string
@@ -1287,6 +1293,8 @@ export type Database = {
           name: string
           panel_id: string | null
           phone: string | null
+          photo_url: string | null
+          public_consent: boolean
           registered_at: string | null
           shift_id: string | null
           speaker_bio: string | null
@@ -1302,6 +1310,8 @@ export type Database = {
           name: string
           panel_id?: string | null
           phone?: string | null
+          photo_url?: string | null
+          public_consent?: boolean
           registered_at?: string | null
           shift_id?: string | null
           speaker_bio?: string | null
@@ -1317,6 +1327,8 @@ export type Database = {
           name?: string
           panel_id?: string | null
           phone?: string | null
+          photo_url?: string | null
+          public_consent?: boolean
           registered_at?: string | null
           shift_id?: string | null
           speaker_bio?: string | null

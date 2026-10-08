@@ -45,6 +45,19 @@ export async function listGuildChannels(guildId: string): Promise<DiscordChannel
     .sort((a, b) => a.position - b.position);
 }
 
+// Best-effort display name for a guild — used only as a label (e.g. the
+// public feed's venue name). Never throws: a failed lookup just means no
+// name gets stored, not a broken connect flow.
+export async function getGuildName(guildId: string): Promise<string | null> {
+  try {
+    const res = await discordFetch(`/guilds/${guildId}`, { method: 'GET' });
+    const guild: { name?: string } = await res.json();
+    return guild.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Makes the bot leave a guild. Called when an org disconnects Discord, so
 // the bot doesn't linger as a member of a server it no longer has any
 // connection to. A 404 means it's already gone (kicked manually, guild

@@ -139,7 +139,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  const { name, phone, bio, topic } = body;
+  const { name, phone, bio, topic, public_consent } = body;
   if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
 
   // The topic is normally set by the inviter up front (invite.topic). Fall
@@ -155,6 +155,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       attendee_type: 'speaker',
       speaker_bio:   bio ?? null,
       speaker_topic: invite.topic ?? topic ?? null,
+      public_consent: !!public_consent,
     })
     .select()
     .single();
