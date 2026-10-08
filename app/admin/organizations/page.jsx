@@ -335,6 +335,28 @@ function StatusBadge({ status }) {
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{label}</span>;
 }
 
+// Surfaces the org's UUID for admins who need it outside the app — e.g. to
+// build a public feed URL (app/api/public/organizations/[orgId]/events.json).
+// Org ids aren't sensitive (already passed around in plain URLs/headers
+// elsewhere, e.g. the Discord/Eventbrite connect routes above), so this is
+// just a convenience, not an access-controlled value.
+function OrgIdDisplay({ orgId }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(orgId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+  return (
+    <button
+      onClick={copy}
+      title="Copy organization ID"
+      className="inline-flex items-center gap-1.5 mt-1 text-xs font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+    >
+      {orgId}
+      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+    </button>
+  );
+}
+
 function DnsRecord({ type, name, value }) {
   const [copied, setCopied] = useState('');
   function copy(text, key) {
@@ -1674,6 +1696,7 @@ function OrganizationsPageContent() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Organization</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">{currentOrganization.name}</p>
+          <OrgIdDisplay orgId={currentOrganization.id} />
         </div>
 
         {/* Tab bar */}
