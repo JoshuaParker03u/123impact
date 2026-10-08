@@ -123,6 +123,7 @@ export async function POST(
       online_url: event.online_url,
       is_shiftless: event.is_shiftless,
       shiftless_capacity: event.shiftless_capacity,
+      primary_owner_id: user.id,
     })
     .select('id, event_id')
     .single();

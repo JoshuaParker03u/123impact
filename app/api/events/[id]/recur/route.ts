@@ -161,6 +161,7 @@ export async function POST(
         attendee_capacity:    event.attendee_capacity,
         speaker_enabled:      event.speaker_enabled,
         series_id:            seriesId,
+        primary_owner_id:     user.id,
       })
       .select('id')
       .single();

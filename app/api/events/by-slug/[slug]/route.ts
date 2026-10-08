@@ -2,6 +2,9 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { getUsersByIds } from '@/lib/adminUsers';
+
+const PLATFORM_LABELS: Record<string, string> = { eventbrite: 'Eventbrite', luma: 'Luma' };
 
 export async function GET(
   _req: Request,
@@ -46,6 +49,7 @@ export async function GET(
       is_shiftless, shiftless_capacity, event_format, online_url,
       attendee_enabled, attendee_capacity, speaker_enabled, panels_enabled,
       platform_source, external_id, last_synced_at, sync_status, is_private_on_platform,
+      primary_owner_id,
       shifts (id, shift_id, name, description, start_time, end_time, capacity, shift_date, allow_waitlist),
       event_day_hours (id, event_date, start_time, end_time)
     `)
@@ -53,6 +57,18 @@ export async function GET(
     .single();
 
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Synced events have no human creator -- attribute to the source platform
+  // instead. Falls back to the owning admin's name/email, or null for older
+  // events created before primary_owner_id was consistently recorded.
+  let createdBy: string | null = null;
+  if (event.platform_source) {
+    createdBy = PLATFORM_LABELS[event.platform_source] ?? event.platform_source;
+  } else if (event.primary_owner_id) {
+    const usersById = await getUsersByIds(service, [event.primary_owner_id]);
+    const owner = usersById[event.primary_owner_id];
+    createdBy = owner?.user_metadata?.full_name ?? owner?.email ?? null;
+  }
 
   // Check access: org admin/member OR active event admin assignment
   const [{ data: orgMembership }, { data: eventAdminRow }] = await Promise.all([
@@ -76,7 +92,7 @@ export async function GET(
   }
 
   return NextResponse.json({
-    event,
+    event: { ...event, created_by_display: createdBy },
     userRole: orgMembership?.role ?? null,
     isEventAdmin: !!eventAdminRow,
   });
