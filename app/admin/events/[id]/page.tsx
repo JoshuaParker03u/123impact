@@ -92,6 +92,7 @@ interface Event {
   sync_status?: 'synced' | 'failed' | 'pending' | null;
   is_private_on_platform?: boolean;
   series_id?: string | null;
+  created_by_display?: string | null;
 }
 
 interface OrgMember {
@@ -2382,6 +2383,11 @@ export default function AdminEventDetailPage() {
                 <span className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />{event.location}
                 </span>
+                {event.created_by_display && (
+                  <span className="flex items-center gap-1">
+                    <User className="w-4 h-4" />Created by {event.created_by_display}
+                  </span>
+                )}
                 <span className="flex items-center gap-1">
                   <Users className="w-4 h-4" />
                   {event.is_shiftless
