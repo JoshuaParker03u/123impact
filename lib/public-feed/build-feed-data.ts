@@ -2,30 +2,10 @@
 // and iCal routes can never disagree on what's included (consent filtering,
 // status derivation, URL resolution all happen here exactly once).
 import { createClient } from '@supabase/supabase-js';
-import { fromZonedTime } from 'date-fns-tz';
 import { deriveFeedStatus, type StoredEventStatus } from './derive-status';
+import { resolveEventWindow } from './resolve-event-window';
+import { toInstant } from './to-instant';
 import type { FeedEvent, FeedPerson, FeedSession, FeedSessionPerson, OrgFeedData } from './types';
-
-// events.date/time (and panels.panel_date/start_time/end_time) are stored as
-// plain wall-clock values in the org's own timezone, not UTC — convert using
-// the org's declared timezone (falling back to UTC when unset) rather than
-// letting the JS Date constructor guess from the server process's own TZ.
-//
-// time isn't guaranteed to be a clean "HH:MM" — this app's own admin code
-// (formatEventTime in app/admin/events/[id]/page.tsx) already has to guard
-// against that for the same columns, likely from platform-synced events.
-// Parse leniently (1-2 digit hour, optional seconds) and return null rather
-// than an Invalid Date on anything else, so the caller can skip just that
-// one event/session instead of the whole feed request blowing up.
-const TIME_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
-
-export function toInstant(dateStr: string, timeStr: string, timeZone: string | null): Date | null {
-  const match = TIME_RE.exec(timeStr);
-  if (!match) return null;
-  const [, h, m, s] = match;
-  const instant = fromZonedTime(`${dateStr}T${h.padStart(2, '0')}:${m}:${s ?? '00'}`, timeZone ?? 'UTC');
-  return Number.isNaN(instant.getTime()) ? null : instant;
-}
 
 function buildServiceClient() {
   return createClient(
@@ -73,16 +53,48 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
   ]);
 
   const venueName = connection?.external_org_name ?? null;
+  const timezone = org.timezone;
   const now = new Date();
   const feedEvents: FeedEvent[] = [];
 
+  // Multi-day events can set custom per-day hours (components/admin/EventModal.jsx
+  // writes these to event_day_hours), in which case events.time is left blank —
+  // it's not stale data to skip, it's a second, authoritative source of
+  // scheduling info. Mirrors the precedence formatScheduleSummary (in
+  // app/admin/events/[id]/page.tsx) already uses: day hours win whenever
+  // present, events.date/time is only the fallback when there are none.
+  const eventIds = (events ?? []).map(e => e.id);
+  const { data: dayHours } = eventIds.length
+    ? await service
+        .from('event_day_hours')
+        .select('event_id, event_date, start_time, end_time')
+        .in('event_id', eventIds)
+    : { data: [] };
+
+  const dayHoursByEvent = new Map<string, { event_date: string; start_time: string; end_time: string }[]>();
+  for (const row of dayHours ?? []) {
+    const list = dayHoursByEvent.get(row.event_id) ?? [];
+    list.push(row);
+    dayHoursByEvent.set(row.event_id, list);
+  }
+
+  function windowFor(event: { id: string; date: string; time: string; end_date: string | null }): { start: Date; end: Date } | null {
+    return resolveEventWindow({
+      date: event.date,
+      time: event.time,
+      end_date: event.end_date,
+      timezone,
+      dayHours: dayHoursByEvent.get(event.id) ?? [],
+    });
+  }
+
   for (const event of events ?? []) {
-    const eventStart = toInstant(event.date, event.time, org.timezone);
-    const eventEnd = toInstant(event.end_date ?? event.date, '23:59', org.timezone);
-    if (!eventStart || !eventEnd) {
+    const window = windowFor(event);
+    if (!window) {
       console.error(`public-feed: skipping event ${event.id} — unparseable date/time (date=${event.date}, time=${event.time})`);
       continue;
     }
+    const { start: eventStart, end: eventEnd } = window;
     const status = deriveFeedStatus({
       status: (event.status ?? 'active') as StoredEventStatus,
       start: eventStart,
@@ -128,8 +140,8 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
 
     const sessions: FeedSession[] = (panels ?? []).flatMap(panel => {
       const sessionDate = panel.panel_date ?? event.date;
-      const sessionStart = toInstant(sessionDate, panel.start_time, org.timezone);
-      const sessionEnd = toInstant(sessionDate, panel.end_time, org.timezone);
+      const sessionStart = toInstant(sessionDate, panel.start_time, timezone);
+      const sessionEnd = toInstant(sessionDate, panel.end_time, timezone);
       if (!sessionStart || !sessionEnd) {
         console.error(`public-feed: skipping session ${panel.id} — unparseable date/time (date=${sessionDate}, start=${panel.start_time}, end=${panel.end_time})`);
         return [];
@@ -187,7 +199,7 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
   return {
     organization_id: org.id,
     organization_name: org.name,
-    time_zone: org.timezone,
+    time_zone: timezone,
     events: feedEvents,
   };
 }

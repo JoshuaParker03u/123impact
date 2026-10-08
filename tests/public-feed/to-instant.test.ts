@@ -5,7 +5,7 @@
 // app/admin/events/[id]/page.tsx) already has to guard the same columns
 // against non-"HH:MM" values — real data isn't guaranteed clean.
 import { describe, it, expect } from 'vitest';
-import { toInstant } from '@/lib/public-feed/build-feed-data';
+import { toInstant } from '@/lib/public-feed/to-instant';
 
 describe('toInstant', () => {
   it('parses plain HH:MM', () => {
