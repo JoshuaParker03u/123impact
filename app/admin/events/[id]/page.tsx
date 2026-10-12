@@ -3092,6 +3092,7 @@ export default function AdminEventDetailPage() {
           loading={deletingEvent}
           onCancel={() => setShowDeleteEventModal(false)}
           onConfirm={handleDeleteEvent}
+          requireTypedConfirmation="DELETE"
         />
       )}
 
