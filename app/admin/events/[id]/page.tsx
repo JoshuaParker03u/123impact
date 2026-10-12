@@ -1253,7 +1253,7 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
   );
 }
 
-function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean; discordChannelName: string | null }) {
+function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName, onCountChange }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean; discordChannelName: string | null; onCountChange?: (count: number) => void }) {
   const { streamerMode } = useStreamerMode();
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1272,7 +1272,11 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
   async function load() {
     setLoading(true);
     const res = await fetch(`/api/events/${eventId}/panels`);
-    if (res.ok) setPanels(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setPanels(data);
+      onCountChange?.(data.length);
+    }
     setLoading(false);
   }
 
@@ -1905,6 +1909,7 @@ export default function AdminEventDetailPage() {
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
   const [attendeeRegs, setAttendeeRegs] = useState<Volunteer[]>([]);
   const [loadingAttendeeRegs, setLoadingAttendeeRegs] = useState(false);
+  const [panelsCount, setPanelsCount] = useState<number>(0);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -1992,6 +1997,9 @@ export default function AdminEventDetailPage() {
     if (data.attendee_enabled) {
       loadAttendeeRegs(data.id);
     }
+    if (data.panels_enabled) {
+      loadPanelsCount(data.id);
+    }
   }
 
   async function handleForceSync() {
@@ -2025,6 +2033,14 @@ export default function AdminEventDetailPage() {
     const res = await fetch(`/api/events/${eventId}/shiftless-registrations?type=attendee`);
     if (res.ok) setAttendeeRegs(await res.json());
     setLoadingAttendeeRegs(false);
+  }
+
+  // Just the count for the tab label — PanelsTab fetches the full list (with
+  // live fill/capacity) itself once it's actually opened, and keeps this in
+  // sync afterward via its onCountChange callback.
+  async function loadPanelsCount(eventId: string) {
+    const res = await fetch(`/api/events/${eventId}/panels`);
+    if (res.ok) setPanelsCount((await res.json()).length);
   }
 
   async function setEventLevelConsent(registrationId: string, consent: boolean) {
@@ -2542,7 +2558,7 @@ export default function AdminEventDetailPage() {
               )}
               {event.panels_enabled && (
                 <button onClick={() => setActiveTab('panels')} className={tabClass(activeTab === 'panels')}>
-                  <Mic className="w-4 h-4" />Panels
+                  <Mic className="w-4 h-4" />Panels ({panelsCount})
                 </button>
               )}
               <button onClick={() => setActiveTab('analytics')} className={tabClass(activeTab === 'analytics')}>
@@ -2594,7 +2610,7 @@ export default function AdminEventDetailPage() {
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
         ) : activeTab === 'panels' && event.panels_enabled ? (
-          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} />
+          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} onCountChange={setPanelsCount} />
         ) : activeTab === 'attendees' && event.attendee_enabled ? (
           <>
             {loadingAttendeeRegs ? (
