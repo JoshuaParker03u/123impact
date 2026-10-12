@@ -117,7 +117,7 @@ export async function createTestShift(
 
 export async function createTestPanel(
   eventId: string,
-  overrides: { capacity?: number; allow_waitlist?: boolean } = {}
+  overrides: { capacity?: number | null; allow_waitlist?: boolean } = {}
 ): Promise<{ panelId: string }> {
   const service = getServiceClient();
   const { data, error } = await service
@@ -127,7 +127,7 @@ export async function createTestPanel(
       name: tag('panel'),
       start_time: '13:00',
       end_time: '14:00',
-      capacity: overrides.capacity ?? 3,
+      capacity: overrides.capacity === undefined ? 3 : overrides.capacity,
       allow_waitlist: overrides.allow_waitlist ?? false,
     })
     .select('id')

@@ -650,8 +650,8 @@ export default function AdminEventsPage() {
                       ) : (
                         <div className="space-y-3">
                           {event.panels.map((panel) => {
-                            const spotsLeft = panel.capacity - (panel.filled || 0);
-                            const isFull = spotsLeft <= 0;
+                            const spotsLeft = panel.capacity == null ? Infinity : panel.capacity - (panel.filled || 0);
+                            const isFull = panel.capacity != null && spotsLeft <= 0;
 
                             return (
                               <div
@@ -662,7 +662,7 @@ export default function AdminEventsPage() {
                                   <div className="flex items-center gap-3 mb-1">
                                     <h3 className="font-semibold text-gray-900 dark:text-gray-100">{panel.name}</h3>
                                     <span className={`text-sm font-medium ${isFull ? 'text-red-600' : 'text-green-600'}`}>
-                                      {panel.filled || 0}/{panel.capacity} registered
+                                      {panel.capacity == null ? `${panel.filled || 0} registered (unlimited)` : `${panel.filled || 0}/${panel.capacity} registered`}
                                     </span>
                                     {panel.waitlisted > 0 && (
                                       <span className="text-xs text-amber-600 dark:text-amber-400">{panel.waitlisted} waitlisted</span>

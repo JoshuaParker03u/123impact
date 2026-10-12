@@ -1127,11 +1127,11 @@ interface Panel {
   panel_date: string | null;
   location: string | null;
   online_url: string | null;
-  capacity: number;
+  capacity: number | null;
   allow_waitlist: boolean;
   filled: number;
   waitlisted: number;
-  available: number;
+  available: number | null;
   is_full: boolean;
 }
 
@@ -1352,7 +1352,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                         {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)}
-                        {panel.location ? ` · ${panel.location}` : ''} · {panel.filled}/{panel.capacity} registered
+                        {panel.location ? ` · ${panel.location}` : ''} · {panel.capacity == null ? `${panel.filled} registered (unlimited)` : `${panel.filled}/${panel.capacity} registered`}
                         {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
                       </p>
                       {(event.event_format === 'online' || event.event_format === 'hybrid') && !panel.online_url && (

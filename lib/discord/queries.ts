@@ -182,7 +182,7 @@ export interface OpenPanel {
   name: string;
   start_time: string;
   end_time: string;
-  available: number;
+  available: number | null;
   is_full: boolean;
   allow_waitlist: boolean;
 }
@@ -233,13 +233,13 @@ export async function getOpenPanelsForEvent(eventId: string, discordUserId?: str
   const filtered = panels
     .map((p) => {
       const filled = filledMap[p.id] ?? 0;
-      const is_full = filled >= p.capacity;
+      const is_full = p.capacity != null && filled >= p.capacity;
       return {
         id: p.id,
         name: p.name,
         start_time: p.start_time,
         end_time: p.end_time,
-        available: Math.max(p.capacity - filled, 0),
+        available: p.capacity == null ? null : Math.max(p.capacity - filled, 0),
         is_full,
         allow_waitlist: p.allow_waitlist,
       };

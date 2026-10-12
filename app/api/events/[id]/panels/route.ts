@@ -67,8 +67,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ...panel,
       filled,
       waitlisted,
-      available: panel.capacity - filled,
-      is_full:   filled >= panel.capacity,
+      available: panel.capacity == null ? null : panel.capacity - filled,
+      is_full:   panel.capacity != null && filled >= panel.capacity,
     };
   });
 
@@ -106,8 +106,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const body = await req.json();
   const { name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist } = body;
 
-  if (!name || !start_time || !end_time || !capacity) {
-    return NextResponse.json({ error: 'name, start_time, end_time, and capacity are required' }, { status: 400 });
+  if (!name || !start_time || !end_time) {
+    return NextResponse.json({ error: 'name, start_time, and end_time are required' }, { status: 400 });
   }
 
   const { data: panel, error } = await service
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       panel_date:     panel_date ?? null,
       location:       location ?? null,
       online_url:     online_url ?? null,
-      capacity,
+      capacity:       capacity ?? null,
       allow_waitlist: allow_waitlist ?? false,
     })
     .select()

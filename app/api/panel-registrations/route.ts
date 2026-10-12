@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     .eq('panel_id', panel_id)
     .eq('is_waitlisted', false);
 
-  const isFull = (confirmed ?? 0) >= panel.capacity;
+  const isFull = panel.capacity != null && (confirmed ?? 0) >= panel.capacity;
   const isWaitlisted = isFull && panel.allow_waitlist;
 
   if (isFull && !panel.allow_waitlist) {

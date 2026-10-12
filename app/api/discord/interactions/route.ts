@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
           const options = panels.map((p) => ({
             label: `${p.name} (${p.start_time}-${p.end_time})`.slice(0, 100),
             value: p.id,
-            description: p.is_full ? 'Waitlist' : `${p.available} spot${p.available === 1 ? '' : 's'} open`,
+            description: p.is_full ? 'Waitlist' : p.available == null ? 'Open' : `${p.available} spot${p.available === 1 ? '' : 's'} open`,
           }));
           return updateMessage('Choose a panel:', selectMenuRow('select_panel', 'Choose a panel', options));
         }
