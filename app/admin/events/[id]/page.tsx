@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useRouter } from 'next/navigation';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
@@ -1163,11 +1164,23 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
   const [open, setOpen] = useState(false);
   const [candidates, setCandidates] = useState<PoolCandidate[] | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   async function loadPool() {
     setCandidates(null);
     const res = await fetch(`/api/panels/${panelId}/pool?role=${role}`);
     if (res.ok) setCandidates(await res.json());
+  }
+
+  function toggle() {
+    if (!open && anchorRef.current) {
+      const rect = anchorRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+      loadPool();
+    }
+    setOpen((o) => !o);
   }
 
   async function assign(registrationId: string) {
@@ -1183,13 +1196,38 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
     onAssigned();
   }
 
+  // Rendered in a portal so it escapes the panel card's overflow-hidden
+  // (needed there for the card's own rounded corners) — without that, this
+  // menu got visually clipped whenever it opened near a card edge. Being
+  // portaled out of the button's own DOM subtree means it needs its own
+  // outside-click/scroll handling to close.
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function handleScroll() { setOpen(false); }
+    document.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [open]);
+
   return (
-    <div className="relative inline-block">
-      <Button size="sm" variant="outline" onClick={() => { setOpen(!open); if (!open) loadPool(); }}>
+    <span ref={anchorRef} className="inline-block">
+      <Button size="sm" variant="outline" onClick={toggle}>
         <UserPlus className="w-3.5 h-3.5 mr-1" />{role === 'speaker' ? 'Assign Speaker' : 'Assign Staff'}
       </Button>
-      {open && (
-        <div className="absolute z-10 mt-1 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          style={{ top: menuPos.top, right: menuPos.right }}
+          className="fixed z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto"
+        >
           {candidates === null ? (
             <div className="p-3 text-center"><Loader2 className="w-4 h-4 animate-spin inline text-gray-400" /></div>
           ) : candidates.length === 0 ? (
@@ -1207,9 +1245,10 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
               </button>
             ))
           )}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </span>
   );
 }
 
