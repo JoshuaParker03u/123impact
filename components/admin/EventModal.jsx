@@ -294,6 +294,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
           }
         }
       } else {
+        const { data: { user } } = await supabase.auth.getUser();
         const { data: newEvent, error } = await supabase
           .from('events')
           .insert({
@@ -310,6 +311,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
             online_url:    formData.online_url || null,
             recording_url: formData.recording_url || null,
             organization_id: organizationId,
+            primary_owner_id: user?.id ?? null,
             ...shiftlessPayload,
             ...rolePayload,
           })
