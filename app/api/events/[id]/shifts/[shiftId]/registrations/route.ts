@@ -80,18 +80,41 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const registrationIds = (data ?? []).map((r) => r.id);
-  const { data: checkIns } = registrationIds.length
-    ? await service
-        .from('check_ins')
-        .select('registration_id, checked_in_at, is_override')
-        .in('registration_id', registrationIds)
-    : { data: [] };
+  const [{ data: checkIns }, { data: panelAssignments }] = await Promise.all([
+    registrationIds.length
+      ? service
+          .from('check_ins')
+          .select('registration_id, checked_in_at, is_override')
+          .in('registration_id', registrationIds)
+      : Promise.resolve({ data: [] }),
+    // A shift volunteer can also be attached to a panel via "Assign Speaker"/
+    // "Assign Staff" without ever leaving their shift (see panel_assignments
+    // POST route) — surfaced here so the roster shows where, instead of
+    // leaving it invisible outside the Panels tab.
+    registrationIds.length
+      ? service
+          .from('panel_assignments')
+          .select('registration_id, role, panels(id, name)')
+          .in('registration_id', registrationIds)
+      : Promise.resolve({ data: [] }),
+  ]);
 
   const checkInMap = new Map((checkIns ?? []).map((c) => [c.registration_id, c]));
+  const panelMap = new Map<string, { panel_id: string; panel_name: string; role: 'speaker' | 'volunteer' }[]>();
+  type PanelAssignmentRow = { registration_id: string; role: 'speaker' | 'volunteer'; panels: { id: string; name: string } | null };
+  for (const a of (panelAssignments ?? []) as unknown as PanelAssignmentRow[]) {
+    const panel = a.panels;
+    if (!panel) continue;
+    const list = panelMap.get(a.registration_id) ?? [];
+    list.push({ panel_id: panel.id, panel_name: panel.name, role: a.role });
+    panelMap.set(a.registration_id, list);
+  }
+
   const withCheckIn = (data ?? []).map((r) => ({
     ...r,
     checked_in_at: checkInMap.get(r.id)?.checked_in_at ?? null,
     is_override: checkInMap.get(r.id)?.is_override ?? false,
+    panel_assignments: panelMap.get(r.id) ?? [],
   }));
 
   return NextResponse.json(withCheckIn);

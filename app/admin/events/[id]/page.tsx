@@ -47,6 +47,9 @@ interface Volunteer {
   checked_in_at?: string | null;
   attendee_type?: 'volunteer' | 'attendee' | 'speaker';
   public_consent?: boolean;
+  // Panels this registration is also attached to via "Assign Speaker"/
+  // "Assign Staff" — orthogonal to their shift, which they stay on.
+  panel_assignments?: { panel_id: string; panel_name: string; role: 'speaker' | 'volunteer' }[];
 }
 
 interface Shift {
@@ -2936,7 +2939,19 @@ export default function AdminEventDetailPage() {
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                                       {confirmed.map((v) => (
                                         <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                          <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
+                                          <td className="py-2 pr-4 font-medium">
+                                            {redact(v.name, 'name', streamerMode)}
+                                            {v.panel_assignments && v.panel_assignments.length > 0 && (
+                                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 font-normal text-xs text-gray-400 dark:text-gray-500">
+                                                {v.panel_assignments.map((a) => (
+                                                  <span key={a.panel_id} className="flex items-center gap-1">
+                                                    <Mic className="w-3 h-3" />
+                                                    Also {a.role === 'speaker' ? 'speaking at' : 'staffing'} {a.panel_name}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </td>
                                           <td className="py-2 pr-4">
                                             {streamerMode ? redact(v.email, 'email', streamerMode) : (
                                               <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
@@ -3002,7 +3017,19 @@ export default function AdminEventDetailPage() {
                                       )}
                                       {waitlisting.map((v) => (
                                         <tr key={v.id} className="text-gray-700 dark:text-gray-300">
-                                          <td className="py-2 pr-4 font-medium">{redact(v.name, 'name', streamerMode)}</td>
+                                          <td className="py-2 pr-4 font-medium">
+                                            {redact(v.name, 'name', streamerMode)}
+                                            {v.panel_assignments && v.panel_assignments.length > 0 && (
+                                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 font-normal text-xs text-gray-400 dark:text-gray-500">
+                                                {v.panel_assignments.map((a) => (
+                                                  <span key={a.panel_id} className="flex items-center gap-1">
+                                                    <Mic className="w-3 h-3" />
+                                                    Also {a.role === 'speaker' ? 'speaking at' : 'staffing'} {a.panel_name}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </td>
                                           <td className="py-2 pr-4">
                                             {streamerMode ? redact(v.email, 'email', streamerMode) : (
                                               <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
