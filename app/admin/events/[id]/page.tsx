@@ -1161,6 +1161,7 @@ interface PoolCandidate {
 }
 
 function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; role: 'speaker' | 'volunteer'; onAssigned: () => void }) {
+  const { streamerMode } = useStreamerMode();
   const [open, setOpen] = useState(false);
   const [candidates, setCandidates] = useState<PoolCandidate[] | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -1240,8 +1241,8 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
                 disabled={assigning === c.id}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b last:border-0 border-gray-100 dark:border-gray-800"
               >
-                <div className="font-medium text-gray-900 dark:text-gray-100">{c.name}</div>
-                <div className="text-xs text-gray-500">{c.email}{c.speaker_topic ? ` · ${c.speaker_topic}` : ''}</div>
+                <div className="font-medium text-gray-900 dark:text-gray-100">{redact(c.name, 'name', streamerMode)}</div>
+                <div className="text-xs text-gray-500">{redact(c.email, 'email', streamerMode)}{c.speaker_topic ? ` · ${c.speaker_topic}` : ''}</div>
               </button>
             ))
           )}
@@ -1253,6 +1254,7 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
 }
 
 function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean; discordChannelName: string | null }) {
+  const { streamerMode } = useStreamerMode();
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPanelModal, setShowPanelModal] = useState(false);
@@ -1449,7 +1451,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               {attendees.map((r) => (
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
-                                    {r.name} <span className="text-gray-400">({r.email})</span>
+                                    {redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span>
                                     {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
                                   </span>
                                   {canManage && (
@@ -1472,7 +1474,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                             <div className="space-y-1">
                               {promotedSpeakers.map((r) => (
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{r.name} <span className="text-gray-400">({r.email})</span></span>
+                                  <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
                                   {canManage && (
                                     <div className="flex items-center gap-2">
                                       <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(r.id, v)} />
@@ -1484,7 +1486,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               {assignedSpeakers.map((a) => (
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
-                                    {a.registration?.name} <span className="text-gray-400">({a.registration?.email})</span>
+                                    {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
                                   </span>
                                   {canManage && (
                                     <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
@@ -1506,7 +1508,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                             <div className="space-y-1">
                               {promotedVolunteers.map((r) => (
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{r.name} <span className="text-gray-400">({r.email})</span></span>
+                                  <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
                                   {canManage && (
                                     <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
                                   )}
@@ -1515,7 +1517,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               {assignedStaff.map((a) => (
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
-                                    {a.registration?.name} <span className="text-gray-400">({a.registration?.email})</span>
+                                    {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
                                   </span>
                                   {canManage && (
                                     <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
