@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { sendDirectMessage } from '@/lib/discord/dm';
 import { baseEmbed } from '@/lib/discord/embed';
-import { VALID_ATTENDEE_TYPES, countsNeededFor, planRoleReassignment, type AttendeeType, type Anchor } from '@/lib/volunteer-registrations/role-reassignment';
+import { VALID_ATTENDEE_TYPES, countsNeededFor, planRoleReassignment, type AttendeeType, type Anchor, type TargetShift } from '@/lib/volunteer-registrations/role-reassignment';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -67,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { is_waitlisted, attendee_type, public_consent } = body as { is_waitlisted?: boolean; attendee_type?: AttendeeType; public_consent?: boolean };
+  const { is_waitlisted, attendee_type, public_consent, shift_id: targetShiftId } = body as { is_waitlisted?: boolean; attendee_type?: AttendeeType; public_consent?: boolean; shift_id?: string };
 
   if (attendee_type !== undefined && !VALID_TYPES.includes(attendee_type)) {
     return NextResponse.json({ error: 'Invalid attendee_type' }, { status: 400 });
@@ -125,6 +125,32 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const currentAnchor: Anchor = reg.shift_id ? 'shift' : reg.panel_id ? 'panel' : 'event';
     const currentType = reg.attendee_type as AttendeeType;
 
+    // An unanchored registration moving to 'volunteer' on a non-shiftless
+    // event needs an explicit shift pick — there's no shiftless bucket to
+    // land in. Resolved here (not via countsNeededFor, which only covers
+    // the event-wide attendee/shiftless counts) since it depends on a
+    // specific shift id the client must supply.
+    let targetShift: TargetShift | null = null;
+    let shiftConfirmedCount: number | undefined;
+    const needsTargetShift = currentAnchor === 'event' && attendee_type === 'volunteer' && attendee_type !== currentType && !event.is_shiftless;
+    if (needsTargetShift && targetShiftId) {
+      const { data: shift } = await service
+        .from('shifts')
+        .select('id, name, capacity, allow_waitlist, event_id')
+        .eq('id', targetShiftId)
+        .single();
+      if (!shift || shift.event_id !== eventId) {
+        return NextResponse.json({ error: 'Shift not found for this event' }, { status: 404 });
+      }
+      targetShift = { id: shift.id, name: shift.name, capacity: shift.capacity, allow_waitlist: shift.allow_waitlist };
+      const { count } = await service
+        .from('volunteer_registrations')
+        .select('*', { count: 'exact', head: true })
+        .eq('shift_id', shift.id)
+        .eq('is_waitlisted', false);
+      shiftConfirmedCount = count ?? undefined;
+    }
+
     const needed = countsNeededFor({ currentAnchor, currentType, newType: attendee_type, event });
     const [attendeeCountRes, shiftlessCountRes] = await Promise.all([
       needed.attendeeCount
@@ -144,7 +170,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       currentType,
       newType: attendee_type,
       event,
-      counts: { attendeeCount: attendeeCountRes.count ?? undefined, shiftlessVolunteerCount: shiftlessCountRes.count ?? undefined },
+      counts: { attendeeCount: attendeeCountRes.count ?? undefined, shiftlessVolunteerCount: shiftlessCountRes.count ?? undefined, shiftConfirmedCount },
+      targetShift,
     });
 
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: result.error.status });

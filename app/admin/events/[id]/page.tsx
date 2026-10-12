@@ -176,6 +176,45 @@ function RoleSelect({ value, onChange, disabled }: { value: AttendeeTypeValue; o
   );
 }
 
+// Picking a shift for an unanchored registration moving to Volunteer on a
+// non-shiftless event — see setEventLevelRole/assignPickedShift.
+function ShiftPickerModal({ shifts, onClose, onPick, submitting }: { shifts: Shift[]; onClose: () => void; onPick: (shiftId: string) => void; submitting: boolean }) {
+  return (
+    <FloatingWindow title="Assign a Shift" onClose={onClose} maxWidthClassName="max-w-md">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        This event isn&apos;t shiftless, so volunteers need a specific shift. Choose one below.
+      </p>
+      {shifts.length === 0 ? (
+        <p className="text-sm text-gray-400">No shifts have been created for this event yet.</p>
+      ) : (
+        <div className="space-y-2 max-h-80 overflow-y-auto">
+          {shifts.map((s) => {
+            const spotsLeft = s.capacity - (s.filled ?? 0);
+            const isFull = spotsLeft <= 0;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onPick(s.id)}
+                disabled={submitting}
+                className="w-full text-left px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                <div className="font-medium text-gray-900 dark:text-gray-100">{s.name}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {s.start_time}–{s.end_time} ·{' '}
+                  {isFull
+                    ? (s.allow_waitlist ? 'Full — will waitlist' : 'Full')
+                    : `${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </FloatingWindow>
+  );
+}
+
 // Admin-set override for someone promoted to speaker after the fact, who
 // never saw the public-consent checkbox at self-registration (that only
 // exists on the speaker-invite signup form). Shown only for speakers —
@@ -1913,6 +1952,11 @@ export default function AdminEventDetailPage() {
   const [attendeeRegs, setAttendeeRegs] = useState<Volunteer[]>([]);
   const [loadingAttendeeRegs, setLoadingAttendeeRegs] = useState(false);
   const [panelsCount, setPanelsCount] = useState<number>(0);
+  // Picking a shift for an unanchored registration (Attendees tab) moving
+  // back to Volunteer on a non-shiftless event — there's no shiftless
+  // bucket for them to land in, so a shift must be chosen explicitly.
+  const [shiftPickerFor, setShiftPickerFor] = useState<string | null>(null);
+  const [assigningShift, setAssigningShift] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -2063,14 +2107,39 @@ export default function AdminEventDetailPage() {
   // reloaded rather than patching local state in place.
   async function setEventLevelRole(registrationId: string, attendee_type: AttendeeTypeValue) {
     if (!event) return;
+    // Moving back to Volunteer on a real-shifts event needs a specific
+    // shift — pop the picker instead of PATCHing straight to a guaranteed
+    // "Event does not allow shiftless registration" error.
+    if (attendee_type === 'volunteer' && !event.is_shiftless) {
+      setShiftPickerFor(registrationId);
+      return;
+    }
+    await patchEventLevelRole(registrationId, attendee_type);
+  }
+
+  async function patchEventLevelRole(registrationId: string, attendee_type: AttendeeTypeValue, shiftId?: string): Promise<boolean> {
+    if (!event) return false;
     const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attendee_type }),
+      body: JSON.stringify(shiftId ? { attendee_type, shift_id: shiftId } : { attendee_type }),
     });
-    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return false; }
     loadAttendeeRegs(event.id);
     loadShiftlessRegs(event.id);
+    return true;
+  }
+
+  async function assignPickedShift(shiftId: string) {
+    if (!shiftPickerFor) return;
+    setAssigningShift(true);
+    const ok = await patchEventLevelRole(shiftPickerFor, 'volunteer', shiftId);
+    setAssigningShift(false);
+    if (!ok) return;
+    setShiftPickerFor(null);
+    // Refresh so the shift's own filled/waitlisted count reflects the new
+    // registration whenever the admin next opens the Shifts tab.
+    loadEvent();
   }
 
   function checkInUrl(registrationId: string): string {
@@ -3177,6 +3246,15 @@ export default function AdminEventDetailPage() {
           onCancel={() => setShowDeleteEventModal(false)}
           onConfirm={handleDeleteEvent}
           requireTypedConfirmation="DELETE"
+        />
+      )}
+
+      {shiftPickerFor && event && (
+        <ShiftPickerModal
+          shifts={event.shifts}
+          submitting={assigningShift}
+          onClose={() => setShiftPickerFor(null)}
+          onPick={assignPickedShift}
         />
       )}
 
