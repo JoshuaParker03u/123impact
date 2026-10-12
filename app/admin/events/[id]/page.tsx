@@ -1317,42 +1317,73 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
   const [confirmingDiscordId, setConfirmingDiscordId] = useState<string | null>(null);
   const [postingDiscordId, setPostingDiscordId] = useState<string | null>(null);
   const [discordResult, setDiscordResult] = useState<'success' | string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [registrations, setRegistrations] = useState<PanelRegistration[]>([]);
-  const [assignments, setAssignments] = useState<PanelAssignmentRow[]>([]);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  // Panels default to expanded (collapsible, not collapsed-by-default) —
+  // a Set rather than a single id so any number can be open at once. Each
+  // panel's detail data is keyed by panel id for the same reason: with
+  // several open simultaneously, a single shared registrations/assignments
+  // array would get overwritten by whichever panel loaded last.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [registrationsByPanel, setRegistrationsByPanel] = useState<Record<string, PanelRegistration[]>>({});
+  const [assignmentsByPanel, setAssignmentsByPanel] = useState<Record<string, PanelAssignmentRow[]>>({});
+  const [loadingDetailIds, setLoadingDetailIds] = useState<Set<string>>(new Set());
+  // Tracks which panel ids have already had the "default open" treatment
+  // applied, so a reload (e.g. after deleting a different panel) never
+  // re-expands one the user explicitly collapsed — only genuinely new
+  // panels (first load, or just-created) default to open.
+  const seenPanelIds = useRef<Set<string>>(new Set());
+
+  async function loadDetail(panelId: string) {
+    setLoadingDetailIds((prev) => new Set(prev).add(panelId));
+    const [regsRes, assignRes] = await Promise.all([
+      fetch(`/api/panels/${panelId}/registrations`),
+      fetch(`/api/panels/${panelId}/assignments`),
+    ]);
+    const regs = regsRes.ok ? await regsRes.json() : [];
+    const assigns = assignRes.ok ? await assignRes.json() : [];
+    setRegistrationsByPanel((prev) => ({ ...prev, [panelId]: regs }));
+    setAssignmentsByPanel((prev) => ({ ...prev, [panelId]: assigns }));
+    setLoadingDetailIds((prev) => {
+      const next = new Set(prev);
+      next.delete(panelId);
+      return next;
+    });
+  }
 
   async function load() {
     setLoading(true);
     const res = await fetch(`/api/events/${eventId}/panels`);
     if (res.ok) {
-      const data = await res.json();
+      const data: Panel[] = await res.json();
       setPanels(data);
       onCountChange?.(data.length);
+
+      const newIds = data.map((p) => p.id).filter((id) => !seenPanelIds.current.has(id));
+      if (newIds.length > 0) {
+        newIds.forEach((id) => seenPanelIds.current.add(id));
+        setExpandedIds((prev) => {
+          const next = new Set(prev);
+          newIds.forEach((id) => next.add(id));
+          return next;
+        });
+        newIds.forEach((id) => loadDetail(id));
+      }
     }
     setLoading(false);
   }
 
   useEffect(() => { load(); }, [eventId]);
 
-  async function loadDetail(panelId: string) {
-    setLoadingDetail(true);
-    const [regsRes, assignRes] = await Promise.all([
-      fetch(`/api/panels/${panelId}/registrations`),
-      fetch(`/api/panels/${panelId}/assignments`),
-    ]);
-    if (regsRes.ok) setRegistrations(await regsRes.json());
-    if (assignRes.ok) setAssignments(await assignRes.json());
-    setLoadingDetail(false);
-  }
-
   function toggleExpand(panelId: string) {
-    if (expandedId === panelId) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(panelId);
-    loadDetail(panelId);
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(panelId)) {
+        next.delete(panelId);
+      } else {
+        next.add(panelId);
+        loadDetail(panelId);
+      }
+      return next;
+    });
   }
 
   async function deletePanel() {
@@ -1360,8 +1391,14 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     setDeleting(true);
     await fetch(`/api/panels/${deletingPanel.id}`, { method: 'DELETE' });
     setDeleting(false);
+    const deletedId = deletingPanel.id;
     setDeletingPanel(null);
-    if (expandedId === deletingPanel.id) setExpandedId(null);
+    setExpandedIds((prev) => {
+      if (!prev.has(deletedId)) return prev;
+      const next = new Set(prev);
+      next.delete(deletedId);
+      return next;
+    });
     load();
   }
 
@@ -1379,27 +1416,30 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     return true;
   }
 
-  async function setPanelRegistrationConsent(registrationId: string, consent: boolean) {
+  async function setPanelRegistrationConsent(panelId: string, registrationId: string, consent: boolean) {
     if (!(await patchPublicConsent(registrationId, consent))) return;
-    setRegistrations((prev) => prev.map((r) => (r.id === registrationId ? { ...r, public_consent: consent } : r)));
+    setRegistrationsByPanel((prev) => ({
+      ...prev,
+      [panelId]: (prev[panelId] ?? []).map((r) => (r.id === registrationId ? { ...r, public_consent: consent } : r)),
+    }));
   }
 
   // Attendee <-> speaker flips freely within the panel; picking "Volunteer"
   // means leaving the panel entirely (server clears panel_id and becomes a
   // shiftless volunteer) — either way this list needs a fresh load after.
-  async function setPanelRegistrationRole(registrationId: string, attendee_type: AttendeeTypeValue) {
+  async function setPanelRegistrationRole(panelId: string, registrationId: string, attendee_type: AttendeeTypeValue) {
     const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ attendee_type }),
     });
     if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return; }
-    if (expandedId) loadDetail(expandedId);
+    loadDetail(panelId);
   }
 
-  async function unassign(assignmentId: string) {
+  async function unassign(panelId: string, assignmentId: string) {
     await fetch(`/api/panel-assignments/${assignmentId}`, { method: 'DELETE' });
-    if (expandedId) loadDetail(expandedId);
+    loadDetail(panelId);
   }
 
   async function postPanelToDiscord(panelId: string) {
@@ -1412,12 +1452,6 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
 
-  const attendees = registrations.filter((r) => r.attendee_type === 'attendee');
-  const promotedSpeakers = registrations.filter((r) => r.attendee_type === 'speaker');
-  const promotedVolunteers = registrations.filter((r) => r.attendee_type === 'volunteer');
-  const assignedSpeakers = assignments.filter((a) => a.role === 'speaker');
-  const assignedStaff = assignments.filter((a) => a.role === 'volunteer');
-  const assignedModerators = assignments.filter((a) => a.role === 'moderator');
   const isOnlinePanelEvent = event.event_format === 'online' || event.event_format === 'hybrid';
 
   return (
@@ -1435,7 +1469,16 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
       ) : (
         <div className="space-y-3">
           {panels.map((panel) => {
-            const expanded = expandedId === panel.id;
+            const expanded = expandedIds.has(panel.id);
+            const loadingDetail = loadingDetailIds.has(panel.id);
+            const panelRegistrations = registrationsByPanel[panel.id] ?? [];
+            const panelAssignments = assignmentsByPanel[panel.id] ?? [];
+            const attendees = panelRegistrations.filter((r) => r.attendee_type === 'attendee');
+            const promotedSpeakers = panelRegistrations.filter((r) => r.attendee_type === 'speaker');
+            const promotedVolunteers = panelRegistrations.filter((r) => r.attendee_type === 'volunteer');
+            const assignedSpeakers = panelAssignments.filter((a) => a.role === 'speaker');
+            const assignedStaff = panelAssignments.filter((a) => a.role === 'volunteer');
+            const assignedModerators = panelAssignments.filter((a) => a.role === 'moderator');
             return (
               <Card key={panel.id} className="overflow-hidden">
                 <button onClick={() => toggleExpand(panel.id)} className="w-full flex items-center justify-between p-4 text-left">
@@ -1514,7 +1557,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                     {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
                                   </span>
                                   {canManage && (
-                                    <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                    <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
                                   )}
                                 </div>
                               ))}
@@ -1536,8 +1579,8 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                   <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
                                   {canManage && (
                                     <div className="flex items-center gap-2">
-                                      <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(r.id, v)} />
-                                      <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                      <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(panel.id, r.id, v)} />
+                                      <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
                                     </div>
                                   )}
                                 </div>
@@ -1548,7 +1591,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                     {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
                                   </span>
                                   {canManage && (
-                                    <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                    <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
                                   )}
                                 </div>
                               ))}
@@ -1569,7 +1612,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
                                   <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
                                   {canManage && (
-                                    <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(r.id, type)} />
+                                    <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
                                   )}
                                 </div>
                               ))}
@@ -1579,7 +1622,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                     {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
                                   </span>
                                   {canManage && (
-                                    <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                    <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
                                   )}
                                 </div>
                               ))}
@@ -1606,7 +1649,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                       {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
                                     </span>
                                     {canManage && (
-                                      <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                      <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
                                     )}
                                   </div>
                                 ))}
@@ -1985,8 +2028,15 @@ export default function AdminEventDetailPage() {
 
   const [event,   setEvent]   = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [loadingVolunteers, setLoadingVolunteers] = useState<string | null>(null);
+  // Shifts default to expanded (collapsible, not collapsed-by-default) — a
+  // Set rather than a single id so any number can be open at once.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [loadingVolunteers, setLoadingVolunteers] = useState<Set<string>>(new Set());
+  // Tracks which shift ids have already had the "default open" treatment
+  // applied, so a reload never re-expands one the user explicitly
+  // collapsed — only genuinely new shifts (first load, or just-created)
+  // default to open.
+  const seenShiftIds = useRef<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'shifts' | 'attendees' | 'panels' | 'admins' | 'speakers' | 'qr' | 'analytics' | 'live' | 'eventbrite'>('shifts');
   const [shiftlessRegs, setShiftlessRegs] = useState<Volunteer[]>([]);
   const [loadingShiftlessRegs, setLoadingShiftlessRegs] = useState(false);
@@ -2077,6 +2127,12 @@ export default function AdminEventDetailPage() {
 
     setEvent({ ...data, shifts: sorted } as Event);
     setLoading(false);
+
+    const newShiftIds: string[] = sorted.map((s) => s.id).filter((id) => !seenShiftIds.current.has(id));
+    if (newShiftIds.length > 0) {
+      newShiftIds.forEach((id) => seenShiftIds.current.add(id));
+      newShiftIds.forEach((id) => loadShiftVolunteers(id, data.id));
+    }
 
     // Auto-load registrations for shiftless events
     if (data.is_shiftless) {
@@ -2191,36 +2247,56 @@ export default function AdminEventDetailPage() {
     return `${base}/events/${event.event_id}/r/${registrationId}`;
   }
 
-  async function toggleShift(shiftId: string) {
-    if (expanded === shiftId) {
-      setExpanded(null);
-      return;
-    }
+  // Fetches a shift's roster into event.shifts[].volunteers (per-shift, so
+  // several can be loaded/open concurrently) and marks it expanded once
+  // ready. Takes eventId explicitly rather than reading event.id from the
+  // closure, since this is also called from loadEvent() itself for every
+  // newly-seen shift, before any later render has captured fresh state.
+  async function loadShiftVolunteers(shiftId: string, forEventId: string) {
+    setLoadingVolunteers((prev) => new Set(prev).add(shiftId));
+    const res = await fetch(`/api/events/${forEventId}/shifts/${shiftId}/registrations`);
+    const data = res.ok ? await res.json() : [];
 
-    const shift = event?.shifts.find((s) => s.id === shiftId);
-    if (shift && !shift.volunteers) {
-      setLoadingVolunteers(shiftId);
-      const res = await fetch(`/api/events/${event!.id}/shifts/${shiftId}/registrations`);
-      const data = res.ok ? await res.json() : [];
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        shifts: prev.shifts.map((s) =>
+          s.id === shiftId ? {
+            ...s,
+            volunteers: data,
+            filled:     data.filter((v: any) => !v.is_waitlisted).length,
+            waitlisted: data.filter((v: any) => v.is_waitlisted).length,
+          } : s
+        ),
+      };
+    });
+    setLoadingVolunteers((prev) => {
+      const next = new Set(prev);
+      next.delete(shiftId);
+      return next;
+    });
+    setExpanded((prev) => new Set(prev).add(shiftId));
+  }
 
-      setEvent((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          shifts: prev.shifts.map((s) =>
-            s.id === shiftId ? {
-              ...s,
-              volunteers: data,
-              filled:     data.filter((v: any) => !v.is_waitlisted).length,
-              waitlisted: data.filter((v: any) => v.is_waitlisted).length,
-            } : s
-          ),
-        };
-      });
-      setLoadingVolunteers(null);
-    }
-
-    setExpanded(shiftId);
+  function toggleShift(shiftId: string) {
+    setExpanded((prev) => {
+      if (prev.has(shiftId)) {
+        const next = new Set(prev);
+        next.delete(shiftId);
+        return next;
+      }
+      const shift = event?.shifts.find((s) => s.id === shiftId);
+      if (shift && !shift.volunteers) {
+        // loadShiftVolunteers adds shiftId to `expanded` itself once the
+        // fetch resolves — stay closed (spinner in the chevron) until then.
+        loadShiftVolunteers(shiftId, event!.id);
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(shiftId);
+      return next;
+    });
   }
 
   // Compute default expiry: latest shift end + 5 days, or event date + 5 days.
@@ -2929,7 +3005,7 @@ export default function AdminEventDetailPage() {
             ) : (
               <div className="space-y-3">
                 {event.shifts.map((shift) => {
-                  const isOpen     = expanded === shift.id;
+                  const isOpen     = expanded.has(shift.id);
                   const filled     = shift.filled ?? 0;
                   const waitlisted = shift.waitlisted ?? 0;
                   const isFull     = filled >= shift.capacity;
@@ -2948,7 +3024,7 @@ export default function AdminEventDetailPage() {
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <span className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 shrink-0">
-                            {loadingVolunteers === shift.id
+                            {loadingVolunteers.has(shift.id)
                               ? <Loader2 className="w-4 h-4 animate-spin text-gray-500 dark:text-gray-400" />
                               : isOpen
                                 ? <ChevronUp className="w-4 h-4 text-gray-500 dark:text-gray-400" />
