@@ -15,7 +15,10 @@
 //    never capacity-checked, since an in-place update never changes the
 //    panel's real confirmed headcount (see app/api/events/[id]/panels/route.ts).
 //  - unanchored (shiftless volunteer / attendee / event-level speaker):
-//    reassign freely among the three, each gated by its own event setting.
+//    reassign freely among the three, each gated by its own event setting —
+//    except moving to volunteer on a non-shiftless event, which requires an
+//    explicit targetShift (there's no shiftless bucket to land in) and is
+//    checked against that shift's own capacity/waitlist instead.
 // A reselection of the current value is always a no-op and never
 // capacity-checked — the row already counts toward its own bucket, so a
 // fresh count would wrongly reject an at-capacity no-op.
@@ -37,6 +40,19 @@ export interface RoleReassignmentCounts {
   // speculatively.
   attendeeCount?: number;
   shiftlessVolunteerCount?: number;
+  // Confirmed (non-waitlisted) count for targetShift specifically — only
+  // relevant, and only fetched by the caller, alongside targetShift below.
+  shiftConfirmedCount?: number;
+}
+
+// The shift an unanchored (event-level) registration is being moved onto.
+// Required when newType is 'volunteer' and the event isn't shiftless —
+// there's no such thing as an unanchored volunteer on a real-shifts event.
+export interface TargetShift {
+  id: string;
+  name: string;
+  capacity: number;
+  allow_waitlist: boolean;
 }
 
 export interface RoleReassignmentInput {
@@ -45,6 +61,7 @@ export interface RoleReassignmentInput {
   newType: AttendeeType;
   event: RoleReassignmentEvent;
   counts: RoleReassignmentCounts;
+  targetShift?: TargetShift | null;
 }
 
 export interface CountsNeeded {
@@ -85,7 +102,7 @@ export function countsNeededFor(
 }
 
 export function planRoleReassignment(input: RoleReassignmentInput): RoleReassignmentResult {
-  const { currentAnchor, currentType, newType, event, counts } = input;
+  const { currentAnchor, currentType, newType, event, counts, targetShift } = input;
   const updates: Record<string, unknown> = { attendee_type: newType };
 
   function attendeeCapacityError(): RoleReassignmentError | null {
@@ -96,8 +113,10 @@ export function planRoleReassignment(input: RoleReassignmentInput): RoleReassign
     return null;
   }
 
+  // Only ever called when event.is_shiftless is true — the branch below
+  // intercepts a non-shiftless event's move-to-volunteer before this runs,
+  // routing it through the targetShift flow instead.
   function shiftlessCapacityError(): RoleReassignmentError | null {
-    if (!event.is_shiftless) return { message: 'Event does not allow shiftless registration', status: 400 };
     if (event.shiftless_capacity && (counts.shiftlessVolunteerCount ?? 0) >= event.shiftless_capacity) {
       return { message: 'This event is full', status: 409 };
     }
@@ -121,6 +140,23 @@ export function planRoleReassignment(input: RoleReassignmentInput): RoleReassign
   } else if (currentAnchor === 'panel') {
     updates.is_waitlisted = false;
   } else if (newType !== currentType) {
+    // An unanchored registration moving to 'volunteer' on a real-shifts
+    // event has no shiftless bucket to join — it needs a specific shift,
+    // checked against that shift's own capacity/waitlist, not the event's.
+    if (newType === 'volunteer' && !event.is_shiftless) {
+      if (!targetShift) {
+        return { error: { message: 'A shift is required for this event', status: 400 }, updates: {} };
+      }
+      const confirmed = counts.shiftConfirmedCount ?? 0;
+      const isFull = confirmed >= targetShift.capacity;
+      if (isFull && !targetShift.allow_waitlist) {
+        return { error: { message: `"${targetShift.name}" is full and does not have a waitlist`, status: 409 }, updates: {} };
+      }
+      updates.shift_id = targetShift.id;
+      updates.is_waitlisted = isFull;
+      return { error: null, updates };
+    }
+
     const err = newType === 'attendee' ? attendeeCapacityError()
       : newType === 'volunteer' ? shiftlessCapacityError()
       : speakerError();

@@ -108,12 +108,12 @@ describe('unanchored (event-level) transitions', () => {
     expect(result.error).toBeNull();
   });
 
-  it('attendee -> volunteer is rejected when shiftless registration is disabled', () => {
+  it('attendee -> volunteer on a non-shiftless event requires a targetShift', () => {
     const result = planRoleReassignment({
       currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
       event: { ...baseEvent, is_shiftless: false }, counts: {},
     });
-    expect(result.error).toEqual({ message: 'Event does not allow shiftless registration', status: 400 });
+    expect(result.error).toEqual({ message: 'A shift is required for this event', status: 400 });
   });
 
   it('attendee -> volunteer is rejected at shiftless capacity (409)', () => {
@@ -142,6 +142,55 @@ describe('unanchored (event-level) transitions', () => {
     });
     expect(result.error).toBeNull();
     expect(result.updates).toEqual({ attendee_type: 'attendee' });
+  });
+});
+
+describe('unanchored attendee -> volunteer on a non-shiftless event (explicit shift pick)', () => {
+  const nonShiftlessEvent = { ...baseEvent, is_shiftless: false };
+  const roomyShift = { id: 'shift-1', name: 'Morning', capacity: 5, allow_waitlist: false };
+
+  it('succeeds and anchors to the chosen shift when it has room', () => {
+    const result = planRoleReassignment({
+      currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
+      event: nonShiftlessEvent, counts: { shiftConfirmedCount: 2 }, targetShift: roomyShift,
+    });
+    expect(result.error).toBeNull();
+    expect(result.updates).toEqual({ attendee_type: 'volunteer', shift_id: 'shift-1', is_waitlisted: false });
+  });
+
+  it('is rejected (409) when the chosen shift is full and has no waitlist', () => {
+    const result = planRoleReassignment({
+      currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
+      event: nonShiftlessEvent, counts: { shiftConfirmedCount: 5 }, targetShift: roomyShift,
+    });
+    expect(result.error).toEqual({ message: '"Morning" is full and does not have a waitlist', status: 409 });
+  });
+
+  it('waitlists instead of rejecting when the shift is full but allows a waitlist', () => {
+    const result = planRoleReassignment({
+      currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
+      event: nonShiftlessEvent, counts: { shiftConfirmedCount: 5 },
+      targetShift: { ...roomyShift, allow_waitlist: true },
+    });
+    expect(result.error).toBeNull();
+    expect(result.updates).toEqual({ attendee_type: 'volunteer', shift_id: 'shift-1', is_waitlisted: true });
+  });
+
+  it('is rejected with a 400 asking for a shift when none was provided', () => {
+    const result = planRoleReassignment({
+      currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
+      event: nonShiftlessEvent, counts: {},
+    });
+    expect(result.error).toEqual({ message: 'A shift is required for this event', status: 400 });
+  });
+
+  it('a shiftless event ignores targetShift entirely and uses the shiftless bucket instead', () => {
+    const result = planRoleReassignment({
+      currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
+      event: baseEvent, counts: {}, targetShift: roomyShift,
+    });
+    expect(result.error).toBeNull();
+    expect(result.updates).toEqual({ attendee_type: 'volunteer', is_waitlisted: false });
   });
 });
 
