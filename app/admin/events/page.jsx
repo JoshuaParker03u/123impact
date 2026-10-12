@@ -729,6 +729,7 @@ export default function AdminEventsPage() {
             loading={deleting}
             onCancel={() => setDeletingEvent(null)}
             onConfirm={() => handleDeleteEvent(deletingEvent.id)}
+            requireTypedConfirmation="DELETE"
           />
         )}
 
