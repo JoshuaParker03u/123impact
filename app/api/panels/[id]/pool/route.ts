@@ -2,18 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { REQUIRED_ATTENDEE_TYPE, isPanelAssignmentRole } from '@/lib/panels/assignment-roles';
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/panels/[id]/pool?role=speaker|volunteer
-// Candidates for assignment: this event's registrations with that role,
-// excluding anyone already assigned to this panel in that role. Org
-// owner/admin only (same bar as inviting a speaker / editing a panel).
+// GET /api/panels/[id]/pool?role=speaker|volunteer|moderator
+// Candidates for assignment: this event's registrations holding the
+// attendee_type that role requires (moderator draws from volunteers — see
+// REQUIRED_ATTENDEE_TYPE), excluding anyone already assigned to this panel
+// in that exact role. Org owner/admin only (same bar as inviting a speaker /
+// editing a panel).
 export async function GET(req: NextRequest, { params }: Params) {
   const { id: panelId } = await params;
   const role = req.nextUrl.searchParams.get('role');
-  if (role !== 'speaker' && role !== 'volunteer') {
-    return NextResponse.json({ error: 'role must be speaker or volunteer' }, { status: 400 });
+  if (!isPanelAssignmentRole(role)) {
+    return NextResponse.json({ error: 'role must be speaker, volunteer, or moderator' }, { status: 400 });
   }
 
   const cookieStore = await cookies();
@@ -67,7 +70,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     .from('volunteer_registrations')
     .select('id, name, email, speaker_topic')
     .eq('event_id', panel.event_id)
-    .eq('attendee_type', role);
+    .eq('attendee_type', REQUIRED_ATTENDEE_TYPE[role]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

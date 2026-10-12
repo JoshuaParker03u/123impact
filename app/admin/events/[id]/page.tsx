@@ -1191,7 +1191,7 @@ interface PanelRegistration {
 
 interface PanelAssignmentRow {
   id: string;
-  role: 'speaker' | 'volunteer';
+  role: 'speaker' | 'volunteer' | 'moderator';
   registration: { id: string; name: string; email: string; speaker_topic: string | null } | null;
 }
 
@@ -1202,7 +1202,18 @@ interface PoolCandidate {
   speaker_topic: string | null;
 }
 
-function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; role: 'speaker' | 'volunteer'; onAssigned: () => void }) {
+const ASSIGN_BUTTON_LABEL: Record<'speaker' | 'volunteer' | 'moderator', string> = {
+  speaker: 'Assign Speaker',
+  volunteer: 'Assign Staff',
+  moderator: 'Assign Moderator',
+};
+const ASSIGN_EMPTY_LABEL: Record<'speaker' | 'volunteer' | 'moderator', string> = {
+  speaker: 'unassigned speakers',
+  volunteer: 'volunteers',
+  moderator: 'eligible volunteers',
+};
+
+function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; role: 'speaker' | 'volunteer' | 'moderator'; onAssigned: () => void }) {
   const { streamerMode } = useStreamerMode();
   const [open, setOpen] = useState(false);
   const [candidates, setCandidates] = useState<PoolCandidate[] | null>(null);
@@ -1263,7 +1274,7 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
   return (
     <span ref={anchorRef} className="inline-block">
       <Button size="sm" variant="outline" onClick={toggle}>
-        <UserPlus className="w-3.5 h-3.5 mr-1" />{role === 'speaker' ? 'Assign Speaker' : 'Assign Staff'}
+        <UserPlus className="w-3.5 h-3.5 mr-1" />{ASSIGN_BUTTON_LABEL[role]}
       </Button>
       {open && menuPos && createPortal(
         <div
@@ -1274,7 +1285,7 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
           {candidates === null ? (
             <div className="p-3 text-center"><Loader2 className="w-4 h-4 animate-spin inline text-gray-400" /></div>
           ) : candidates.length === 0 ? (
-            <p className="p-3 text-sm text-gray-500">No {role === 'speaker' ? 'unassigned speakers' : 'volunteers'} available.</p>
+            <p className="p-3 text-sm text-gray-500">No {ASSIGN_EMPTY_LABEL[role]} available.</p>
           ) : (
             candidates.map((c) => (
               <button
@@ -1406,6 +1417,8 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
   const promotedVolunteers = registrations.filter((r) => r.attendee_type === 'volunteer');
   const assignedSpeakers = assignments.filter((a) => a.role === 'speaker');
   const assignedStaff = assignments.filter((a) => a.role === 'volunteer');
+  const assignedModerators = assignments.filter((a) => a.role === 'moderator');
+  const isOnlinePanelEvent = event.event_format === 'online' || event.event_format === 'hybrid';
 
   return (
     <>
@@ -1573,6 +1586,34 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                             </div>
                           )}
                         </div>
+
+                        {isOnlinePanelEvent && (
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Moderators ({assignedModerators.length})</h4>
+                              {canManage && <AssignPersonControl panelId={panel.id} role="moderator" onAssigned={() => loadDetail(panel.id)} />}
+                            </div>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                              Informational for now — doesn&apos;t grant any actual permissions on the call.
+                            </p>
+                            {assignedModerators.length === 0 ? (
+                              <p className="text-sm text-gray-400">No moderators assigned yet.</p>
+                            ) : (
+                              <div className="space-y-1">
+                                {assignedModerators.map((a) => (
+                                  <div key={a.id} className="flex items-center justify-between text-sm py-1">
+                                    <span className="text-gray-700 dark:text-gray-300">
+                                      {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                    </span>
+                                    {canManage && (
+                                      <button onClick={() => unassign(a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>

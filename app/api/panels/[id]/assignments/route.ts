@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { REQUIRED_ATTENDEE_TYPE, isPanelAssignmentRole } from '@/lib/panels/assignment-roles';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { registration_id, role } = await req.json();
-  if (!registration_id || (role !== 'speaker' && role !== 'volunteer')) {
+  if (!registration_id || !isPanelAssignmentRole(role)) {
     return NextResponse.json({ error: 'registration_id and a valid role are required' }, { status: 400 });
   }
 
@@ -109,9 +110,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // The candidate must actually belong to this event, and hold the role
-  // being assigned (e.g. can't assign someone as "speaker" who never
-  // registered/was invited as one).
+  // The candidate must actually belong to this event, and hold the
+  // attendee_type that role requires (e.g. can't assign someone as
+  // "speaker" who never registered/was invited as one; moderator draws
+  // from the same volunteer pool as "Assign Staff" — see REQUIRED_ATTENDEE_TYPE).
   const { data: registration } = await service
     .from('volunteer_registrations')
     .select('id, event_id, attendee_type')
@@ -121,8 +123,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!registration || registration.event_id !== panel.event_id) {
     return NextResponse.json({ error: 'Registration not found for this event' }, { status: 404 });
   }
-  if (registration.attendee_type !== role) {
-    return NextResponse.json({ error: `This person is not registered as a ${role}` }, { status: 400 });
+  const requiredType = REQUIRED_ATTENDEE_TYPE[role];
+  if (registration.attendee_type !== requiredType) {
+    return NextResponse.json({ error: `This person is not registered as a ${requiredType}` }, { status: 400 });
   }
 
   const { data: assignment, error } = await service
