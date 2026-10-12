@@ -726,7 +726,7 @@ function EventAdminsTab({
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{redact(a.email, 'email', streamerMode)}</p>
                         )}
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                          Invited by {a.inviter_name} &middot; Expires{' '}
+                          Invited by {a.inviter_name ? redact(a.inviter_name, 'name', streamerMode) : a.inviter_name} &middot; Expires{' '}
                           <span className={expired ? 'text-red-500' : ''}>
                             {new Date(a.expires_at).toLocaleDateString()}
                           </span>
@@ -790,7 +790,7 @@ function EventAdminsTab({
                           {statusBadge(a.status)}
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5">
-                          Invited by {a.inviter_name} &middot; Expired {new Date(a.expires_at).toLocaleDateString()}
+                          Invited by {a.inviter_name ? redact(a.inviter_name, 'name', streamerMode) : a.inviter_name} &middot; Expired {new Date(a.expires_at).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
@@ -1002,7 +1002,7 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
                         {speakerStatusBadge(i.status)}
                       </div>
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        Invited by {i.inviter_name} &middot; Expires {new Date(i.expires_at).toLocaleDateString()}
+                        Invited by {i.inviter_name ? redact(i.inviter_name, 'name', streamerMode) : i.inviter_name} &middot; Expires {new Date(i.expires_at).toLocaleDateString()}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         {editingTimeId === i.id ? (
@@ -1157,7 +1157,7 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
                           {speakerStatusBadge(i.status)}
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5">
-                          Invited by {i.inviter_name} &middot; Expired {new Date(i.expires_at).toLocaleDateString()}
+                          Invited by {i.inviter_name ? redact(i.inviter_name, 'name', streamerMode) : i.inviter_name} &middot; Expired {new Date(i.expires_at).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
