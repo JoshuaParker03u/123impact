@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import type { PanelAssignmentRole } from '@/lib/panels/assignment-roles';
 
 type Params = { params: Promise<{ id: string; shiftId: string }> };
 
@@ -100,21 +101,27 @@ export async function GET(_req: NextRequest, { params }: Params) {
   ]);
 
   const checkInMap = new Map((checkIns ?? []).map((c) => [c.registration_id, c]));
-  const panelMap = new Map<string, { panel_id: string; panel_name: string; role: 'speaker' | 'volunteer' }[]>();
-  type PanelAssignmentRow = { registration_id: string; role: 'speaker' | 'volunteer'; panels: { id: string; name: string } | null };
+  // Keyed by registration_id -> panel_id, so the same person assigned to
+  // the same panel in more than one role (e.g. both "Assign Staff" and
+  // "Assign Moderator" — allowed, since role is part of the row's own
+  // uniqueness) collapses into one entry per panel instead of one per role.
+  const panelsByRegistration = new Map<string, Map<string, { panel_id: string; panel_name: string; roles: PanelAssignmentRole[] }>>();
+  type PanelAssignmentRow = { registration_id: string; role: PanelAssignmentRole; panels: { id: string; name: string } | null };
   for (const a of (panelAssignments ?? []) as unknown as PanelAssignmentRow[]) {
     const panel = a.panels;
     if (!panel) continue;
-    const list = panelMap.get(a.registration_id) ?? [];
-    list.push({ panel_id: panel.id, panel_name: panel.name, role: a.role });
-    panelMap.set(a.registration_id, list);
+    const panels = panelsByRegistration.get(a.registration_id) ?? new Map();
+    const entry = panels.get(panel.id) ?? { panel_id: panel.id, panel_name: panel.name, roles: [] };
+    if (!entry.roles.includes(a.role)) entry.roles.push(a.role);
+    panels.set(panel.id, entry);
+    panelsByRegistration.set(a.registration_id, panels);
   }
 
   const withCheckIn = (data ?? []).map((r) => ({
     ...r,
     checked_in_at: checkInMap.get(r.id)?.checked_in_at ?? null,
     is_override: checkInMap.get(r.id)?.is_override ?? false,
-    panel_assignments: panelMap.get(r.id) ?? [],
+    panel_assignments: [...(panelsByRegistration.get(r.id)?.values() ?? [])],
   }));
 
   return NextResponse.json(withCheckIn);

@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
+import type { PanelAssignmentRole } from '@/lib/panels/assignment-roles';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
@@ -48,8 +49,10 @@ interface Volunteer {
   attendee_type?: 'volunteer' | 'attendee' | 'speaker';
   public_consent?: boolean;
   // Panels this registration is also attached to via "Assign Speaker"/
-  // "Assign Staff" — orthogonal to their shift, which they stay on.
-  panel_assignments?: { panel_id: string; panel_name: string; role: 'speaker' | 'volunteer' }[];
+  // "Assign Staff"/"Assign Moderator" — orthogonal to their shift, which
+  // they stay on. One entry per panel even if assigned in more than one
+  // role there (e.g. both staff and moderator) — see the roles array.
+  panel_assignments?: { panel_id: string; panel_name: string; roles: PanelAssignmentRole[] }[];
 }
 
 interface Shift {
@@ -156,6 +159,19 @@ function formatDateRange(start: string, end?: string | null): string {
 }
 
 type AttendeeTypeValue = 'volunteer' | 'attendee' | 'speaker';
+
+// Verb phrase for the Shifts tab's "Also <verb> <panel>" note — a shift
+// volunteer can be attached to the same panel in more than one role (e.g.
+// both "Assign Staff" and "Assign Moderator"), so this combines every role
+// held there into one phrase instead of one line per role.
+const PANEL_ROLE_VERB: Record<PanelAssignmentRole, string> = {
+  speaker: 'speaking at',
+  volunteer: 'staffing',
+  moderator: 'moderating',
+};
+function panelAssignmentVerb(roles: PanelAssignmentRole[]): string {
+  return roles.map((r) => PANEL_ROLE_VERB[r]).join(' & ');
+}
 
 // Shared role dropdown used everywhere a registration is listed (Attendees
 // tab, Shifts tab, Panels tab) — reassigns attendee_type via
@@ -3132,7 +3148,7 @@ export default function AdminEventDetailPage() {
                                                 {v.panel_assignments.map((a) => (
                                                   <span key={a.panel_id} className="flex items-center gap-1">
                                                     <Mic className="w-3 h-3" />
-                                                    Also {a.role === 'speaker' ? 'speaking at' : 'staffing'} {a.panel_name}
+                                                    Also {panelAssignmentVerb(a.roles)} {a.panel_name}
                                                   </span>
                                                 ))}
                                               </div>
@@ -3210,7 +3226,7 @@ export default function AdminEventDetailPage() {
                                                 {v.panel_assignments.map((a) => (
                                                   <span key={a.panel_id} className="flex items-center gap-1">
                                                     <Mic className="w-3 h-3" />
-                                                    Also {a.role === 'speaker' ? 'speaking at' : 'staffing'} {a.panel_name}
+                                                    Also {panelAssignmentVerb(a.roles)} {a.panel_name}
                                                   </span>
                                                 ))}
                                               </div>
