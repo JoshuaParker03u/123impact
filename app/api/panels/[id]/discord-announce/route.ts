@@ -75,7 +75,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('panel_id', panelId)
     .eq('is_waitlisted', false);
 
-  const available = panel.capacity - (count ?? 0);
+  const available = panel.capacity == null ? null : panel.capacity - (count ?? 0);
 
   // Speakers come from two places (see the PanelsTab promotedX/assignedX
   // split): native rows promoted to speaker on this panel, and existing

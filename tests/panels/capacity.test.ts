@@ -87,3 +87,53 @@ describe('panel capacity: GET /panels agrees with POST /panel-registrations enfo
     expect(postRes.status).toBe(201);
   });
 });
+
+// Regression test for a real bug class: `capacity` is nullable (NULL =
+// unlimited, left blank in the admin UI), and a naive `count >= panel.capacity`
+// check silently breaks under JS's numeric coercion — `n >= null` evaluates
+// as `n >= 0`, which is always true, so an "unlimited" panel would reject
+// every signup as immediately full. This seeds a null-capacity panel with
+// registrations already on it and asserts both GET and POST treat it as
+// never full.
+describe('panel capacity: NULL capacity means unlimited, not "always full"', () => {
+  let orgId: string;
+  let eventId: string;
+  let panelId: string;
+
+  beforeAll(async () => {
+    ({ orgId } = await createTestOrg());
+    ({ eventId } = await createTestEvent(orgId, { panels_enabled: true }));
+    ({ panelId } = await createTestPanel(eventId, { capacity: null, allow_waitlist: false }));
+
+    await createTestRegistration({ eventId, panelId, attendeeType: 'attendee' });
+    await createTestRegistration({ eventId, panelId, attendeeType: 'speaker' });
+  });
+
+  afterAll(async () => {
+    await cleanupEvent(eventId);
+    await cleanupOrg(orgId);
+  });
+
+  it('GET reports the panel as open with no numeric availability figure', async () => {
+    const res = await getPanels(
+      new NextRequest(`http://localhost/api/events/${eventId}/panels`),
+      { params: Promise.resolve({ id: eventId }) }
+    );
+    const panels = await res.json();
+    const panel = panels.find((p: { id: string }) => p.id === panelId);
+
+    expect(panel.filled).toBe(2);
+    expect(panel.capacity).toBe(null);
+    expect(panel.available).toBe(null);
+    expect(panel.is_full).toBe(false);
+  });
+
+  it('a real signup attempt succeeds despite existing registrations', async () => {
+    const res = await postPanelRegistration(new NextRequest('http://localhost/api/panel-registrations', {
+      method: 'POST',
+      body: JSON.stringify({ panel_id: panelId, name: 'Another Attendee', email: 'unlimited-attendee@example.com' }),
+    }));
+
+    expect(res.status).toBe(201);
+  });
+});

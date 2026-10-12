@@ -65,8 +65,8 @@ type Panel = {
   end_time: string
   panel_date: string | null
   location: string | null
-  capacity: number
-  available: number
+  capacity: number | null
+  available: number | null
   is_full: boolean
   allow_waitlist: boolean
 }
@@ -788,7 +788,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
                             {panel.location && <span>{panel.location}</span>}
                             <span className="flex items-center gap-1">
                               <Users className="w-4 h-4" />
-                              {isWaitlistable ? 'Waitlist open' : `${panel.available} ${panel.available === 1 ? 'spot' : 'spots'} left`}
+                              {isWaitlistable ? 'Waitlist open' : panel.available == null ? 'Open' : `${panel.available} ${panel.available === 1 ? 'spot' : 'spots'} left`}
                             </span>
                           </div>
                         </div>

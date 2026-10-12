@@ -48,7 +48,7 @@ export function buildEventAnnouncement(
 }
 
 export function buildPanelAnnouncement(
-  panel: { name: string; description: string | null; panel_date: string | null; start_time: string; end_time: string; location: string | null; capacity: number; allow_waitlist: boolean; available: number },
+  panel: { name: string; description: string | null; panel_date: string | null; start_time: string; end_time: string; location: string | null; capacity: number | null; allow_waitlist: boolean; available: number | null },
   event: { title: string; date: string; end_date: string | null },
   org: { name: string; logo_url?: string | null },
   signupUrl: string,
@@ -70,9 +70,11 @@ export function buildPanelAnnouncement(
   }
   fields.push({
     name: 'Availability',
-    value: panel.available > 0
-      ? `${panel.available} ${panel.available === 1 ? 'spot' : 'spots'} left`
-      : panel.allow_waitlist ? 'Full — waitlist open' : 'Currently full',
+    value: panel.available == null
+      ? 'Open — no capacity limit'
+      : panel.available > 0
+        ? `${panel.available} ${panel.available === 1 ? 'spot' : 'spots'} left`
+        : panel.allow_waitlist ? 'Full — waitlist open' : 'Currently full',
   });
 
   return {

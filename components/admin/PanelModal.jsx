@@ -11,7 +11,7 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
     description:    panel?.description    || '',
     start_time:     panel?.start_time     || '',
     end_time:       panel?.end_time       || '',
-    capacity:       panel?.capacity       || 30,
+    capacity:       panel ? (panel.capacity ?? '') : '',
     panel_date:     panel?.panel_date     || '',
     location:       panel?.location       || '',
     online_url:     panel?.online_url     || '',
@@ -29,8 +29,10 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
     if (!formData.start_time)                      e.start_time = 'Start time is required';
     if (!formData.end_time)                        e.end_time   = 'End time is required';
     if (formData.start_time === formData.end_time) e.end_time   = 'End time cannot equal start time';
-    if (formData.capacity < 1)                     e.capacity   = 'Capacity must be at least 1';
-    if (panel && formData.capacity < panel.filled) e.capacity   = `Cannot reduce below ${panel.filled} (current registrations)`;
+    if (formData.capacity !== '' && formData.capacity < 1) e.capacity = 'Capacity must be at least 1 (or blank for unlimited)';
+    if (panel && formData.capacity !== '' && formData.capacity < panel.filled) {
+      e.capacity = `Cannot reduce below ${panel.filled} (current registrations)`;
+    }
     if (event.end_date && !formData.panel_date)    e.panel_date = 'Panel date is required for multi-day events';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -41,7 +43,11 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      const payload = { ...formData, panel_date: formData.panel_date || null };
+      const payload = {
+        ...formData,
+        panel_date: formData.panel_date || null,
+        capacity:   formData.capacity === '' ? null : formData.capacity,
+      };
       const url = panel ? `/api/panels/${panel.id}` : `/api/events/${event.id}/panels`;
       const res = await fetch(url, {
         method: panel ? 'PATCH' : 'POST',
@@ -132,12 +138,17 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
               <label className="block text-sm font-medium mb-1">Attendee Capacity</label>
               <input type="number" value={formData.capacity}
                 onChange={(e) => {
-                  const parsed = parseInt(e.target.value, 10);
+                  const raw = e.target.value;
+                  if (raw === '') { setFormData({ ...formData, capacity: '' }); return; }
+                  const parsed = parseInt(raw, 10);
                   setFormData({ ...formData, capacity: Number.isNaN(parsed) ? '' : parsed });
                 }}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                placeholder="Unlimited"
                 min={panel?.filled || 1} />
-              {panel && <p className="text-sm text-gray-500 mt-1">Currently {panel.filled} attendees registered</p>}
+              <p className="text-sm text-gray-500 mt-1">
+                Leave blank for unlimited capacity.{panel ? ` Currently ${panel.filled} attendees registered.` : ''}
+              </p>
               {errors.capacity && <p className="text-red-600 text-sm mt-1">{errors.capacity}</p>}
             </div>
 
