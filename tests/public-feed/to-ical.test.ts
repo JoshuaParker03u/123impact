@@ -22,6 +22,7 @@ const baseEvent = {
   recording_url: null,
   apply_url: 'https://example.com/events/plain-event/signup',
   venue_name: null,
+  venue_join_url: null,
   sessions: [],
   people: [],
 };

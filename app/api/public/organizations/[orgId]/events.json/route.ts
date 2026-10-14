@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildOrgFeedData } from '@/lib/public-feed/build-feed-data';
+import { buildEventsJson } from '@/lib/public-feed/to-json';
 
 type Params = { params: Promise<{ orgId: string }> };
 
@@ -26,39 +27,5 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404, headers: CORS_HEADERS });
   }
 
-  const timeZone = data.time_zone ?? 'UTC';
-
-  return NextResponse.json({
-    schema: 'ngu.events.v1',
-    generated: new Date().toISOString(),
-    events: data.events.map(event => ({
-      id: event.id,
-      name: event.title,
-      status: event.status,
-      starts: event.starts.toISOString(),
-      ends: event.ends.toISOString(),
-      time_zone: timeZone,
-      summary: event.description?.slice(0, 200) ?? null,
-      description: event.description,
-      image: event.image ? { url: event.image } : null,
-      links: {
-        apply: event.apply_url,
-        join: event.online_url,
-        watch: event.online_url,
-        recording: event.recording_url,
-      },
-      venues: event.venue_name ? [{ id: 'primary', name: event.venue_name }] : [],
-      sessions: event.sessions.map(session => ({
-        id: session.id,
-        title: session.title,
-        starts: session.starts.toISOString(),
-        ends: session.ends.toISOString(),
-        venue: session.location,
-        description: session.description,
-        streamed: session.streamed,
-        people: session.people,
-      })),
-      people: event.people,
-    })),
-  }, { headers: { ...CORS_HEADERS, ...CACHE_HEADERS } });
+  return NextResponse.json(buildEventsJson(data), { headers: { ...CORS_HEADERS, ...CACHE_HEADERS } });
 }

@@ -65,19 +65,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!invite) return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
 
   const body = await req.json();
-  const { speaker_bio, speaker_topic, session_time } = body;
+  const { speaker_bio, speaker_topic, pronouns, link, session_time } = body;
 
-  if (speaker_bio !== undefined || speaker_topic !== undefined) {
+  if (speaker_bio !== undefined || speaker_topic !== undefined || pronouns !== undefined || link !== undefined) {
     if (!invite.registration_id) {
       return NextResponse.json({ error: 'This invite has not been accepted yet' }, { status: 400 });
     }
 
+    const updates: Record<string, unknown> = {};
+    if (speaker_bio !== undefined) updates.speaker_bio = speaker_bio?.trim() || null;
+    if (speaker_topic !== undefined) updates.speaker_topic = speaker_topic?.trim() || null;
+    if (pronouns !== undefined) updates.pronouns = pronouns?.trim() || null;
+    if (link !== undefined) updates.links = link?.trim() ? [{ label: 'Website', url: link.trim() }] : [];
+
     const { error } = await service
       .from('volunteer_registrations')
-      .update({
-        speaker_bio: speaker_bio?.trim() || null,
-        speaker_topic: speaker_topic?.trim() || null,
-      })
+      .update(updates)
       .eq('id', invite.registration_id);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -85,11 +88,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // Keep the invite's own topic in sync — the duplicate-invite check in
     // the POST handler compares against this column, so a stale value here
     // would let a genuinely duplicate talk slip through (or wrongly block a
-    // new one).
-    await service
-      .from('event_speaker_invites')
-      .update({ topic: speaker_topic?.trim() || null })
-      .eq('id', inviteId);
+    // new one). Guarded on speaker_topic itself (not just "this block ran")
+    // now that pronouns/link can trigger this block alone — otherwise an
+    // edit that only touches those would wrongly null out the topic.
+    if (speaker_topic !== undefined) {
+      await service
+        .from('event_speaker_invites')
+        .update({ topic: speaker_topic?.trim() || null })
+        .eq('id', inviteId);
+    }
   }
 
   if (session_time !== undefined) {

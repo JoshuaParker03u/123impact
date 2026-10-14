@@ -960,6 +960,8 @@ function IntegrationsTab({ orgId }) {
   const [discordChannels, setDiscordChannels] = useState(null);
   const [savingChannel, setSavingChannel]     = useState(false);
   const [savingAnnouncementChannel, setSavingAnnouncementChannel] = useState(false);
+  const [inviteUrlDraft, setInviteUrlDraft]   = useState('');
+  const [savingInviteUrl, setSavingInviteUrl] = useState(false);
 
   const OAUTH_ERRORS = {
     eventbrite_already_connected: 'This Eventbrite account is already connected to another organization.',
@@ -995,6 +997,13 @@ function IntegrationsTab({ orgId }) {
       .catch(() => setDiscordChannels([]));
   }, [orgId, connections.discord]);
 
+  // Seeds the free-text draft from the saved value whenever the connection
+  // (re)loads — not a controlled round-trip on every keystroke, since this
+  // is plain text the admin edits before explicitly saving.
+  useEffect(() => {
+    setInviteUrlDraft(connections.discord?.invite_url ?? '');
+  }, [connections.discord]);
+
   async function saveDiscordChannel(channelId) {
     setSavingChannel(true);
     await fetch(`/api/organizations/${orgId}/connections`, {
@@ -1014,6 +1023,17 @@ function IntegrationsTab({ orgId }) {
       body: JSON.stringify({ platform: 'discord', announcement_channel_id: channelId || null }),
     });
     setSavingAnnouncementChannel(false);
+    loadConnections();
+  }
+
+  async function saveInviteUrl() {
+    setSavingInviteUrl(true);
+    await fetch(`/api/organizations/${orgId}/connections`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: 'discord', invite_url: inviteUrlDraft.trim() || null }),
+    });
+    setSavingInviteUrl(false);
     loadConnections();
   }
 
@@ -1215,6 +1235,25 @@ function IntegrationsTab({ orgId }) {
                       <option key={c.id} value={c.id}>#{c.name}</option>
                     ))}
                   </select>
+
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 pt-2">
+                    Public invite link
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    A permanent Discord invite link, shown on your public events feed so visitors can join this server. Optional.
+                  </p>
+                  <div className="flex items-center gap-2 max-w-md">
+                    <input
+                      type="text"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      placeholder="https://discord.gg/…"
+                      value={inviteUrlDraft}
+                      onChange={e => setInviteUrlDraft(e.target.value)}
+                    />
+                    <Button size="sm" onClick={saveInviteUrl} disabled={savingInviteUrl}>
+                      {savingInviteUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

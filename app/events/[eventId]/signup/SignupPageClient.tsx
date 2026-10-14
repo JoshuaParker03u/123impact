@@ -182,7 +182,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
   const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set())
   const [panels, setPanels]                 = useState<Panel[]>([])
   const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null)
-  const [formData, setFormData]             = useState({ name: '', email: '', phone: '', bio: '', topic: '' })
+  const [formData, setFormData]             = useState({ name: '', email: '', phone: '', bio: '', topic: '', pronouns: '', link: '' })
   const [publicConsent, setPublicConsent]   = useState(false)
   const [submitted, setSubmitted]           = useState(false)
   const [submittedShifts, setSubmittedShifts] = useState<{ id: string; name: string; start_time: string; end_time: string; waitlisted: boolean }[]>([])
@@ -399,6 +399,8 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
             phone: formData.phone.trim() || null,
             bio:   formData.bio.trim() || null,
             topic: formData.topic.trim() || null,
+            pronouns: formData.pronouns.trim() || null,
+            link:  formData.link.trim() || null,
             public_consent: publicConsent,
           }),
         })
@@ -1010,6 +1012,27 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
                       disabled={submitting}
                       rows={3}
                       className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="pronouns">Pronouns (optional)</Label>
+                    <Input
+                      id="pronouns"
+                      value={formData.pronouns}
+                      onChange={(e) => handleInputChange('pronouns', e.target.value)}
+                      placeholder="e.g. she/her, they/them"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="link">Website or portfolio link (optional)</Label>
+                    <Input
+                      id="link"
+                      type="url"
+                      value={formData.link}
+                      onChange={(e) => handleInputChange('link', e.target.value)}
+                      placeholder="https://…"
+                      disabled={submitting}
                     />
                   </div>
                   <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
