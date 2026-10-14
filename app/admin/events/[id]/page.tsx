@@ -1234,7 +1234,7 @@ interface PanelRegistration {
 interface PanelAssignmentRow {
   id: string;
   role: 'speaker' | 'volunteer' | 'moderator';
-  registration: { id: string; name: string; email: string; speaker_topic: string | null } | null;
+  registration: { id: string; name: string; email: string; speaker_topic: string | null; public_consent: boolean } | null;
 }
 
 interface PoolCandidate {
@@ -1466,6 +1466,16 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     }));
   }
 
+  // For speakers/moderators attached via "Assign Speaker"/"Assign Moderator"
+  // (panel_assignments, not a panel-anchored registration) — their consent
+  // lives on the same volunteer_registrations row, just reached through the
+  // assignments list instead of the registrations list, so this reloads that
+  // list rather than patching registrationsByPanel.
+  async function setAssignedPersonConsent(panelId: string, registrationId: string, consent: boolean) {
+    if (!(await patchPublicConsent(registrationId, consent))) return;
+    loadDetail(panelId);
+  }
+
   // Attendee <-> speaker flips freely within the panel; picking "Volunteer"
   // means leaving the panel entirely (server clears panel_id and becomes a
   // shiftless volunteer) — either way this list needs a fresh load after.
@@ -1633,7 +1643,12 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                     {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
                                   </span>
                                   {canManage && (
-                                    <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                    <div className="flex items-center gap-2">
+                                      {a.registration && (
+                                        <ConsentToggle checked={!!a.registration.public_consent} onChange={(v) => setAssignedPersonConsent(panel.id, a.registration!.id, v)} />
+                                      )}
+                                      <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                    </div>
                                   )}
                                 </div>
                               ))}
@@ -1691,7 +1706,12 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                       {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
                                     </span>
                                     {canManage && (
-                                      <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                      <div className="flex items-center gap-2">
+                                        {a.registration && (
+                                          <ConsentToggle checked={!!a.registration.public_consent} onChange={(v) => setAssignedPersonConsent(panel.id, a.registration!.id, v)} />
+                                        )}
+                                        <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+                                      </div>
                                     )}
                                   </div>
                                 ))}
