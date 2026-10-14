@@ -840,6 +840,8 @@ interface SpeakerInvite {
   token: string;
   speaker_bio: string | null;
   speaker_topic: string | null;
+  pronouns: string | null;
+  link: string | null;
   topic: string | null;
   session_time: string | null;
 }
@@ -869,6 +871,8 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBio, setEditBio]     = useState('');
   const [editTopic, setEditTopic] = useState('');
+  const [editPronouns, setEditPronouns] = useState('');
+  const [editLink, setEditLink]   = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
   const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
@@ -925,6 +929,8 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
     setEditingId(i.id);
     setEditBio(i.speaker_bio ?? '');
     setEditTopic(i.speaker_topic ?? '');
+    setEditPronouns(i.pronouns ?? '');
+    setEditLink(i.link ?? '');
     setEditError('');
   }
 
@@ -939,7 +945,7 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
     const res = await fetch(`/api/events/${eventId}/speaker-invites/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ speaker_bio: editBio, speaker_topic: editTopic }),
+      body: JSON.stringify({ speaker_bio: editBio, speaker_topic: editTopic, pronouns: editPronouns, link: editLink }),
     });
     setSavingEdit(false);
     if (!res.ok) { setEditError((await res.json()).error ?? 'Failed to save'); return; }
@@ -1108,6 +1114,26 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
                           onChange={(e) => setEditBio(e.target.value)}
                           placeholder="A short bio for the event program"
                           rows={3}
+                          className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Pronouns</label>
+                        <input
+                          type="text"
+                          value={editPronouns}
+                          onChange={(e) => setEditPronouns(e.target.value)}
+                          placeholder="e.g. she/her, they/them"
+                          className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Website or portfolio link</label>
+                        <input
+                          type="url"
+                          value={editLink}
+                          onChange={(e) => setEditLink(e.target.value)}
+                          placeholder="https://…"
                           className="w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                         />
                       </div>

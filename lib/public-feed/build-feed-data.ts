@@ -46,13 +46,14 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
     resolveBaseUrl(service, organizationId),
     service
       .from('platform_connections')
-      .select('external_org_name')
+      .select('external_org_name, invite_url')
       .eq('organization_id', organizationId)
       .eq('platform', 'discord')
       .maybeSingle(),
   ]);
 
   const venueName = connection?.external_org_name ?? null;
+  const venueJoinUrl = connection?.invite_url ?? null;
   const timezone = org.timezone;
   const now = new Date();
   const feedEvents: FeedEvent[] = [];
@@ -110,7 +111,7 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
         .eq('event_id', event.id),
       service
         .from('volunteer_registrations')
-        .select('id, name, speaker_bio, speaker_topic, photo_url, panel_id, attendee_type, public_consent')
+        .select('id, name, speaker_bio, speaker_topic, photo_url, panel_id, attendee_type, public_consent, pronouns, links')
         .eq('event_id', event.id)
         .eq('attendee_type', 'speaker')
         .eq('public_consent', true),
@@ -120,21 +121,28 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
     const { data: assignments } = panelIds.length
       ? await service
           .from('panel_assignments')
-          .select('panel_id, role, registration:volunteer_registrations(id, name, speaker_bio, speaker_topic, photo_url, public_consent)')
+          .select('panel_id, role, registration:volunteer_registrations(id, name, speaker_bio, speaker_topic, photo_url, public_consent, pronouns, links)')
           .in('panel_id', panelIds)
           .in('role', ['speaker', 'moderator'])
       : { data: [] };
 
+    type RegForFeed = {
+      id: string; name: string; speaker_bio: string | null; speaker_topic: string | null;
+      photo_url: string | null; pronouns: string | null; links: { label: string; url: string }[] | null;
+    };
     const peopleById = new Map<string, FeedPerson>();
-    const addPerson = (reg: { id: string; name: string; speaker_bio: string | null; speaker_topic: string | null; photo_url: string | null }) => {
+    const addPerson = (reg: RegForFeed) => {
       if (!peopleById.has(reg.id)) {
-        peopleById.set(reg.id, { id: reg.id, name: reg.name, bio: reg.speaker_bio, photo: reg.photo_url, topic: reg.speaker_topic });
+        peopleById.set(reg.id, {
+          id: reg.id, name: reg.name, bio: reg.speaker_bio, photo: reg.photo_url, topic: reg.speaker_topic,
+          pronouns: reg.pronouns, links: reg.links ?? [],
+        });
       }
     };
 
     for (const reg of registrations ?? []) addPerson(reg);
     for (const a of assignments ?? []) {
-      const reg = a.registration as unknown as { id: string; name: string; speaker_bio: string | null; speaker_topic: string | null; photo_url: string | null; public_consent: boolean } | null;
+      const reg = a.registration as unknown as (RegForFeed & { public_consent: boolean }) | null;
       if (reg?.public_consent) addPerson(reg);
     }
 
@@ -191,6 +199,7 @@ export async function buildOrgFeedData(organizationId: string): Promise<OrgFeedD
       recording_url: event.recording_url,
       apply_url: `${baseUrl}/events/${event.event_id}/signup`,
       venue_name: venueName,
+      venue_join_url: venueJoinUrl,
       sessions,
       people: Array.from(peopleById.values()),
     });

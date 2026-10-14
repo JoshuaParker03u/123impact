@@ -54,7 +54,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: rows } = await service
     .from('platform_connections')
-    .select('platform, sync_new_events, connected_at, external_org_id, channel_id, announcement_channel_id')
+    .select('platform, sync_new_events, connected_at, external_org_id, channel_id, announcement_channel_id, invite_url')
     .eq('organization_id', orgId);
 
   const connections = { luma: null as any, eventbrite: null as any, discord: null as any };
@@ -66,6 +66,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       external_org_id:          row.external_org_id,
       channel_id:               row.channel_id,
       announcement_channel_id:  row.announcement_channel_id,
+      invite_url:               row.invite_url,
     };
   }
 
@@ -137,11 +138,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { platform, sync_new_events, channel_id, announcement_channel_id } = await req.json();
+  const { platform, sync_new_events, channel_id, announcement_channel_id, invite_url } = await req.json();
   const updates: Record<string, unknown> = {};
   if (sync_new_events !== undefined) updates.sync_new_events = sync_new_events;
   if (channel_id !== undefined) updates.channel_id = channel_id;
   if (announcement_channel_id !== undefined) updates.announcement_channel_id = announcement_channel_id;
+  if (invite_url !== undefined) updates.invite_url = invite_url;
 
   const { error } = await service
     .from('platform_connections')

@@ -11,6 +11,8 @@ export interface FeedPerson {
   bio: string | null;
   photo: string | null;
   topic: string | null;
+  pronouns: string | null;
+  links: { label: string; url: string }[];
 }
 
 export interface FeedSessionPerson {
@@ -43,6 +45,7 @@ export interface FeedEvent {
   recording_url: string | null;
   apply_url: string;
   venue_name: string | null; // best-effort Discord guild display name
+  venue_join_url: string | null; // admin-set permanent Discord invite link
   sessions: FeedSession[];
   people: FeedPerson[];
 }
