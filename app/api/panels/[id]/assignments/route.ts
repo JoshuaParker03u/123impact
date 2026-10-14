@@ -57,7 +57,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data, error } = await service
     .from('panel_assignments')
-    .select('id, role, assigned_at, registration:volunteer_registrations(id, name, email, speaker_topic)')
+    .select('id, role, assigned_at, registration:volunteer_registrations(id, name, email, speaker_topic, public_consent)')
     .eq('panel_id', panelId)
     .order('assigned_at', { ascending: true });
 
