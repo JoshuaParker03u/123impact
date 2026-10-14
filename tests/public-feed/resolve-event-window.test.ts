@@ -48,10 +48,26 @@ describe('resolveEventWindow', () => {
     expect(result?.start.toISOString()).toBe('2027-01-15T16:45:00.000Z');
   });
 
-  it('returns null, not a crash, when both day hours and date/time are unusable', () => {
+  it('returns null, not a crash, when the date itself is unusable', () => {
     const result = resolveEventWindow({
-      date: '2027-01-15', time: '', end_date: null, timezone: 'UTC', dayHours: [],
+      date: 'not-a-date', time: '', end_date: null, timezone: 'UTC', dayHours: [],
     });
     expect(result).toBeNull();
+  });
+
+  // Regression for a real bug found testing the NGU feed: a single-day event
+  // with no day hours and a blank time (very common -- plenty of events are
+  // created with no specific start time) was silently dropped from the whole
+  // feed, taking its panels/speakers/people with it. This is a different,
+  // narrower case than the multi-day/day-hours bug above -- that fix only
+  // covered events.time being blank when day_hours exist; a blank time with
+  // NO day_hours at all still fell through to the unparseable branch.
+  it('treats a blank time with no day hours as an all-day event, not an unparseable one', () => {
+    const result = resolveEventWindow({
+      date: '2026-10-19', time: '', end_date: null, timezone: null, dayHours: [],
+    });
+    expect(result).not.toBeNull();
+    expect(result?.start.toISOString()).toBe('2026-10-19T00:00:00.000Z');
+    expect(result?.end.toISOString()).toBe('2026-10-19T23:59:00.000Z');
   });
 });

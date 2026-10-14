@@ -38,7 +38,12 @@ export function resolveEventWindow(input: ResolveEventWindowInput): { start: Dat
     if (start && end) return { start, end };
   }
 
-  const start = toInstant(date, time, timezone);
+  // A blank time is a legitimate, common shape too -- plenty of real events
+  // are created with no specific start time set at all (not just the
+  // multi-day/day-hours case above). Treat it as "all day" rather than
+  // silently dropping the whole event, the same leniency already given to
+  // a blank/missing end time below.
+  const start = toInstant(date, time || '00:00', timezone);
   const end = toInstant(end_date ?? date, '23:59', timezone);
   return start && end ? { start, end } : null;
 }
