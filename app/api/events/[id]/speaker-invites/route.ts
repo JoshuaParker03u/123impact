@@ -81,7 +81,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: invites, error } = await service
     .from('event_speaker_invites')
-    .select('*, registration:volunteer_registrations(speaker_bio, speaker_topic, pronouns, links)')
+    .select('*, registration:volunteer_registrations(speaker_bio, speaker_topic, pronouns, links, public_consent)')
     .eq('event_id', eventId)
     .order('created_at', { ascending: false });
 
@@ -90,7 +90,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const inviterIds = [...new Set((invites ?? []).map((i: { invited_by: string }) => i.invited_by))] as string[];
   const userMap = await getUsersByIds(service, inviterIds);
 
-  type RegistrationFields = { speaker_bio: string | null; speaker_topic: string | null; pronouns: string | null; links: { label: string; url: string }[] | null };
+  type RegistrationFields = { speaker_bio: string | null; speaker_topic: string | null; pronouns: string | null; links: { label: string; url: string }[] | null; public_consent: boolean };
   const enriched = (invites ?? []).map((i: { invited_by: string; registration: RegistrationFields | null }) => ({
     ...i,
     inviter_name: userMap[i.invited_by]?.user_metadata?.full_name || userMap[i.invited_by]?.email || null,
@@ -98,6 +98,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     speaker_topic: i.registration?.speaker_topic ?? null,
     pronouns: i.registration?.pronouns ?? null,
     link: i.registration?.links?.[0]?.url ?? null,
+    public_consent: i.registration?.public_consent ?? false,
   }));
 
   return NextResponse.json(enriched);

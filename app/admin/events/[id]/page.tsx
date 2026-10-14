@@ -838,12 +838,14 @@ interface SpeakerInvite {
   inviter_name: string | null;
   created_at: string;
   token: string;
+  registration_id: string | null;
   speaker_bio: string | null;
   speaker_topic: string | null;
   pronouns: string | null;
   link: string | null;
   topic: string | null;
   session_time: string | null;
+  public_consent: boolean;
 }
 
 function speakerStatusBadge(status: SpeakerInvite['status']) {
@@ -922,6 +924,17 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
     setRevoking(id);
     await fetch(`/api/events/${eventId}/speaker-invites/${id}`, { method: 'DELETE' });
     setRevoking(null);
+    load();
+  }
+
+  async function setConsent(i: SpeakerInvite, consent: boolean) {
+    if (!i.registration_id) return;
+    const res = await fetch(`/api/volunteer-registrations/${i.registration_id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ public_consent: consent }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to update'); return; }
     load();
   }
 
@@ -1010,6 +1023,11 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                         Invited by {i.inviter_name ? redact(i.inviter_name, 'name', streamerMode) : i.inviter_name} &middot; Expires {new Date(i.expires_at).toLocaleDateString()}
                       </p>
+                      {i.status === 'accepted' && (
+                        <div className="mt-1">
+                          <ConsentToggle checked={i.public_consent} onChange={(v) => setConsent(i, v)} />
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mt-1">
                         {editingTimeId === i.id ? (
                           <>
