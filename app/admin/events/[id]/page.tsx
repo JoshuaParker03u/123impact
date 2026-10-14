@@ -1639,16 +1639,18 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               ))}
                               {assignedSpeakers.map((a) => (
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
-                                  <span className="text-gray-700 dark:text-gray-300">
-                                    {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
-                                  </span>
-                                  {canManage && (
-                                    <div className="flex items-center gap-2">
-                                      {a.registration && (
+                                  <div>
+                                    <span className="text-gray-700 dark:text-gray-300">
+                                      {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                    </span>
+                                    {canManage && a.registration && (
+                                      <div className="mt-0.5">
                                         <ConsentToggle checked={!!a.registration.public_consent} onChange={(v) => setAssignedPersonConsent(panel.id, a.registration!.id, v)} />
-                                      )}
-                                      <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
-                                    </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {canManage && (
+                                    <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline shrink-0 ml-3">Remove</button>
                                   )}
                                 </div>
                               ))}
@@ -1702,16 +1704,18 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               <div className="space-y-1">
                                 {assignedModerators.map((a) => (
                                   <div key={a.id} className="flex items-center justify-between text-sm py-1">
-                                    <span className="text-gray-700 dark:text-gray-300">
-                                      {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
-                                    </span>
-                                    {canManage && (
-                                      <div className="flex items-center gap-2">
-                                        {a.registration && (
+                                    <div>
+                                      <span className="text-gray-700 dark:text-gray-300">
+                                        {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                      </span>
+                                      {canManage && a.registration && (
+                                        <div className="mt-0.5">
                                           <ConsentToggle checked={!!a.registration.public_consent} onChange={(v) => setAssignedPersonConsent(panel.id, a.registration!.id, v)} />
-                                        )}
-                                        <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
-                                      </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {canManage && (
+                                      <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline shrink-0 ml-3">Remove</button>
                                     )}
                                   </div>
                                 ))}
