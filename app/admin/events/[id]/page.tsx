@@ -1714,19 +1714,27 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                           ) : (
                             <div className="space-y-1">
                               {promotedSpeakers.map((r) => (
-                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
-                                  {canManage && (
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1">
+                                  <div>
                                     <div className="flex items-center gap-2">
-                                      <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(panel.id, r.id, v)} />
-                                      <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
-                                      <button
-                                        onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
-                                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
-                                      >
-                                        Remove
-                                      </button>
+                                      <span className="text-gray-700 dark:text-gray-300">{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
+                                      {canManage && (
+                                        <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                      )}
                                     </div>
+                                    {canManage && (
+                                      <div className="mt-0.5">
+                                        <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(panel.id, r.id, v)} />
+                                      </div>
+                                    )}
+                                  </div>
+                                  {canManage && (
+                                    <button
+                                      onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                      className="text-xs text-red-600 dark:text-red-400 hover:underline shrink-0 ml-3"
+                                    >
+                                      Remove
+                                    </button>
                                   )}
                                 </div>
                               ))}
@@ -1761,18 +1769,20 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                           ) : (
                             <div className="space-y-1">
                               {promotedVolunteers.map((r) => (
-                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
-                                  {canManage && (
-                                    <div className="flex items-center gap-2">
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-700 dark:text-gray-300">{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
+                                    {canManage && (
                                       <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
-                                      <button
-                                        onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
-                                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
-                                      >
-                                        Remove
-                                      </button>
-                                    </div>
+                                    )}
+                                  </div>
+                                  {canManage && (
+                                    <button
+                                      onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                      className="text-xs text-red-600 dark:text-red-400 hover:underline shrink-0 ml-3"
+                                    >
+                                      Remove
+                                    </button>
                                   )}
                                 </div>
                               ))}
