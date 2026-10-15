@@ -245,7 +245,7 @@ export default function PanelModal({ panel, event, onClose, onSave, organization
                 onChange={(e) => setFormData({ ...formData, discord_showtime_webhook_url: e.target.value })}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 placeholder="https://discord.com/api/webhooks/..." />
-              <ShowtimeReminderList reminders={showtimeReminders} onChange={setShowtimeReminders} />
+              <ShowtimeReminderList reminders={showtimeReminders} onChange={setShowtimeReminders} name={formData.name} />
               {errors.showtime_reminders && <p className="text-red-600 text-sm mt-1">{errors.showtime_reminders}</p>}
             </div>
 

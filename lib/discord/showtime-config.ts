@@ -14,14 +14,16 @@ export interface EffectiveReminder {
   content: string;
 }
 
-export function defaultShowtimeMessage(leadMinutes: number): string {
-  if (leadMinutes === 0) return '@here Showtime is starting now!';
-  return `@here Showtime in ${leadMinutes} minute${leadMinutes === 1 ? '' : 's'}`;
+// name is the event's title or the panel's name -- whichever this reminder
+// belongs to.
+export function defaultShowtimeMessage(leadMinutes: number, name: string): string {
+  if (leadMinutes === 0) return `${name} is now beginning!`;
+  return `@here ${name} starts in ${leadMinutes} minute${leadMinutes === 1 ? '' : 's'}!`;
 }
 
-export function resolveReminders(reminders: ShowtimeReminderInput[]): EffectiveReminder[] {
+export function resolveReminders(reminders: ShowtimeReminderInput[], name: string): EffectiveReminder[] {
   return reminders.map((r) => ({
     leadMinutes: r.lead_minutes,
-    content: r.message ?? defaultShowtimeMessage(r.lead_minutes),
+    content: r.message ?? defaultShowtimeMessage(r.lead_minutes, name),
   }));
 }

@@ -84,7 +84,7 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       // the future (not yet due).
       const { date, time } = atMinutesFromNow(10);
       ({ eventId } = await createTestEvent(orgId, {
-        date, time,
+        date, time, title: 'Game Night',
         discord_showtime_webhook_url: 'https://discord.com/api/webhooks/1/multi',
       }));
       await createShowtimeReminder({ eventId, leadMinutes: 10 });
@@ -108,7 +108,7 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe('https://discord.com/api/webhooks/1/multi');
-      expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Showtime in 10 minutes' });
+      expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Game Night starts in 10 minutes!' });
 
       const { data: reminders } = await getServiceClient()
         .from('discord_showtime_reminders')
@@ -139,7 +139,7 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       ({ orgId } = await createTestOrg());
       const { date, time } = atMinutesFromNow(0);
       ({ eventId } = await createTestEvent(orgId, {
-        date, time,
+        date, time, title: 'Game Night',
         discord_showtime_webhook_url: 'https://discord.com/api/webhooks/1/starting-now',
       }));
       await createShowtimeReminder({ eventId, leadMinutes: 0 });
@@ -152,12 +152,12 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       await cleanupOrg(orgId);
     });
 
-    it('fires with the distinct "starting now" default message', async () => {
+    it('fires with the distinct "now beginning" default message, including the event name', async () => {
       const res = await callCron();
       const body = await res.json();
       expect(body.sent).toBe(1);
       const [, init] = fetchMock.mock.calls[0];
-      expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Showtime is starting now!' });
+      expect(JSON.parse(init!.body as string)).toEqual({ content: 'Game Night is now beginning!' });
     });
   });
 

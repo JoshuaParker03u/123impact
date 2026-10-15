@@ -56,6 +56,7 @@ export async function signInAs(email: string, password: string): Promise<{ acces
 }
 
 export interface TestEventOverrides {
+  title?: string;
   is_shiftless?: boolean;
   shiftless_capacity?: number | null;
   attendee_enabled?: boolean;

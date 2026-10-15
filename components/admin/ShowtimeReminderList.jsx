@@ -7,7 +7,7 @@ import { defaultShowtimeMessage } from '@/lib/discord/showtime-config';
 // own optional lead time and custom message; `reminders` entries keep
 // lead_minutes as a string so the number input can be legitimately empty
 // mid-edit without coercing to 0.
-export default function ShowtimeReminderList({ reminders, onChange }) {
+export default function ShowtimeReminderList({ reminders, onChange, name }) {
   function updateRow(index, patch) {
     onChange(reminders.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
@@ -41,7 +41,7 @@ export default function ShowtimeReminderList({ reminders, onChange }) {
               type="text" value={r.message}
               onChange={(e) => updateRow(i, { message: e.target.value })}
               className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-              placeholder={leadNum !== null ? `Default: "${defaultShowtimeMessage(leadNum)}"` : 'Custom message (optional)'}
+              placeholder={leadNum !== null ? `Default: "${defaultShowtimeMessage(leadNum, name || 'This event')}"` : 'Custom message (optional)'}
             />
             <button type="button" onClick={() => removeRow(i)} className="text-xs text-red-600 dark:text-red-400 hover:underline shrink-0 mt-2">
               Remove

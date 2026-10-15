@@ -664,7 +664,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                 className={inputCls}
                 placeholder="https://discord.com/api/webhooks/..."
               />
-              <ShowtimeReminderList reminders={showtimeReminders} onChange={setShowtimeReminders} />
+              <ShowtimeReminderList reminders={showtimeReminders} onChange={setShowtimeReminders} name={formData.title} />
             </div>
 
             <div>
