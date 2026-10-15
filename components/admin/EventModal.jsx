@@ -7,7 +7,9 @@ import ShiftDatePicker from './ShiftDatePicker';
 import LocationAutocomplete from './LocationAutocomplete';
 import TimezoneShiftNotice from './TimezoneShiftNotice';
 import HelpButton from './HelpButton';
+import ShowtimeReminderList from './ShowtimeReminderList';
 import { convertWallClock, buildDayHoursRows } from '@/lib/timezone-convert';
+import { saveShowtimeReminders, findDuplicateLeadMinutes } from '@/lib/discord/save-showtime-reminders';
 import { Upload, Link as LinkIcon, Copy, Check } from 'lucide-react';
 
 function generateSlug(title, suffix) {
@@ -194,9 +196,10 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     speaker_enabled:     event?.speaker_enabled     ?? false,
     panels_enabled:      event?.panels_enabled      ?? false,
     discord_showtime_webhook_url:  event?.discord_showtime_webhook_url  || '',
-    discord_showtime_message:      event?.discord_showtime_message      || '',
-    discord_showtime_lead_minutes: event?.discord_showtime_lead_minutes ?? 15,
   });
+  const [showtimeReminders, setShowtimeReminders] = useState(() =>
+    (event?.discord_showtime_reminders ?? []).map(r => ({ lead_minutes: String(r.lead_minutes), message: r.message ?? '' }))
+  );
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
   const [applyToSeries, setApplyToSeries] = useState(false);
   // Stored rows are org-timezone wall-clock values -- convert to the
@@ -286,6 +289,18 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
       return;
     }
 
+    // Same reasoning as the day-hours check above -- validate before any
+    // write happens, so a duplicate lead time never leaves the event saved
+    // with its reminders only partially updated.
+    const reminderRows = showtimeReminders
+      .filter(r => r.lead_minutes !== '')
+      .map(r => ({ lead_minutes: parseInt(r.lead_minutes, 10), message: r.message.trim() || null }));
+    const duplicateLead = findDuplicateLeadMinutes(reminderRows);
+    if (duplicateLead !== null) {
+      alert(`A reminder for ${duplicateLead} minute(s) before showtime is configured more than once — each lead time can only be used once.`);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const shiftlessPayload = {
@@ -299,9 +314,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
         panels_enabled:     formData.panels_enabled,
       };
       const showtimePayload = {
-        discord_showtime_webhook_url:  formData.discord_showtime_webhook_url.trim() || null,
-        discord_showtime_message:      formData.discord_showtime_message.trim() || null,
-        discord_showtime_lead_minutes: formData.discord_showtime_lead_minutes ? parseInt(formData.discord_showtime_lead_minutes, 10) : 15,
+        discord_showtime_webhook_url: formData.discord_showtime_webhook_url.trim() || null,
       };
       const imageUrl = formData.image_url || organizationLogoUrl || '';
       if (event) {
@@ -311,6 +324,8 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
           .eq('id', event.id);
         if (error) throw error;
         await saveDayHours(event.id, dayHoursResult.rows);
+        const { error: reminderError } = await saveShowtimeReminders(supabase, 'event_id', event.id, reminderRows);
+        if (reminderError) alert(`Event saved, but reminders could not be updated: ${reminderError}`);
 
         if (applyToSeries && event.series_id) {
           const res = await fetch(`/api/events/${event.id}/recur`, {
@@ -358,6 +373,8 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
           .single();
         if (error) throw error;
         await saveDayHours(newEvent.id, dayHoursResult.rows);
+        const { error: reminderError } = await saveShowtimeReminders(supabase, 'event_id', newEvent.id, reminderRows);
+        if (reminderError) alert(`Event saved, but reminders could not be updated: ${reminderError}`);
       }
       onSave();
     } catch (error) {
@@ -637,7 +654,8 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
               <p className="text-xs text-gray-500">
                 Posts a reminder to a Discord channel shortly before this event starts. Create an incoming webhook
                 in the target channel&apos;s Discord settings (Channel Settings → Integrations → Webhooks) and
-                paste the URL below — that&apos;s how the channel is chosen. Panels can override this individually.
+                paste the URL below — that&apos;s how the channel is chosen. Panels are independent: a panel only
+                pings if it sets its own webhook, and won&apos;t use this one.
               </p>
               <input
                 type="url"
@@ -646,26 +664,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                 className={inputCls}
                 placeholder="https://discord.com/api/webhooks/..."
               />
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs mb-1">Minutes before showtime</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={1440}
-                    value={formData.discord_showtime_lead_minutes}
-                    onChange={(e) => setFormData({ ...formData, discord_showtime_lead_minutes: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-              <textarea
-                rows={2}
-                value={formData.discord_showtime_message}
-                onChange={(e) => setFormData({ ...formData, discord_showtime_message: e.target.value })}
-                className={inputCls}
-                placeholder={`Default: "@here Showtime in ${formData.discord_showtime_lead_minutes || 15} minutes"`}
-              />
+              <ShowtimeReminderList reminders={showtimeReminders} onChange={setShowtimeReminders} />
             </div>
 
             <div>

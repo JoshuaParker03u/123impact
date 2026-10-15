@@ -1,13 +1,23 @@
-// Route-level regression test for the Discord "showtime" ping cron. Proves
-// the end-to-end fallback chain (event-level config, panel-level override)
-// and the one-shot dedup guard (discord_showtime_ping_sent_at), not just the
-// pure resolveShowtimeConfig helper already covered in
-// tests/discord/showtime-config.test.ts.
+// Route-level regression test for the Discord "showtime" ping cron, now
+// covering MULTIPLE independent reminder tiers per event/panel (e.g. a
+// 1hr/30min/starting-now set), not just the single-lead-time version this
+// replaced. Proves: several reminders on the same owner fire and dedupe
+// independently (one sent_at per reminder row, not per event/panel), a
+// panel with no webhook of its own gets nothing (the old event-webhook
+// cascade was deliberately dropped), and the lead_minutes=0 "starting now"
+// tier uses its own distinct default message.
+//
+// Lead times used here are small (minutes, not the real 60/30/0 example)
+// so the test can position "now" relative to a single shared event start
+// time without the 1-hour grace window making several widely-spaced lead
+// times simultaneously due only at one razor-thin instant -- the mechanism
+// being tested (independent per-row due-checking and dedup) doesn't care
+// what the actual lead values are.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET as runCron } from '@/app/api/cron/discord-showtime-pings/route';
 import {
-  createTestOrg, createTestEvent, createTestPanel, cleanupEvent, cleanupOrg,
+  createTestOrg, createTestEvent, createTestPanel, createShowtimeReminder, cleanupEvent, cleanupOrg,
 } from '../helpers/fixtures';
 import { getServiceClient } from '../helpers/client';
 
@@ -19,12 +29,12 @@ function callCron() {
   }));
 }
 
-// now + 15 minutes, floored to the minute -- guarantees the computed start
-// instant is never later than the real "now + 15min", so the cron's
-// isDue check (now >= start - leadMinutes) always holds without relying on
-// exact-second timing.
-function fifteenMinutesFromNow(): { date: string; time: string } {
-  const target = new Date(Date.now() + 15 * 60_000);
+// "minutesFromNow" floored to the minute -- guarantees the computed start
+// instant is never later than the real target, so the cron's isDue check
+// (now >= start - leadMinutes) always holds without relying on exact-second
+// timing. Mirrors the pattern used throughout this file's predecessor.
+function atMinutesFromNow(minutes: number): { date: string; time: string } {
+  const target = new Date(Date.now() + minutes * 60_000);
   return { date: target.toISOString().slice(0, 10), time: target.toISOString().slice(11, 16) };
 }
 
@@ -63,17 +73,23 @@ describe('GET /api/cron/discord-showtime-pings', () => {
     expect(res.status).toBe(401);
   });
 
-  describe('event-level ping', () => {
+  describe('multiple reminder tiers on one event', () => {
     let eventId: string;
     const fetchMock = vi.fn<WebhookMock>(async () => new Response(null, { status: 204 }));
 
     beforeAll(async () => {
       ({ orgId } = await createTestOrg());
-      const { date, time } = fifteenMinutesFromNow();
+      // Showtime is 10 minutes out: the 10-min-lead reminder's target is
+      // "now" (due); the 5-min and 0-min reminders' targets are still in
+      // the future (not yet due).
+      const { date, time } = atMinutesFromNow(10);
       ({ eventId } = await createTestEvent(orgId, {
         date, time,
-        discord_showtime_webhook_url: 'https://discord.com/api/webhooks/1/event-level',
+        discord_showtime_webhook_url: 'https://discord.com/api/webhooks/1/multi',
       }));
+      await createShowtimeReminder({ eventId, leadMinutes: 10 });
+      await createShowtimeReminder({ eventId, leadMinutes: 5, message: 'Halfway!' });
+      await createShowtimeReminder({ eventId, leadMinutes: 0 });
       vi.stubGlobal('fetch', webhookOnlyFetch(fetchMock));
     });
 
@@ -83,7 +99,7 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       await cleanupOrg(orgId);
     });
 
-    it('posts the default message to the configured webhook and marks the event as pinged', async () => {
+    it('fires only the reminder that is actually due, leaving the others pending', async () => {
       const res = await callCron();
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -91,14 +107,22 @@ describe('GET /api/cron/discord-showtime-pings', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe('https://discord.com/api/webhooks/1/event-level');
-      expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Showtime in 15 minutes' });
+      expect(url).toBe('https://discord.com/api/webhooks/1/multi');
+      expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Showtime in 10 minutes' });
 
-      const { data } = await getServiceClient().from('events').select('discord_showtime_ping_sent_at').eq('id', eventId).single();
-      expect(data?.discord_showtime_ping_sent_at).not.toBeNull();
+      const { data: reminders } = await getServiceClient()
+        .from('discord_showtime_reminders')
+        .select('lead_minutes, sent_at')
+        .eq('event_id', eventId)
+        .order('lead_minutes', { ascending: false });
+      expect(reminders).toEqual([
+        { lead_minutes: 10, sent_at: expect.any(String) },
+        { lead_minutes: 5, sent_at: null },
+        { lead_minutes: 0, sent_at: null },
+      ]);
     });
 
-    it('does not re-send on a second run (dedup holds)', async () => {
+    it('does not re-send the already-fired reminder on a second run (dedup is per-row)', async () => {
       fetchMock.mockClear();
       const res = await callCron();
       const body = await res.json();
@@ -107,25 +131,18 @@ describe('GET /api/cron/discord-showtime-pings', () => {
     });
   });
 
-  describe('panel-level override', () => {
+  describe('lead_minutes = 0 ("starting now")', () => {
     let eventId: string;
-    let panelId: string;
     const fetchMock = vi.fn<WebhookMock>(async () => new Response(null, { status: 204 }));
 
     beforeAll(async () => {
       ({ orgId } = await createTestOrg());
-      const { date, time } = fifteenMinutesFromNow();
-      // Event has NO webhook of its own -- proves the panel can configure
-      // showtime pings independently, not just override an existing one.
-      // panel_date is left null (inherits the event's own date), matching
-      // how a real single-day event's panel is actually configured -- only
-      // multi-day events let a panel pick its own date in the admin UI.
-      ({ eventId } = await createTestEvent(orgId, { panels_enabled: true, date }));
-      ({ panelId } = await createTestPanel(eventId, {
-        start_time: time,
-        discord_showtime_webhook_url: 'https://discord.com/api/webhooks/2/panel-only',
-        discord_showtime_message: 'Panel starting soon!',
+      const { date, time } = atMinutesFromNow(0);
+      ({ eventId } = await createTestEvent(orgId, {
+        date, time,
+        discord_showtime_webhook_url: 'https://discord.com/api/webhooks/1/starting-now',
       }));
+      await createShowtimeReminder({ eventId, leadMinutes: 0 });
       vi.stubGlobal('fetch', webhookOnlyFetch(fetchMock));
     });
 
@@ -135,22 +152,97 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       await cleanupOrg(orgId);
     });
 
-    it('fires the panel\'s own webhook/message and marks the panel as pinged, leaving the event alone', async () => {
+    it('fires with the distinct "starting now" default message', async () => {
       const res = await callCron();
       const body = await res.json();
       expect(body.sent).toBe(1);
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Showtime is starting now!' });
+    });
+  });
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+  describe('panel with its own webhook', () => {
+    let eventId: string;
+    let panelId: string;
+    const fetchMock = vi.fn<WebhookMock>(async () => new Response(null, { status: 204 }));
+
+    beforeAll(async () => {
+      ({ orgId } = await createTestOrg());
+      // Panel's panel_date is left unset, so it falls back to the event's
+      // own date -- both must agree on the same target date+time pair.
+      const { date, time } = atMinutesFromNow(10);
+      // Event has NO webhook of its own.
+      ({ eventId } = await createTestEvent(orgId, { panels_enabled: true, date }));
+      ({ panelId } = await createTestPanel(eventId, {
+        start_time: time,
+        discord_showtime_webhook_url: 'https://discord.com/api/webhooks/2/panel-only',
+      }));
+      await createShowtimeReminder({ panelId, leadMinutes: 10, message: 'Panel starting soon!' });
+      vi.stubGlobal('fetch', webhookOnlyFetch(fetchMock));
+    });
+
+    afterAll(async () => {
+      vi.unstubAllGlobals();
+      await cleanupEvent(eventId);
+      await cleanupOrg(orgId);
+    });
+
+    it('fires the panel\'s own reminder independently of the event', async () => {
+      const res = await callCron();
+      const body = await res.json();
+      expect(body.sent).toBe(1);
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe('https://discord.com/api/webhooks/2/panel-only');
       expect(JSON.parse(init!.body as string)).toEqual({ content: 'Panel starting soon!' });
 
-      const service = getServiceClient();
-      const { data: panel } = await service.from('panels').select('discord_showtime_ping_sent_at').eq('id', panelId).single();
-      expect(panel?.discord_showtime_ping_sent_at).not.toBeNull();
+      const { data: reminder } = await getServiceClient()
+        .from('discord_showtime_reminders')
+        .select('sent_at')
+        .eq('panel_id', panelId)
+        .single();
+      expect(reminder?.sent_at).not.toBeNull();
+    });
+  });
 
-      const { data: event } = await service.from('events').select('discord_showtime_ping_sent_at').eq('id', eventId).single();
-      expect(event?.discord_showtime_ping_sent_at).toBeNull();
+  describe('panel with no webhook of its own', () => {
+    let eventId: string;
+    let panelId: string;
+    const fetchMock = vi.fn<WebhookMock>(async () => new Response(null, { status: 204 }));
+
+    beforeAll(async () => {
+      ({ orgId } = await createTestOrg());
+      const { date, time } = atMinutesFromNow(0);
+      // Event HAS a webhook+reminder -- proves it does not cascade down to
+      // a panel that never configured its own (the old implicit-ping
+      // behavior was deliberately removed).
+      ({ eventId } = await createTestEvent(orgId, {
+        panels_enabled: true, date, time,
+        discord_showtime_webhook_url: 'https://discord.com/api/webhooks/1/event-only',
+      }));
+      await createShowtimeReminder({ eventId, leadMinutes: 0 });
+      ({ panelId } = await createTestPanel(eventId, { start_time: time }));
+      vi.stubGlobal('fetch', webhookOnlyFetch(fetchMock));
+    });
+
+    afterAll(async () => {
+      vi.unstubAllGlobals();
+      await cleanupEvent(eventId);
+      await cleanupOrg(orgId);
+    });
+
+    it('only the event fires -- the unconfigured panel gets nothing', async () => {
+      const res = await callCron();
+      const body = await res.json();
+      expect(body.sent).toBe(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://discord.com/api/webhooks/1/event-only');
+
+      const { count } = await getServiceClient()
+        .from('discord_showtime_reminders')
+        .select('id', { count: 'exact', head: true })
+        .eq('panel_id', panelId);
+      expect(count).toBe(0);
     });
   });
 });

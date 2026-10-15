@@ -1,32 +1,27 @@
-// Resolves the effective Discord "showtime" ping settings for an event or
-// panel. A panel's own fields override the parent event's field-by-field;
-// null on the panel means "inherit." Presence of a webhook URL (event's or
-// panel's) is itself the opt-in -- no separate enable/disable flag.
-export interface ShowtimeConfigSource {
-  discord_showtime_webhook_url: string | null;
-  discord_showtime_message: string | null;
-  discord_showtime_lead_minutes: number | null;
+// Resolves the effective content for each of an event/panel's configured
+// Discord "showtime" reminder tiers. Ownership (which webhook a reminder
+// posts to) is decided entirely by presence of events.discord_showtime_webhook_url
+// / panels.discord_showtime_webhook_url -- there is no field-by-field
+// inheritance between event and panel anymore; a panel with no webhook of
+// its own simply has no reminders of its own either.
+export interface ShowtimeReminderInput {
+  lead_minutes: number;
+  message: string | null;
 }
 
-export interface EffectiveShowtimeConfig {
-  webhookUrl: string;
+export interface EffectiveReminder {
   leadMinutes: number;
   content: string;
 }
 
 export function defaultShowtimeMessage(leadMinutes: number): string {
+  if (leadMinutes === 0) return '@here Showtime is starting now!';
   return `@here Showtime in ${leadMinutes} minute${leadMinutes === 1 ? '' : 's'}`;
 }
 
-export function resolveShowtimeConfig(
-  event: ShowtimeConfigSource,
-  panel?: ShowtimeConfigSource | null
-): EffectiveShowtimeConfig | null {
-  const webhookUrl = panel?.discord_showtime_webhook_url ?? event.discord_showtime_webhook_url;
-  if (!webhookUrl) return null;
-
-  const leadMinutes = panel?.discord_showtime_lead_minutes ?? event.discord_showtime_lead_minutes ?? 15;
-  const message = panel?.discord_showtime_message ?? event.discord_showtime_message ?? null;
-
-  return { webhookUrl, leadMinutes, content: message ?? defaultShowtimeMessage(leadMinutes) };
+export function resolveReminders(reminders: ShowtimeReminderInput[]): EffectiveReminder[] {
+  return reminders.map((r) => ({
+    leadMinutes: r.lead_minutes,
+    content: r.message ?? defaultShowtimeMessage(r.lead_minutes),
+  }));
 }

@@ -66,9 +66,6 @@ export interface TestEventOverrides {
   time?: string;
   end_date?: string | null;
   discord_showtime_webhook_url?: string | null;
-  discord_showtime_message?: string | null;
-  discord_showtime_lead_minutes?: number;
-  discord_showtime_ping_sent_at?: string | null;
 }
 
 export async function createTestEvent(orgId: string, overrides: TestEventOverrides = {}): Promise<{ eventId: string }> {
@@ -129,9 +126,6 @@ export interface TestPanelOverrides {
   end_time?: string;
   panel_date?: string | null;
   discord_showtime_webhook_url?: string | null;
-  discord_showtime_message?: string | null;
-  discord_showtime_lead_minutes?: number | null;
-  discord_showtime_ping_sent_at?: string | null;
 }
 
 export async function createTestPanel(
@@ -154,6 +148,31 @@ export async function createTestPanel(
     .single();
   if (error) throw error;
   return { panelId: data.id };
+}
+
+export interface TestShowtimeReminderInput {
+  eventId?: string;
+  panelId?: string;
+  leadMinutes: number;
+  message?: string | null;
+  sentAt?: string | null;
+}
+
+export async function createShowtimeReminder(input: TestShowtimeReminderInput): Promise<{ reminderId: string }> {
+  const service = getServiceClient();
+  const { data, error } = await service
+    .from('discord_showtime_reminders')
+    .insert({
+      event_id: input.eventId ?? null,
+      panel_id: input.panelId ?? null,
+      lead_minutes: input.leadMinutes,
+      message: input.message ?? null,
+      sent_at: input.sentAt ?? null,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return { reminderId: data.id };
 }
 
 export interface TestRegistrationInput {
