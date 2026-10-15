@@ -1286,14 +1286,16 @@ export type Database = {
         Row: {
           attendee_type: string
           discord_user_id: string | null
-          email: string
+          email: string | null
           event_id: string | null
           id: string
           is_waitlisted: boolean
+          links: Json
           name: string
           panel_id: string | null
           phone: string | null
           photo_url: string | null
+          pronouns: string | null
           public_consent: boolean
           registered_at: string | null
           shift_id: string | null
@@ -1303,14 +1305,16 @@ export type Database = {
         Insert: {
           attendee_type?: string
           discord_user_id?: string | null
-          email: string
+          email?: string | null
           event_id?: string | null
           id?: string
           is_waitlisted?: boolean
+          links?: Json
           name: string
           panel_id?: string | null
           phone?: string | null
           photo_url?: string | null
+          pronouns?: string | null
           public_consent?: boolean
           registered_at?: string | null
           shift_id?: string | null
@@ -1320,14 +1324,16 @@ export type Database = {
         Update: {
           attendee_type?: string
           discord_user_id?: string | null
-          email?: string
+          email?: string | null
           event_id?: string | null
           id?: string
           is_waitlisted?: boolean
+          links?: Json
           name?: string
           panel_id?: string | null
           phone?: string | null
           photo_url?: string | null
+          pronouns?: string | null
           public_consent?: boolean
           registered_at?: string | null
           shift_id?: string | null

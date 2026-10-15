@@ -249,3 +249,35 @@ export async function getOpenPanelsForEvent(eventId: string, discordUserId?: str
 
   return { panels: filtered, hasAnyPanels: true };
 }
+
+// Resolves the volunteer/moderator qualification form URL (set on the
+// organization, surfaced in both the web signup page and here) for a bot
+// signup -- the submit functions in the interactions route only have a
+// shift/panel/event id to work with, not the organization directly.
+export async function getQualificationFormUrl(
+  target: { shiftId?: string; panelId?: string; eventId?: string }
+): Promise<string | null> {
+  const supabase = buildServiceClient();
+  let organizationId: string | null = null;
+
+  if (target.eventId) {
+    const { data } = await supabase.from('events').select('organization_id').eq('id', target.eventId).single();
+    organizationId = data?.organization_id ?? null;
+  } else if (target.shiftId) {
+    const { data } = await supabase.from('shifts').select('events(organization_id)').eq('id', target.shiftId).single();
+    const row = data as { events: { organization_id: string } | null } | null;
+    organizationId = row?.events?.organization_id ?? null;
+  } else if (target.panelId) {
+    const { data } = await supabase.from('panels').select('events(organization_id)').eq('id', target.panelId).single();
+    const row = data as { events: { organization_id: string } | null } | null;
+    organizationId = row?.events?.organization_id ?? null;
+  }
+  if (!organizationId) return null;
+
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('volunteer_qualification_form_url')
+    .eq('id', organizationId)
+    .maybeSingle();
+  return org?.volunteer_qualification_form_url ?? null;
+}

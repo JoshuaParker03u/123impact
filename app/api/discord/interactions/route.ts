@@ -11,6 +11,7 @@ import {
   getOpenShiftsForEvent,
   getOpenPanelsForEvent,
   getEventById,
+  getQualificationFormUrl,
 } from '@/lib/discord/queries';
 
 export const runtime = 'nodejs';
@@ -33,6 +34,9 @@ function selectMenuRow(customId: string, placeholder: string, options: { label: 
   return [{ type: 1, components: [{ type: 3, custom_id: customId, placeholder, options }] }];
 }
 
+// No email field -- Discord already knows who's signing up (discordUserId,
+// threaded through separately from interaction.member/user.id), so the only
+// thing worth asking for here is how they want to be addressed.
 function signupModal(customId: string) {
   return NextResponse.json({
     type: InteractionResponseType.MODAL,
@@ -40,8 +44,8 @@ function signupModal(customId: string) {
       custom_id: customId,
       title: 'Sign Up',
       components: [
-        { type: 1, components: [{ type: 4, custom_id: 'name', label: 'Your name', style: 1, required: true }] },
-        { type: 1, components: [{ type: 4, custom_id: 'email', label: 'Your email', style: 1, required: true }] },
+        { type: 1, components: [{ type: 4, custom_id: 'name', label: 'Preferred Name', style: 1, required: true }] },
+        { type: 1, components: [{ type: 4, custom_id: 'pronouns', label: 'Pronouns (optional)', style: 1, required: false }] },
       ],
     },
   });
@@ -159,17 +163,17 @@ export async function POST(req: NextRequest) {
     const rows: { components: { custom_id: string; value: string }[] }[] = interaction.data.components ?? [];
     const fields = rows.flatMap((row) => row.components);
     const name = fields.find((f) => f.custom_id === 'name')?.value?.trim();
-    const email = fields.find((f) => f.custom_id === 'email')?.value?.trim();
+    const pronouns = fields.find((f) => f.custom_id === 'pronouns')?.value?.trim() || null;
     const interactionToken = interaction.token;
     const discordUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null;
 
     after(async () => {
       try {
         const result = decoded.kind === 'signup_modal_shift'
-          ? await submitShiftSignup(decoded.id, name!, email!, discordUserId)
+          ? await submitShiftSignup(decoded.id, name!, pronouns, discordUserId)
           : decoded.kind === 'signup_modal_panel'
-          ? await submitPanelSignup(decoded.id, name!, email!, discordUserId)
-          : await submitRsvpSignup(decoded.id, name!, email!, discordUserId);
+          ? await submitPanelSignup(decoded.id, name!, pronouns, discordUserId)
+          : await submitRsvpSignup(decoded.id, name!, pronouns, discordUserId);
         await editOriginalResponse(interactionToken, { content: result, components: [] });
       } catch (e) {
         console.error('Discord signup follow-up error:', e);
@@ -206,18 +210,27 @@ async function internalApiFetch(path: string, body: unknown) {
   });
 }
 
-async function submitShiftSignup(shiftId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
+// Every bot signup's confirmation is this same DM -- there's no email to
+// "check" anymore, so the DM is the whole confirmation, with the
+// qualification-form link (if the org has one set) appended.
+async function withQualificationFormLink(message: string, target: { shiftId?: string; panelId?: string; eventId?: string }): Promise<string> {
+  const formUrl = await getQualificationFormUrl(target).catch(() => null);
+  return formUrl ? `${message}\n\nPlease also complete our Volunteer/Moderator Qualification Form: ${formUrl}` : message;
+}
+
+async function submitShiftSignup(shiftId: string, name: string, pronouns: string | null, discordUserId: string | null): Promise<string> {
   const res = await internalApiFetch('/api/volunteer-registrations/batch', {
-    name, email, attendee_type: 'volunteer', shift_ids: [shiftId], discord_user_id: discordUserId,
+    name, pronouns, attendee_type: 'volunteer', shift_ids: [shiftId], discord_user_id: discordUserId,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
   const reg = data.registrations?.[0];
-  const result = data.alreadyRegistered
+  let result = data.alreadyRegistered
     ? `You were already registered for "${reg?.shiftName}" — linked this Discord account to it.`
     : reg?.isWaitlisted
-    ? `You're on the waitlist for "${reg.shiftName}". Check your email for details.`
-    : `You're signed up for "${reg?.shiftName}"! Check your email for confirmation.`;
+    ? `You're on the waitlist for "${reg.shiftName}".`
+    : `You're signed up for "${reg?.shiftName}"!`;
+  result = await withQualificationFormLink(result, { shiftId });
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
@@ -225,17 +238,18 @@ async function submitShiftSignup(shiftId: string, name: string, email: string, d
   return result;
 }
 
-async function submitPanelSignup(panelId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
+async function submitPanelSignup(panelId: string, name: string, pronouns: string | null, discordUserId: string | null): Promise<string> {
   const res = await internalApiFetch('/api/panel-registrations', {
-    name, email, panel_id: panelId, discord_user_id: discordUserId,
+    name, pronouns, panel_id: panelId, discord_user_id: discordUserId,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
-  const result = data.alreadyRegistered
+  let result = data.alreadyRegistered
     ? `You were already registered for "${data.panelName}" — linked this Discord account to it.`
     : data.isWaitlisted
-    ? `You're on the waitlist for "${data.panelName}". Check your email for details.`
-    : `You're signed up for "${data.panelName}"! Check your email for confirmation.`;
+    ? `You're on the waitlist for "${data.panelName}".`
+    : `You're signed up for "${data.panelName}"!`;
+  result = await withQualificationFormLink(result, { panelId });
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
@@ -243,16 +257,17 @@ async function submitPanelSignup(panelId: string, name: string, email: string, d
   return result;
 }
 
-async function submitRsvpSignup(encodedId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
+async function submitRsvpSignup(encodedId: string, name: string, pronouns: string | null, discordUserId: string | null): Promise<string> {
   const [eventId, attendeeType] = encodedId.split(':');
   const res = await internalApiFetch('/api/volunteer-registrations', {
-    name, email, event_id: eventId, attendee_type: attendeeType, discord_user_id: discordUserId,
+    name, pronouns, event_id: eventId, attendee_type: attendeeType, discord_user_id: discordUserId,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
-  const result = data.alreadyRegistered
+  let result = data.alreadyRegistered
     ? `You were already registered for this event — linked this Discord account to it.`
-    : `You're signed up! Check your email for confirmation.`;
+    : `You're signed up!`;
+  result = await withQualificationFormLink(result, { eventId });
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
