@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET as runCron } from '@/app/api/cron/discord-showtime-pings/route';
+import { formatShowtimeClock } from '@/lib/discord/showtime-config';
 import {
   createTestOrg, createTestEvent, createTestPanel, createShowtimeReminder, cleanupEvent, cleanupOrg,
 } from '../helpers/fixtures';
@@ -158,6 +159,44 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       expect(body.sent).toBe(1);
       const [, init] = fetchMock.mock.calls[0];
       expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Game Night is now beginning!' });
+    });
+  });
+
+  describe('custom message with <name>/<minutes>/<time>/<link> substitutions', () => {
+    let eventId: string;
+    let expectedTime: string;
+    const fetchMock = vi.fn<WebhookMock>(async () => new Response(null, { status: 204 }));
+
+    beforeAll(async () => {
+      ({ orgId } = await createTestOrg());
+      const { date, time } = atMinutesFromNow(15);
+      expectedTime = formatShowtimeClock(new Date(`${date}T${time}:00.000Z`), null);
+      ({ eventId } = await createTestEvent(orgId, {
+        date, time, title: 'Game Night',
+        online_url: 'https://zoom.us/j/999',
+        discord_showtime_webhook_url: 'https://discord.com/api/webhooks/1/substitutions',
+      }));
+      await createShowtimeReminder({
+        eventId, leadMinutes: 15,
+        message: '<name> starts at <time> (<minutes> min) -- join: <link>',
+      });
+      vi.stubGlobal('fetch', webhookOnlyFetch(fetchMock));
+    });
+
+    afterAll(async () => {
+      vi.unstubAllGlobals();
+      await cleanupEvent(eventId);
+      await cleanupOrg(orgId);
+    });
+
+    it('substitutes every token using the event\'s own title, lead time, start time, and online_url', async () => {
+      const res = await callCron();
+      const body = await res.json();
+      expect(body.sent).toBe(1);
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init!.body as string)).toEqual({
+        content: `Game Night starts at ${expectedTime} (15 min) -- join: https://zoom.us/j/999`,
+      });
     });
   });
 

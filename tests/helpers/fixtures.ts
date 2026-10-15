@@ -67,6 +67,7 @@ export interface TestEventOverrides {
   time?: string;
   end_date?: string | null;
   discord_showtime_webhook_url?: string | null;
+  online_url?: string | null;
 }
 
 export async function createTestEvent(orgId: string, overrides: TestEventOverrides = {}): Promise<{ eventId: string }> {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { resolveEventWindow, type EventDayHoursRow } from '@/lib/public-feed/resolve-event-window';
 import { toInstant } from '@/lib/public-feed/to-instant';
-import { resolveReminders, type ShowtimeReminderInput } from '@/lib/discord/showtime-config';
+import { resolveReminders, formatShowtimeClock, type ShowtimeReminderInput } from '@/lib/discord/showtime-config';
 import { postShowtimeWebhook } from '@/lib/discord/showtime-webhook';
 
 // Fires each configured Discord showtime reminder tier for any event/panel
@@ -20,6 +20,7 @@ type EventRow = {
   date: string;
   time: string;
   end_date: string | null;
+  online_url: string | null;
   discord_showtime_webhook_url: string | null;
   organizations: { timezone: string | null } | null;
 };
@@ -33,6 +34,7 @@ type PanelRow = {
   name: string;
   panel_date: string | null;
   start_time: string;
+  online_url: string | null;
   discord_showtime_webhook_url: string;
 };
 
@@ -59,6 +61,8 @@ async function fireDueReminders(
   table: 'events' | 'panels',
   ownerId: string,
   ownerName: string,
+  onlineUrl: string | null,
+  timezone: string | null,
   webhookUrl: string,
   reminders: ReminderRow[],
   start: Date | null,
@@ -68,7 +72,11 @@ async function fireDueReminders(
   let failed = 0;
   if (!start) return { sent, failed };
 
-  const effectives = resolveReminders(reminders, ownerName);
+  const effectives = resolveReminders(reminders, {
+    name: ownerName,
+    time: formatShowtimeClock(start, timezone),
+    link: onlineUrl,
+  });
   for (let i = 0; i < reminders.length; i++) {
     const row = reminders[i];
     const effective = effectives[i];
@@ -110,7 +118,7 @@ export async function GET(request: Request) {
   const { data: events } = await service
     .from('events')
     .select(`
-      id, title, date, time, end_date, discord_showtime_webhook_url,
+      id, title, date, time, end_date, online_url, discord_showtime_webhook_url,
       organizations!inner(timezone)
     `)
     .not('status', 'in', '(cancelled,deleted)')
@@ -133,7 +141,7 @@ export async function GET(request: Request) {
       service.from('event_day_hours').select('event_id, event_date, start_time, end_time').in('event_id', eventIds),
       service
         .from('panels')
-        .select('id, event_id, name, panel_date, start_time, discord_showtime_webhook_url')
+        .select('id, event_id, name, panel_date, start_time, online_url, discord_showtime_webhook_url')
         .in('event_id', eventIds)
         .not('discord_showtime_webhook_url', 'is', null),
       service
@@ -172,7 +180,7 @@ export async function GET(request: Request) {
         dayHours: dayHoursByEvent[event.id] ?? [],
       });
       const result = await fireDueReminders(
-        service, 'events', event.id, event.title, event.discord_showtime_webhook_url,
+        service, 'events', event.id, event.title, event.online_url, timezone, event.discord_showtime_webhook_url,
         eventReminders[event.id] ?? [], window?.start ?? null, now,
       );
       sent += result.sent;
@@ -182,7 +190,7 @@ export async function GET(request: Request) {
     for (const panel of panelsByEvent[event.id] ?? []) {
       const start = toInstant(panel.panel_date ?? event.date, panel.start_time, timezone);
       const result = await fireDueReminders(
-        service, 'panels', panel.id, panel.name, panel.discord_showtime_webhook_url,
+        service, 'panels', panel.id, panel.name, panel.online_url, timezone, panel.discord_showtime_webhook_url,
         panelReminders[panel.id] ?? [], start, now,
       );
       sent += result.sent;

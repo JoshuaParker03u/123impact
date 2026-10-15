@@ -52,6 +52,11 @@ export default function ShowtimeReminderList({ reminders, onChange, name }) {
       <button type="button" onClick={addRow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
         + Add another reminder
       </button>
+      {reminders.length > 0 && (
+        <p className="text-xs text-gray-500">
+          Custom messages can include <code>&lt;name&gt;</code>, <code>&lt;minutes&gt;</code>, <code>&lt;time&gt;</code>, and <code>&lt;link&gt;</code> — each is replaced automatically when the reminder posts.
+        </p>
+      )}
     </div>
   );
 }
