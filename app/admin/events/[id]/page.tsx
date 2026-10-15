@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
+import { timezoneAbbreviation } from '@/lib/timezone-convert';
 import type { PanelAssignmentRole } from '@/lib/panels/assignment-roles';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
@@ -203,7 +204,7 @@ function RoleSelect({ value, onChange, disabled }: { value: AttendeeTypeValue; o
 
 // Picking a shift for an unanchored registration moving to Volunteer on a
 // non-shiftless event — see setEventLevelRole/assignPickedShift.
-function ShiftPickerModal({ shifts, onClose, onPick, submitting }: { shifts: Shift[]; onClose: () => void; onPick: (shiftId: string) => void; submitting: boolean }) {
+function ShiftPickerModal({ shifts, onClose, onPick, submitting, orgTimezone }: { shifts: Shift[]; onClose: () => void; onPick: (shiftId: string) => void; submitting: boolean; orgTimezone: string | null }) {
   return (
     <FloatingWindow title="Assign a Shift" onClose={onClose} maxWidthClassName="max-w-md">
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -226,7 +227,7 @@ function ShiftPickerModal({ shifts, onClose, onPick, submitting }: { shifts: Shi
               >
                 <div className="font-medium text-gray-900 dark:text-gray-100">{s.name}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {s.start_time}–{s.end_time} ·{' '}
+                  {s.start_time}–{s.end_time} ({timezoneAbbreviation(orgTimezone)}) ·{' '}
                   {isFull
                     ? (s.allow_waitlist ? 'Full — will waitlist' : 'Full')
                     : `${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`}
@@ -1575,7 +1576,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                         )}
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                        {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)}
+                        {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)} ({timezoneAbbreviation(orgTimezone)})
                         {panel.location ? ` · ${panel.location}` : ''} · {panel.capacity == null ? `${panel.filled} registered (unlimited)` : `${panel.filled}/${panel.capacity} registered`}
                         {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
                       </p>
@@ -2724,7 +2725,7 @@ export default function AdminEventDetailPage() {
                   <Calendar className="w-4 h-4" />{formatDateRange(event.date, event.end_date)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />{formatScheduleSummary(event)}
+                  <Clock className="w-4 h-4" />{formatScheduleSummary(event)} ({timezoneAbbreviation(orgTimezone)})
                 </span>
                 <span className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />{event.location}
@@ -3142,6 +3143,7 @@ export default function AdminEventDetailPage() {
                               {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               {' – '}
                               {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {' ('}{timezoneAbbreviation(orgTimezone)}{')'}
                               {overnight && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400 font-medium">+1</span>}
                             </p>
                             {shift.description && (
@@ -3476,6 +3478,7 @@ export default function AdminEventDetailPage() {
           submitting={assigningShift}
           onClose={() => setShiftPickerFor(null)}
           onPick={assignPickedShift}
+          orgTimezone={orgTimezone}
         />
       )}
 

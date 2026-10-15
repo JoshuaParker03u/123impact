@@ -14,7 +14,7 @@ import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import DiscordPostConfirmModal from '@/components/DiscordPostConfirmModal';
 import SeriesManagerModal from '@/components/admin/SeriesManagerModal';
 import TimezoneShiftNotice from '@/components/admin/TimezoneShiftNotice';
-import { convertWallClock } from '@/lib/timezone-convert';
+import { convertWallClock, timezoneAbbreviation } from '@/lib/timezone-convert';
 
 const supabase = getBrowserClient();
 
@@ -446,7 +446,7 @@ export default function AdminEventsPage() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
-                            {formatEventTime(event.time)}
+                            {formatEventTime(event.time)} ({timezoneAbbreviation(currentOrganization?.timezone)})
                           </span>
                           <span className="flex items-center gap-1">
                             <MapPin className="w-4 h-4" />
@@ -634,7 +634,7 @@ export default function AdminEventsPage() {
                                   <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                                     <span className="flex items-center gap-1">
                                       <Clock className="w-3 h-3" />
-                                      {shift.start_time} - {shift.end_time}
+                                      {shift.start_time} - {shift.end_time} ({timezoneAbbreviation(currentOrganization?.timezone)})
                                     </span>
                                   </div>
                                 </div>
@@ -676,7 +676,7 @@ export default function AdminEventsPage() {
                                   <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                                     <span className="flex items-center gap-1">
                                       <Clock className="w-3 h-3" />
-                                      {panel.start_time} - {panel.end_time}
+                                      {panel.start_time} - {panel.end_time} ({timezoneAbbreviation(currentOrganization?.timezone)})
                                     </span>
                                     {panel.location && (
                                       <span className="flex items-center gap-1">

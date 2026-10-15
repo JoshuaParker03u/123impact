@@ -31,6 +31,20 @@ export function convertWallClock(
   return { date: format(zoned, 'yyyy-MM-dd'), time: format(zoned, 'HH:mm') };
 }
 
+// Short display label for a timezone (e.g. "PDT", "UTC") -- used to mark
+// times that are shown in the org's own timezone rather than the viewing
+// admin's personal one, so the two don't look like they silently disagree.
+// Computed via Intl rather than a hardcoded map so it reflects DST correctly
+// for any IANA zone without the app needing to track transition dates itself.
+export function timezoneAbbreviation(timezone: string | null, at: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone ?? 'UTC', timeZoneName: 'short' }).formatToParts(at);
+    return parts.find((p) => p.type === 'timeZoneName')?.value ?? (timezone ?? 'UTC');
+  } catch {
+    return timezone ?? 'UTC';
+  }
+}
+
 export function diffInDays(a: string, b: string): number {
   return Math.round((new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime()) / 86_400_000);
 }

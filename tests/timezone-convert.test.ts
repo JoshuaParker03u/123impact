@@ -3,7 +3,7 @@
 // displaying an existing value for editing). Mirrors to-instant.test.ts's
 // style, since this utility is its direct inverse.
 import { describe, it, expect } from 'vitest';
-import { convertWallClock, diffInDays, addDays, buildDayHoursRows } from '@/lib/timezone-convert';
+import { convertWallClock, diffInDays, addDays, buildDayHoursRows, timezoneAbbreviation } from '@/lib/timezone-convert';
 
 describe('convertWallClock', () => {
   it('is a no-op when source and target timezone are the same', () => {
@@ -103,5 +103,18 @@ describe('buildDayHoursRows', () => {
     );
     expect(result.rows).toBeNull();
     expect(result.error).toMatch(/2026-10-15 and 2026-10-16 both convert to 2026-10-16/);
+  });
+});
+
+describe('timezoneAbbreviation', () => {
+  it('returns the DST-aware abbreviation for a named zone at a given instant', () => {
+    expect(timezoneAbbreviation('America/Los_Angeles', new Date('2026-07-01T00:00:00Z'))).toBe('PDT');
+    expect(timezoneAbbreviation('America/Chicago', new Date('2026-07-01T00:00:00Z'))).toBe('CDT');
+    expect(timezoneAbbreviation('America/Los_Angeles', new Date('2026-01-01T00:00:00Z'))).toBe('PST');
+    expect(timezoneAbbreviation('America/Chicago', new Date('2026-01-01T00:00:00Z'))).toBe('CST');
+  });
+
+  it('returns UTC for null (the org-timezone-unset fallback)', () => {
+    expect(timezoneAbbreviation(null, new Date('2026-07-01T00:00:00Z'))).toBe('UTC');
   });
 });
