@@ -47,6 +47,18 @@ describe('shift-anchored transitions', () => {
     expect(result.error).toBeNull();
   });
 
+  // Regression for a real bug: capacity is nullable (null = unlimited), and
+  // a naive `if (event.attendee_capacity)` check treats 0 as "not set" due
+  // to JS falsy coercion -- silently letting an intentional "always full"
+  // capacity of 0 behave as unlimited instead.
+  it('leaving the shift for attendee is rejected when attendee_capacity is deliberately 0, not treated as unlimited', () => {
+    const result = planRoleReassignment({
+      currentAnchor: 'shift', currentType: 'volunteer', newType: 'attendee',
+      event: { ...baseEvent, attendee_capacity: 0 }, counts: { attendeeCount: 0 },
+    });
+    expect(result.error).toEqual({ message: 'This event is full', status: 409 });
+  });
+
   it('leaving the shift for speaker is rejected when speaker registration is disabled', () => {
     const result = planRoleReassignment({
       currentAnchor: 'shift', currentType: 'volunteer', newType: 'speaker',
@@ -241,6 +253,20 @@ describe('countsNeededFor — matches exactly what planRoleReassignment branches
     expect(countsNeededFor({
       currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
       event: { ...baseEvent, shiftless_capacity: 5 },
+    })).toEqual({ attendeeCount: false, shiftlessVolunteerCount: true });
+  });
+
+  // Same regression as above, at the countsNeededFor level: a capacity of
+  // 0 must still trigger the count fetch, not be mistaken for "uncapped".
+  it('still needs the count when capacity is deliberately 0, not treated as uncapped', () => {
+    expect(countsNeededFor({
+      currentAnchor: 'shift', currentType: 'volunteer', newType: 'attendee',
+      event: { ...baseEvent, attendee_capacity: 0 },
+    })).toEqual({ attendeeCount: true, shiftlessVolunteerCount: false });
+
+    expect(countsNeededFor({
+      currentAnchor: 'event', currentType: 'attendee', newType: 'volunteer',
+      event: { ...baseEvent, shiftless_capacity: 0 },
     })).toEqual({ attendeeCount: false, shiftlessVolunteerCount: true });
   });
 });

@@ -509,7 +509,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
         if (resolvedType === 'attendee') {
           if (!ev.attendee_enabled) return fail('Event does not allow attendee registration', 400);
-          if (ev.attendee_capacity) {
+          // != null, not truthy -- a capacity of 0 is a real, intentional
+          // "always full" setting (e.g. to force every signup through a
+          // waitlist-style review elsewhere), not "no capacity set".
+          if (ev.attendee_capacity != null) {
             const { count } = await supabase
               .from('volunteer_registrations')
               .select('*', { count: 'exact', head: true })
@@ -519,7 +522,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           }
         } else {
           if (!ev.is_shiftless) return fail('Event does not allow shiftless registration', 400);
-          if (ev.shiftless_capacity) {
+          if (ev.shiftless_capacity != null) {
             const { count } = await supabase
               .from('volunteer_registrations')
               .select('*', { count: 'exact', head: true })

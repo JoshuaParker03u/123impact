@@ -95,9 +95,11 @@ export function countsNeededFor(
     (currentAnchor === 'shift' && newType !== 'volunteer') ||
     (currentAnchor === 'event' && newType !== currentType);
 
+  // != null, not truthy -- a capacity of 0 is a real "always full" setting,
+  // not "no capacity set", and still needs the count computed to enforce it.
   return {
-    attendeeCount: isRealTransition && newType === 'attendee' && !!event.attendee_capacity,
-    shiftlessVolunteerCount: isRealTransition && newType === 'volunteer' && !!event.shiftless_capacity,
+    attendeeCount: isRealTransition && newType === 'attendee' && event.attendee_capacity != null,
+    shiftlessVolunteerCount: isRealTransition && newType === 'volunteer' && event.shiftless_capacity != null,
   };
 }
 
@@ -107,7 +109,7 @@ export function planRoleReassignment(input: RoleReassignmentInput): RoleReassign
 
   function attendeeCapacityError(): RoleReassignmentError | null {
     if (!event.attendee_enabled) return { message: 'Event does not allow attendee registration', status: 400 };
-    if (event.attendee_capacity && (counts.attendeeCount ?? 0) >= event.attendee_capacity) {
+    if (event.attendee_capacity != null && (counts.attendeeCount ?? 0) >= event.attendee_capacity) {
       return { message: 'This event is full', status: 409 };
     }
     return null;
@@ -117,7 +119,7 @@ export function planRoleReassignment(input: RoleReassignmentInput): RoleReassign
   // intercepts a non-shiftless event's move-to-volunteer before this runs,
   // routing it through the targetShift flow instead.
   function shiftlessCapacityError(): RoleReassignmentError | null {
-    if (event.shiftless_capacity && (counts.shiftlessVolunteerCount ?? 0) >= event.shiftless_capacity) {
+    if (event.shiftless_capacity != null && (counts.shiftlessVolunteerCount ?? 0) >= event.shiftless_capacity) {
       return { message: 'This event is full', status: 409 };
     }
     return null;

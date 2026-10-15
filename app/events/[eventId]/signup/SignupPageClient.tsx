@@ -820,7 +820,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
               </div>
             </div>
           ) : role === 'attendee' ? (
-            event.attendee_capacity ? (
+            event.attendee_capacity != null ? (
               <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
                 <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
                 <p className="text-sm text-blue-900 dark:text-blue-200">
@@ -829,7 +829,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
               </div>
             ) : null
           ) : role === 'speaker' ? null : event.is_shiftless ? (
-            event.shiftless_capacity ? (
+            event.shiftless_capacity != null ? (
               <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
                 <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
                 <p className="text-sm text-blue-900 dark:text-blue-200">
