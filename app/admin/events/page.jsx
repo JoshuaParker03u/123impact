@@ -82,7 +82,8 @@ export default function AdminEventsPage() {
           capacity,
           shift_date
         ),
-        event_day_hours (id, event_date, start_time, end_time)
+        event_day_hours (id, event_date, start_time, end_time),
+        discord_showtime_reminders (id, lead_minutes, message, sent_at)
       `)
       .eq('organization_id', currentOrganization.id)
       .order('date', { ascending: true });
