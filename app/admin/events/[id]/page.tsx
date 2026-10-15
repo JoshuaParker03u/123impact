@@ -100,6 +100,10 @@ interface Event {
   is_private_on_platform?: boolean;
   series_id?: string | null;
   created_by_display?: string | null;
+  discord_showtime_webhook_url?: string | null;
+  discord_showtime_message?: string | null;
+  discord_showtime_lead_minutes?: number;
+  discord_showtime_ping_sent_at?: string | null;
 }
 
 interface OrgMember {
@@ -1236,6 +1240,10 @@ interface Panel {
   waitlisted: number;
   available: number | null;
   is_full: boolean;
+  discord_showtime_webhook_url?: string | null;
+  discord_showtime_message?: string | null;
+  discord_showtime_lead_minutes?: number | null;
+  discord_showtime_ping_sent_at?: string | null;
 }
 
 interface PanelRegistration {

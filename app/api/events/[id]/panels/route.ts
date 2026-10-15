@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data, error } = await service
     .from('panels')
-    .select('id, event_id, name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist, created_at, updated_at')
+    .select('id, event_id, name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist, created_at, updated_at, discord_showtime_webhook_url, discord_showtime_message, discord_showtime_lead_minutes, discord_showtime_ping_sent_at')
     .eq('event_id', eventId)
     .order('start_time', { ascending: true });
 
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const body = await req.json();
-  const { name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist } = body;
+  const { name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist, discord_showtime_webhook_url, discord_showtime_message, discord_showtime_lead_minutes } = body;
 
   if (!name || !start_time || !end_time) {
     return NextResponse.json({ error: 'name, start_time, and end_time are required' }, { status: 400 });
@@ -123,6 +123,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       online_url:     online_url ?? null,
       capacity:       capacity ?? null,
       allow_waitlist: allow_waitlist ?? false,
+      discord_showtime_webhook_url: discord_showtime_webhook_url ?? null,
+      discord_showtime_message: discord_showtime_message ?? null,
+      discord_showtime_lead_minutes: discord_showtime_lead_minutes ?? null,
     })
     .select()
     .single();

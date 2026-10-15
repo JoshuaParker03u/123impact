@@ -190,6 +190,9 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     attendee_capacity:   event?.attendee_capacity   ?? '',
     speaker_enabled:     event?.speaker_enabled     ?? false,
     panels_enabled:      event?.panels_enabled      ?? false,
+    discord_showtime_webhook_url:  event?.discord_showtime_webhook_url  || '',
+    discord_showtime_message:      event?.discord_showtime_message      || '',
+    discord_showtime_lead_minutes: event?.discord_showtime_lead_minutes ?? 15,
   });
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
   const [applyToSeries, setApplyToSeries] = useState(false);
@@ -265,11 +268,16 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
         speaker_enabled:    formData.speaker_enabled,
         panels_enabled:     formData.panels_enabled,
       };
+      const showtimePayload = {
+        discord_showtime_webhook_url:  formData.discord_showtime_webhook_url.trim() || null,
+        discord_showtime_message:      formData.discord_showtime_message.trim() || null,
+        discord_showtime_lead_minutes: formData.discord_showtime_lead_minutes ? parseInt(formData.discord_showtime_lead_minutes, 10) : 15,
+      };
       const imageUrl = formData.image_url || organizationLogoUrl || '';
       if (event) {
         const { error } = await supabase
           .from('events')
-          .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload, ...rolePayload })
+          .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload, ...rolePayload, ...showtimePayload })
           .eq('id', event.id);
         if (error) throw error;
         await saveDayHours(event.id);
@@ -314,6 +322,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
             primary_owner_id: user?.id ?? null,
             ...shiftlessPayload,
             ...rolePayload,
+            ...showtimePayload,
           })
           .select('id')
           .single();
@@ -557,6 +566,42 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                 onChange={(e) => setFormData({ ...formData, recording_url: e.target.value })}
                 className={inputCls}
                 placeholder="https://youtube.com/watch?v=..."
+              />
+            </div>
+
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-medium">Discord Showtime Ping (optional)</p>
+              <p className="text-xs text-gray-500">
+                Posts a reminder to a Discord channel shortly before this event starts. Create an incoming webhook
+                in the target channel&apos;s Discord settings (Channel Settings → Integrations → Webhooks) and
+                paste the URL below — that&apos;s how the channel is chosen. Panels can override this individually.
+              </p>
+              <input
+                type="url"
+                value={formData.discord_showtime_webhook_url}
+                onChange={(e) => setFormData({ ...formData, discord_showtime_webhook_url: e.target.value })}
+                className={inputCls}
+                placeholder="https://discord.com/api/webhooks/..."
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs mb-1">Minutes before showtime</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={formData.discord_showtime_lead_minutes}
+                    onChange={(e) => setFormData({ ...formData, discord_showtime_lead_minutes: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              <textarea
+                rows={2}
+                value={formData.discord_showtime_message}
+                onChange={(e) => setFormData({ ...formData, discord_showtime_message: e.target.value })}
+                className={inputCls}
+                placeholder={`Default: "@here Showtime in ${formData.discord_showtime_lead_minutes || 15} minutes"`}
               />
             </div>
 

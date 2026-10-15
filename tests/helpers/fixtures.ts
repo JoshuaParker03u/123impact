@@ -62,6 +62,13 @@ export interface TestEventOverrides {
   attendee_capacity?: number | null;
   speaker_enabled?: boolean;
   panels_enabled?: boolean;
+  date?: string;
+  time?: string;
+  end_date?: string | null;
+  discord_showtime_webhook_url?: string | null;
+  discord_showtime_message?: string | null;
+  discord_showtime_lead_minutes?: number;
+  discord_showtime_ping_sent_at?: string | null;
 }
 
 export async function createTestEvent(orgId: string, overrides: TestEventOverrides = {}): Promise<{ eventId: string }> {
@@ -115,9 +122,21 @@ export async function createTestShift(
   return { shiftId: data.id };
 }
 
+export interface TestPanelOverrides {
+  capacity?: number | null;
+  allow_waitlist?: boolean;
+  start_time?: string;
+  end_time?: string;
+  panel_date?: string | null;
+  discord_showtime_webhook_url?: string | null;
+  discord_showtime_message?: string | null;
+  discord_showtime_lead_minutes?: number | null;
+  discord_showtime_ping_sent_at?: string | null;
+}
+
 export async function createTestPanel(
   eventId: string,
-  overrides: { capacity?: number | null; allow_waitlist?: boolean } = {}
+  overrides: TestPanelOverrides = {}
 ): Promise<{ panelId: string }> {
   const service = getServiceClient();
   const { data, error } = await service
@@ -129,6 +148,7 @@ export async function createTestPanel(
       end_time: '14:00',
       capacity: overrides.capacity === undefined ? 3 : overrides.capacity,
       allow_waitlist: overrides.allow_waitlist ?? false,
+      ...overrides,
     })
     .select('id')
     .single();

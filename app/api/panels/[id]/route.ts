@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ('error' in check) return NextResponse.json({ error: check.error }, { status: check.status });
 
   const body = await req.json();
-  const { name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist } = body;
+  const { name, description, start_time, end_time, panel_date, location, online_url, capacity, allow_waitlist, discord_showtime_webhook_url, discord_showtime_message, discord_showtime_lead_minutes } = body;
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (name !== undefined) updates.name = name;
@@ -76,6 +76,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (online_url !== undefined) updates.online_url = online_url;
   if (capacity !== undefined) updates.capacity = capacity;
   if (allow_waitlist !== undefined) updates.allow_waitlist = allow_waitlist;
+  if (discord_showtime_webhook_url !== undefined) updates.discord_showtime_webhook_url = discord_showtime_webhook_url;
+  if (discord_showtime_message !== undefined) updates.discord_showtime_message = discord_showtime_message;
+  if (discord_showtime_lead_minutes !== undefined) updates.discord_showtime_lead_minutes = discord_showtime_lead_minutes;
 
   const { data: updated, error } = await service
     .from('panels')

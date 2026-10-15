@@ -16,6 +16,9 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
     location:       panel?.location       || '',
     online_url:     panel?.online_url     || '',
     allow_waitlist: panel?.allow_waitlist ?? false,
+    discord_showtime_webhook_url:  panel?.discord_showtime_webhook_url  || '',
+    discord_showtime_message:      panel?.discord_showtime_message      || '',
+    discord_showtime_lead_minutes: panel?.discord_showtime_lead_minutes ?? '',
   });
   const [errors, setErrors]       = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +50,9 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
         ...formData,
         panel_date: formData.panel_date || null,
         capacity:   formData.capacity === '' ? null : formData.capacity,
+        discord_showtime_webhook_url:  formData.discord_showtime_webhook_url.trim() || null,
+        discord_showtime_message:      formData.discord_showtime_message.trim() || null,
+        discord_showtime_lead_minutes: formData.discord_showtime_lead_minutes === '' ? null : parseInt(formData.discord_showtime_lead_minutes, 10),
       };
       const url = panel ? `/api/panels/${panel.id}` : `/api/events/${event.id}/panels`;
       const res = await fetch(url, {
@@ -161,6 +167,31 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
               />
               Enable waitlist for this panel
             </label>
+
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-medium">Discord Showtime Ping (optional)</p>
+              <p className="text-xs text-gray-500">
+                Leave blank to use the event&apos;s Discord showtime settings. Set a webhook here only if this
+                panel should ping a different channel.
+              </p>
+              <input type="url" value={formData.discord_showtime_webhook_url}
+                onChange={(e) => setFormData({ ...formData, discord_showtime_webhook_url: e.target.value })}
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                placeholder="https://discord.com/api/webhooks/..." />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs mb-1">Minutes before showtime</label>
+                  <input type="number" min={1} max={1440} value={formData.discord_showtime_lead_minutes}
+                    onChange={(e) => setFormData({ ...formData, discord_showtime_lead_minutes: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                    placeholder="Inherit from event" />
+                </div>
+              </div>
+              <textarea rows={2} value={formData.discord_showtime_message}
+                onChange={(e) => setFormData({ ...formData, discord_showtime_message: e.target.value })}
+                className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                placeholder="Leave blank to use the event's message" />
+            </div>
 
             <div>
               <label className="block text-sm font-medium mb-1">Description (optional)</label>
