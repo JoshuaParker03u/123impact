@@ -42,7 +42,8 @@ export async function GET() {
           id,
           name,
           logo_url,
-          status
+          status,
+          timezone
         )
       `)
       .eq('user_id', user.id);
@@ -56,6 +57,7 @@ export async function GET() {
         name:        (row.organizations as any).name,
         logo_url:    (row.organizations as any).logo_url ?? null,
         status:      (row.organizations as any).status,
+        timezone:    (row.organizations as any).timezone ?? null,
         role:        row.role,
         permissions: row.permissions ?? {},
       }));

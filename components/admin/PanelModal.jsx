@@ -4,16 +4,29 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import FloatingWindow from '@/components/FloatingWindow';
 import ShiftDatePicker from './ShiftDatePicker';
+import TimezoneShiftNotice from './TimezoneShiftNotice';
+import { convertWallClock } from '@/lib/timezone-convert';
 
-export default function PanelModal({ panel, event, onClose, onSave }) {
+export default function PanelModal({ panel, event, onClose, onSave, organizationTimezone = null, personalTimezone = null }) {
+  // Existing start/end times are stored as org-timezone wall-clock values --
+  // convert them to the viewing admin's own personal timezone for display,
+  // so re-saving an untouched field converts back to the exact original.
+  const loadAnchorDate = panel?.panel_date || event.date;
+  const loadedStart = panel?.start_time
+    ? convertWallClock(loadAnchorDate, panel.start_time, organizationTimezone, personalTimezone)
+    : null;
+  const loadedEnd = panel?.end_time
+    ? convertWallClock(loadAnchorDate, panel.end_time, organizationTimezone, personalTimezone)
+    : null;
+
   const [formData, setFormData] = useState({
     name:           panel?.name           || '',
     description:    panel?.description    || '',
-    start_time:     panel?.start_time     || '',
-    end_time:       panel?.end_time       || '',
+    start_time:     loadedStart?.time ?? (panel?.start_time || ''),
+    end_time:       loadedEnd?.time   ?? (panel?.end_time   || ''),
     capacity:       panel ? (panel.capacity ?? '') : '',
-    panel_date:     panel?.panel_date     || '',
-    location:       panel?.location       || '',
+    panel_date:     loadedStart?.date ?? panel?.panel_date ?? '',
+    location:       panel?.location     || '',
     online_url:     panel?.online_url     || '',
     allow_waitlist: panel?.allow_waitlist ?? false,
     discord_showtime_webhook_url:  panel?.discord_showtime_webhook_url  || '',
@@ -26,6 +39,15 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
   const isOvernight = formData.start_time && formData.end_time && formData.end_time <= formData.start_time;
   const isOnlineEvent = event.event_format === 'online' || event.event_format === 'hybrid';
 
+  // Live preview of what saving right now would convert to in the org's
+  // timezone -- lets the shift notice appear before the admin submits.
+  const saveAnchorDate = formData.panel_date || event.date;
+  const targetStart = formData.start_time
+    ? convertWallClock(saveAnchorDate, formData.start_time, personalTimezone, organizationTimezone)
+    : null;
+  const targetDate = event.end_date ? (targetStart?.date ?? saveAnchorDate) : saveAnchorDate;
+  const outOfRange = !!(event.end_date && targetStart && (targetDate < event.date || targetDate > event.end_date));
+
   const validate = () => {
     const e = {};
     if (!formData.name.trim())                     e.name       = 'Name is required';
@@ -37,6 +59,9 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
       e.capacity = `Cannot reduce below ${panel.filled} (current registrations)`;
     }
     if (event.end_date && !formData.panel_date)    e.panel_date = 'Panel date is required for multi-day events';
+    if (outOfRange) {
+      e.panel_date = `This time converts to ${targetDate} in the organization's timezone, which is outside this event's dates (${event.date}–${event.end_date}). Adjust the time or panel date.`;
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -46,9 +71,15 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      const startConv = convertWallClock(saveAnchorDate, formData.start_time, personalTimezone, organizationTimezone);
+      const endConv   = convertWallClock(saveAnchorDate, formData.end_time,   personalTimezone, organizationTimezone);
+      const convertedDate = event.end_date ? (startConv?.date ?? saveAnchorDate) : null;
+
       const payload = {
         ...formData,
-        panel_date: formData.panel_date || null,
+        start_time: startConv?.time ?? formData.start_time,
+        end_time:   endConv?.time   ?? formData.end_time,
+        panel_date: event.end_date ? (convertedDate || null) : null,
         capacity:   formData.capacity === '' ? null : formData.capacity,
         discord_showtime_webhook_url:  formData.discord_showtime_webhook_url.trim() || null,
         discord_showtime_message:      formData.discord_showtime_message.trim() || null,
@@ -92,6 +123,9 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
                   maxDate={event.end_date}
                 />
                 {errors.panel_date && <p className="text-red-600 text-sm mt-1">{errors.panel_date}</p>}
+                {!outOfRange && (
+                  <TimezoneShiftNotice originalDate={formData.panel_date} shiftedDate={targetDate} timezoneLabel={organizationTimezone || 'UTC'} />
+                )}
               </div>
             )}
 
@@ -101,6 +135,9 @@ export default function PanelModal({ panel, event, onClose, onSave }) {
                 <input type="time" value={formData.start_time}
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                   className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600" />
+                {!event.end_date && (
+                  <TimezoneShiftNotice originalDate={event.date} shiftedDate={targetDate} timezoneLabel={organizationTimezone || 'UTC'} />
+                )}
                 {errors.start_time && <p className="text-red-600 text-sm mt-1">{errors.start_time}</p>}
               </div>
               <div>

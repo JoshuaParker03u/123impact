@@ -13,6 +13,8 @@ import MessageComposer from '@/components/MessageComposer';
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal';
 import DiscordPostConfirmModal from '@/components/DiscordPostConfirmModal';
 import SeriesManagerModal from '@/components/admin/SeriesManagerModal';
+import TimezoneShiftNotice from '@/components/admin/TimezoneShiftNotice';
+import { convertWallClock } from '@/lib/timezone-convert';
 
 const supabase = getBrowserClient();
 
@@ -29,7 +31,8 @@ function formatEventTime(time) {
 }
 
 export default function AdminEventsPage() {
-  const { currentOrganization, loading: orgLoading, isAdmin } = useOrganization();
+  const { currentOrganization, user, loading: orgLoading, isAdmin } = useOrganization();
+  const personalTimezone = user?.user_metadata?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedEvent, setExpandedEvent] = useState(null);
@@ -701,6 +704,8 @@ export default function AdminEventsPage() {
             event={editingEvent}
             organizationId={currentOrganization.id}
             organizationLogoUrl={currentOrganization.logo_url}
+            organizationTimezone={currentOrganization.timezone}
+            personalTimezone={personalTimezone}
             isPaid={orgPlan !== 'free'}
             onClose={() => setShowEventModal(false)}
             onSave={() => {
@@ -761,6 +766,8 @@ export default function AdminEventsPage() {
               fetchEvents();
             }}
             supabase={supabase}
+            organizationTimezone={currentOrganization.timezone}
+            personalTimezone={personalTimezone}
           />
         )}
       </div>
@@ -769,21 +776,37 @@ export default function AdminEventsPage() {
 }
 
 // Shift Modal Component
-function ShiftModal({ shift, event, onClose, onSave, supabase }) {
+function ShiftModal({ shift, event, onClose, onSave, supabase, organizationTimezone = null, personalTimezone = null }) {
   const nextShiftId = shift
     ? shift.shift_id
     : (Math.max(0, ...((event.shifts ?? []).map((s) => s.shift_id ?? 0))) + 1);
+
+  // This editor has no shift_date field (unlike the shared ShiftModal used
+  // on the event detail page) -- the anchor is always the parent event's
+  // own date, so a timezone conversion can only ever be informational here,
+  // never move a field. Existing stored times are org-timezone wall-clock
+  // values -- convert to the viewing admin's personal timezone for display.
+  const loadedStart = shift?.start_time
+    ? convertWallClock(event.date, shift.start_time, organizationTimezone, personalTimezone)
+    : null;
+  const loadedEnd = shift?.end_time
+    ? convertWallClock(event.date, shift.end_time, organizationTimezone, personalTimezone)
+    : null;
 
   const [formData, setFormData] = useState({
     shift_id: nextShiftId,
     name: shift?.name || '',
     description: shift?.description || '',
-    start_time: shift?.start_time || '',
-    end_time: shift?.end_time || '',
+    start_time: loadedStart?.time ?? (shift?.start_time || ''),
+    end_time: loadedEnd?.time ?? (shift?.end_time || ''),
     capacity: shift?.capacity || 10
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  const targetStart = formData.start_time
+    ? convertWallClock(event.date, formData.start_time, personalTimezone, organizationTimezone)
+    : null;
 
   const validate = () => {
     const newErrors = {};
@@ -807,11 +830,19 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
 
     setSubmitting(true);
     try {
+      const startConv = convertWallClock(event.date, formData.start_time, personalTimezone, organizationTimezone);
+      const endConv   = convertWallClock(event.date, formData.end_time,   personalTimezone, organizationTimezone);
+      const payload = {
+        ...formData,
+        start_time: startConv?.time ?? formData.start_time,
+        end_time:   endConv?.time   ?? formData.end_time,
+      };
+
       if (shift) {
         // Update
         const { error } = await supabase
           .from('shifts')
-          .update(formData)
+          .update(payload)
           .eq('id', shift.id);
         if (error) throw error;
       } else {
@@ -819,7 +850,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
         const { error } = await supabase
           .from('shifts')
           .insert({
-            ...formData,
+            ...payload,
             event_id: event.id,
             filled: 0
           });
@@ -857,6 +888,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase }) {
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                   className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 />
+                <TimezoneShiftNotice originalDate={event.date} shiftedDate={targetStart?.date} timezoneLabel={organizationTimezone || 'UTC'} />
                 {errors.start_time && <p className="text-red-600 text-sm mt-1">{errors.start_time}</p>}
               </div>
 

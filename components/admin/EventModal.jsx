@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import FloatingWindow from '@/components/FloatingWindow';
 import ShiftDatePicker from './ShiftDatePicker';
 import LocationAutocomplete from './LocationAutocomplete';
+import TimezoneShiftNotice from './TimezoneShiftNotice';
+import { convertWallClock, buildDayHoursRows } from '@/lib/timezone-convert';
 import { Upload, Link as LinkIcon, Copy, Check } from 'lucide-react';
 
 function generateSlug(title, suffix) {
@@ -167,7 +169,7 @@ function EventImageUploader({ value, onChange, organizationId, orgLogoUrl, disab
   );
 }
 
-export default function EventModal({ event, organizationId, organizationLogoUrl = null, onClose, onSave, supabase, isPaid = false }) {
+export default function EventModal({ event, organizationId, organizationLogoUrl = null, organizationTimezone = null, personalTimezone = null, onClose, onSave, supabase, isPaid = false }) {
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
   const [slugCopied, setSlugCopied] = useState(false);
@@ -196,9 +198,20 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
   });
   const [isMultiDay, setIsMultiDay] = useState(!!event?.end_date);
   const [applyToSeries, setApplyToSeries] = useState(false);
+  // Stored rows are org-timezone wall-clock values -- convert to the
+  // viewing admin's own personal timezone for display, anchored by each
+  // row's start time (a single DB row can't represent two different
+  // display dates for start vs. end). Re-saving an untouched row converts
+  // back to the exact original (see lib/timezone-convert.ts).
   const [dayHours, setDayHours] = useState(() =>
     (event?.event_day_hours ?? []).reduce((acc, r) => {
-      acc[r.event_date] = { start_time: r.start_time, end_time: r.end_time };
+      const startConv = convertWallClock(r.event_date, r.start_time, organizationTimezone, personalTimezone);
+      const endConv = convertWallClock(r.event_date, r.end_time, organizationTimezone, personalTimezone);
+      const displayDate = startConv?.date ?? r.event_date;
+      acc[displayDate] = {
+        start_time: startConv?.time ?? r.start_time,
+        end_time: endConv?.time ?? r.end_time,
+      };
       return acc;
     }, {})
   );
@@ -234,19 +247,21 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     return Object.keys(newErrors).length === 0;
   };
 
-  const saveDayHours = async (eventId) => {
+  const saveDayHours = async (eventId, convertedRows) => {
     const days = getEventDays(formData.date, formData.end_date || formData.date);
-    const rows = days
-      .filter(d => dayHours[d]?.start_time && dayHours[d]?.end_time)
-      .map(d => ({ event_id: eventId, event_date: d, start_time: dayHours[d].start_time, end_time: dayHours[d].end_time }));
+    const upsertRows = convertedRows.map(r => ({ event_id: eventId, ...r }));
 
-    if (rows.length > 0) {
-      await supabase.from('event_day_hours').upsert(rows, { onConflict: 'event_id,event_date' });
+    if (upsertRows.length > 0) {
+      await supabase.from('event_day_hours').upsert(upsertRows, { onConflict: 'event_id,event_date' });
     }
-    // Remove rows for days no longer in range
-    if (days.length > 0) {
+    // Remove rows for days no longer represented -- the union of the plain
+    // schedule-day range AND every row's actual (possibly timezone-shifted)
+    // target date, so a day that legitimately rolled onto a date outside
+    // `days` isn't immediately deleted again right after being upserted.
+    const keepDates = [...new Set([...days, ...convertedRows.map(r => r.event_date)])];
+    if (keepDates.length > 0) {
       await supabase.from('event_day_hours').delete().eq('event_id', eventId)
-        .not('event_date', 'in', `(${days.map(d => `"${d}"`).join(',')})`);
+        .not('event_date', 'in', `(${keepDates.map(d => `"${d}"`).join(',')})`);
     } else {
       await supabase.from('event_day_hours').delete().eq('event_id', eventId);
     }
@@ -255,6 +270,20 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
+
+    // Resolve day-hours timezone conversion (and the collision check) before
+    // touching the event row at all, so a conversion error never leaves the
+    // event saved with its day-hours only partially updated.
+    const dayHoursResult = buildDayHoursRows(
+      dayHours,
+      getEventDays(formData.date, formData.end_date || formData.date),
+      personalTimezone,
+      organizationTimezone,
+    );
+    if (dayHoursResult.error) {
+      alert(dayHoursResult.error);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -280,7 +309,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
           .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload, ...rolePayload, ...showtimePayload })
           .eq('id', event.id);
         if (error) throw error;
-        await saveDayHours(event.id);
+        await saveDayHours(event.id, dayHoursResult.rows);
 
         if (applyToSeries && event.series_id) {
           const res = await fetch(`/api/events/${event.id}/recur`, {
@@ -327,7 +356,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
           .select('id')
           .single();
         if (error) throw error;
-        await saveDayHours(newEvent.id);
+        await saveDayHours(newEvent.id, dayHoursResult.rows);
       }
       onSave();
     } catch (error) {
@@ -338,6 +367,11 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
   };
 
   const scheduleDays = getEventDays(formData.date, isMultiDay ? formData.end_date : formData.date);
+  // A day's hours can land outside scheduleDays after timezone conversion
+  // (an edge case near midnight) -- rather than silently dropping them,
+  // show them as extra, clearly labeled rows so nothing is lost unnoticed.
+  const extraDayHourDays = Object.keys(dayHours).filter(d => !scheduleDays.includes(d)).sort();
+  const allDayHourDays = [...scheduleDays, ...extraDayHourDays];
 
   return (
     <FloatingWindow title={event ? 'Edit Event' : 'Create Event'} onClose={onClose} maxWidthClassName="max-w-2xl">
@@ -439,43 +473,55 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
             </div>
 
             {/* Event Hours / Daily Schedule */}
-            {scheduleDays.length > 0 && (
+            {allDayHourDays.length > 0 && (
               <div>
                 <label className="block text-sm font-medium mb-2">
                   {isMultiDay ? 'Daily Schedule (optional)' : 'Event Hours (optional)'}
                 </label>
                 <div className="space-y-2">
-                  {scheduleDays.map(day => {
+                  {allDayHourDays.map(day => {
+                    const isExtra = !scheduleDays.includes(day);
                     const d = new Date(day + 'T00:00:00');
-                    const label = isMultiDay
+                    const label = (isMultiDay || isExtra)
                       ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
                       : null;
+                    const targetDate = dayHours[day]?.start_time
+                      ? convertWallClock(day, dayHours[day].start_time, personalTimezone, organizationTimezone)?.date
+                      : undefined;
                     return (
-                      <div key={day} className="flex items-center gap-3">
-                        {label && (
-                          <span className="text-sm text-gray-600 dark:text-gray-400 w-28 shrink-0">{label}</span>
+                      <div key={day}>
+                        {isExtra && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mb-1">
+                            ⚠ Outside the event&apos;s dates — shown because its hours convert to this day in your timezone. Adjust or clear it below.
+                          </p>
                         )}
-                        <div className="flex items-center gap-2 flex-1">
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Opens</label>
-                            <input
-                              type="time"
-                              value={dayHours[day]?.start_time || ''}
-                              onChange={(e) => setDayHours(prev => ({ ...prev, [day]: { ...prev[day], start_time: e.target.value } }))}
-                              className={timeInputCls + ' w-full'}
-                            />
-                          </div>
-                          <span className="text-gray-400 mt-4">–</span>
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Closes</label>
-                            <input
-                              type="time"
-                              value={dayHours[day]?.end_time || ''}
-                              onChange={(e) => setDayHours(prev => ({ ...prev, [day]: { ...prev[day], end_time: e.target.value } }))}
-                              className={timeInputCls + ' w-full'}
-                            />
+                        <div className="flex items-center gap-3">
+                          {label && (
+                            <span className="text-sm text-gray-600 dark:text-gray-400 w-28 shrink-0">{label}</span>
+                          )}
+                          <div className="flex items-center gap-2 flex-1">
+                            <div className="flex-1">
+                              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Opens</label>
+                              <input
+                                type="time"
+                                value={dayHours[day]?.start_time || ''}
+                                onChange={(e) => setDayHours(prev => ({ ...prev, [day]: { ...prev[day], start_time: e.target.value } }))}
+                                className={timeInputCls + ' w-full'}
+                              />
+                            </div>
+                            <span className="text-gray-400 mt-4">–</span>
+                            <div className="flex-1">
+                              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Closes</label>
+                              <input
+                                type="time"
+                                value={dayHours[day]?.end_time || ''}
+                                onChange={(e) => setDayHours(prev => ({ ...prev, [day]: { ...prev[day], end_time: e.target.value } }))}
+                                className={timeInputCls + ' w-full'}
+                              />
+                            </div>
                           </div>
                         </div>
+                        <TimezoneShiftNotice originalDate={day} shiftedDate={targetDate} timezoneLabel={organizationTimezone || 'UTC'} />
                       </div>
                     );
                   })}
