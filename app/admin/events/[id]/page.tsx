@@ -1392,6 +1392,8 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
   const [confirmingDiscordId, setConfirmingDiscordId] = useState<string | null>(null);
   const [postingDiscordId, setPostingDiscordId] = useState<string | null>(null);
   const [discordResult, setDiscordResult] = useState<'success' | string | null>(null);
+  const [removeRegistrationTarget, setRemoveRegistrationTarget] = useState<{ panelId: string; registrationId: string; name: string } | null>(null);
+  const [removingRegistration, setRemovingRegistration] = useState(false);
   // Panels default to expanded (collapsible, not collapsed-by-default) —
   // a Set rather than a single id so any number can be open at once. Each
   // panel's detail data is keyed by panel id for the same reason: with
@@ -1544,6 +1546,23 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     loadDetail(panelId);
   }
 
+  // Drops someone from the panel entirely (deletes the registration itself,
+  // not just a secondary panel_assignment) — they'd need to sign up again
+  // to rejoin, so this goes through a confirmation, same as removing a
+  // shift/event registration elsewhere on this page.
+  async function removePanelRegistration() {
+    if (!removeRegistrationTarget) return;
+    const { panelId, registrationId } = removeRegistrationTarget;
+    setRemovingRegistration(true);
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, { method: 'DELETE' });
+    setRemovingRegistration(false);
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to remove'); return; }
+    setRemoveRegistrationTarget(null);
+    // Removing a registration affects the panel's own filled/waitlisted
+    // counts (computed server-side), not just this detail list.
+    await Promise.all([loadDetail(panelId), load()]);
+  }
+
   async function postPanelToDiscord(panelId: string) {
     setPostingDiscordId(panelId);
     const res = await fetch(`/api/panels/${panelId}/discord-announce`, { method: 'POST' });
@@ -1670,6 +1689,14 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                     {canManage && (
                                       <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
                                     )}
+                                    {canManage && (
+                                      <button
+                                        onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                                      >
+                                        Remove
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -1693,6 +1720,12 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                     <div className="flex items-center gap-2">
                                       <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(panel.id, r.id, v)} />
                                       <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                      <button
+                                        onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                                      >
+                                        Remove
+                                      </button>
                                     </div>
                                   )}
                                 </div>
@@ -1731,7 +1764,15 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
                                   <span>{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
                                   {canManage && (
-                                    <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                    <div className="flex items-center gap-2">
+                                      <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                      <button
+                                        onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               ))}
@@ -1811,6 +1852,17 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
           loading={deleting}
           onCancel={() => setDeletingPanel(null)}
           onConfirm={deletePanel}
+        />
+      )}
+
+      {removeRegistrationTarget && (
+        <ConfirmDeleteModal
+          title="Remove from Panel"
+          message={<>Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removeRegistrationTarget.name}</span> from this panel? They will need to sign up again to rejoin.</>}
+          confirmLabel="Remove"
+          loading={removingRegistration}
+          onCancel={() => setRemoveRegistrationTarget(null)}
+          onConfirm={removePanelRegistration}
         />
       )}
 
