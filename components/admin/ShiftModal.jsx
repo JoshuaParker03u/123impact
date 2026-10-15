@@ -30,7 +30,7 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase, or
     description:    shift?.description    || '',
     start_time:     loadedStart?.time ?? (shift?.start_time || ''),
     end_time:       loadedEnd?.time   ?? (shift?.end_time   || ''),
-    capacity:       shift?.capacity       || 10,
+    capacity:       shift?.capacity       ?? 10,
     shift_date:     loadedStart?.date ?? shift?.shift_date ?? '',
     allow_waitlist: shift?.allow_waitlist ?? false,
   });
@@ -57,7 +57,10 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase, or
     if (!formData.start_time)                      e.start_time = 'Start time is required';
     if (!formData.end_time)                        e.end_time   = 'End time is required';
     if (formData.start_time === formData.end_time) e.end_time   = 'End time cannot equal start time';
-    if (formData.capacity < 1)                     e.capacity   = 'Capacity must be at least 1';
+    // A capacity of 0 is a deliberate "always full" setting (forces every
+    // signup onto the waitlist), not an invalid one -- only negative/blank
+    // values are rejected.
+    if (formData.capacity === '' || formData.capacity < 0) e.capacity = 'Capacity is required';
     if (shift && formData.capacity < shift.filled) e.capacity   = `Cannot reduce below ${shift.filled} (current registrations)`;
     if (event.end_date && !formData.shift_date)    e.shift_date = 'Shift date is required for multi-day events';
     if (outOfRange) {
@@ -158,7 +161,7 @@ export default function ShiftModal({ shift, event, onClose, onSave, supabase, or
                   setFormData({ ...formData, capacity: Number.isNaN(parsed) ? '' : parsed });
                 }}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-                min={shift?.filled || 1} />
+                min={shift?.filled ?? 0} />
               {shift && <p className="text-sm text-gray-500 mt-1">Currently {shift.filled} volunteers registered</p>}
               {errors.capacity && <p className="text-red-600 text-sm mt-1">{errors.capacity}</p>}
             </div>

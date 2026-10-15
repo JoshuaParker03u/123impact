@@ -816,7 +816,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase, organizationTimez
     description: shift?.description || '',
     start_time: loadedStart?.time ?? (shift?.start_time || ''),
     end_time: loadedEnd?.time ?? (shift?.end_time || ''),
-    capacity: shift?.capacity || 10
+    capacity: shift?.capacity ?? 10
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -833,7 +833,10 @@ function ShiftModal({ shift, event, onClose, onSave, supabase, organizationTimez
     if (formData.end_time <= formData.start_time) {
       newErrors.end_time = 'End time must be after start time';
     }
-    if (formData.capacity < 1) newErrors.capacity = 'Capacity must be at least 1';
+    // A capacity of 0 is a deliberate "always full" setting (forces every
+    // signup onto the waitlist), not an invalid one -- only negative/blank
+    // values are rejected.
+    if (formData.capacity === '' || formData.capacity < 0) newErrors.capacity = 'Capacity is required';
     if (shift && formData.capacity < shift.filled) {
       newErrors.capacity = `Cannot reduce below ${shift.filled} (current registrations)`;
     }
@@ -931,7 +934,7 @@ function ShiftModal({ shift, event, onClose, onSave, supabase, organizationTimez
                   setFormData({ ...formData, capacity: Number.isNaN(parsed) ? '' : parsed });
                 }}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
-                min={shift?.filled || 1}
+                min={shift?.filled ?? 0}
               />
               {shift && (
                 <p className="text-sm text-gray-500 mt-1">
