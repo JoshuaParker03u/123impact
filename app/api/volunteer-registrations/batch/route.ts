@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { name, email, phone, pronouns, attendee_type, shift_ids, discord_user_id } = body;
+  const { name, email, phone, pronouns, attendee_type, shift_ids, discord_user_id, discord_username } = body;
   const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
 
   if (!name || (!normalizedEmail && !discord_user_id)) {
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'You are already registered for one or more of these shifts' }, { status: 409 });
         }
         if (!reg.discord_user_id) {
-          await supabase.from('volunteer_registrations').update({ discord_user_id }).eq('id', reg.id);
+          await supabase.from('volunteer_registrations').update({ discord_user_id, discord_username: discord_username ?? null }).eq('id', reg.id);
         }
         const shift = shifts.find((s: any) => s.id === shiftId) as any;
         linked.push({ shiftId, shiftName: shift.name, isWaitlisted: reg.is_waitlisted });
@@ -244,6 +244,7 @@ export async function POST(req: NextRequest) {
     attendee_type: resolvedType,
     is_waitlisted,
     discord_user_id: discord_user_id ?? null,
+    discord_username: discord_username ?? null,
   }));
 
   const { data: inserted, error: insertError } = await supabase

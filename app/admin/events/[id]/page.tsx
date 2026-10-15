@@ -27,6 +27,7 @@ import EventModal from '@/components/admin/EventModal';
 import SetRecurringModal from '@/components/admin/SetRecurringModal';
 import MessageComposer from '@/components/MessageComposer';
 import ShiftDatePicker from '@/components/admin/ShiftDatePicker';
+import { contactLabel } from '@/lib/volunteer-registrations/contact-label';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
@@ -42,7 +43,8 @@ import {
 interface Volunteer {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
+  discord_username: string | null;
   phone: string | null;
   registered_at: string;
   is_waitlisted?: boolean;
@@ -1253,7 +1255,8 @@ interface Panel {
 interface PanelRegistration {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
+  discord_username: string | null;
   phone: string | null;
   registered_at: string;
   is_waitlisted: boolean;
@@ -1264,7 +1267,7 @@ interface PanelRegistration {
 interface PanelAssignmentRow {
   id: string;
   role: 'speaker' | 'volunteer' | 'moderator';
-  registration: { id: string; name: string; email: string; speaker_topic: string | null; public_consent: boolean } | null;
+  registration: { id: string; name: string; email: string | null; discord_username: string | null; speaker_topic: string | null; public_consent: boolean } | null;
 }
 
 interface PoolCandidate {
@@ -1652,7 +1655,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               {attendees.map((r) => (
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
-                                    {redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span>
+                                    {redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}
                                     {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
                                   </span>
                                   <div className="flex items-center gap-2">
@@ -1685,7 +1688,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                             <div className="space-y-1">
                               {promotedSpeakers.map((r) => (
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
+                                  <span>{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
                                   {canManage && (
                                     <div className="flex items-center gap-2">
                                       <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(panel.id, r.id, v)} />
@@ -1698,7 +1701,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                   <div>
                                     <span className="text-gray-700 dark:text-gray-300">
-                                      {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                      {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''}{a.registration && contactLabel(a.registration) && <span className="text-gray-400"> ({redact(contactLabel(a.registration), 'email', streamerMode)})</span>}
                                     </span>
                                     {canManage && a.registration && (
                                       <div className="mt-0.5">
@@ -1726,7 +1729,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                             <div className="space-y-1">
                               {promotedVolunteers.map((r) => (
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
+                                  <span>{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
                                   {canManage && (
                                     <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
                                   )}
@@ -1735,7 +1738,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               {assignedStaff.map((a) => (
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
-                                    {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                    {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''}{a.registration && contactLabel(a.registration) && <span className="text-gray-400"> ({redact(contactLabel(a.registration), 'email', streamerMode)})</span>}
                                   </span>
                                   {canManage && (
                                     <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
@@ -1763,7 +1766,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                   <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                     <div>
                                       <span className="text-gray-700 dark:text-gray-300">
-                                        {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                        {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''}{a.registration && contactLabel(a.registration) && <span className="text-gray-400"> ({redact(contactLabel(a.registration), 'email', streamerMode)})</span>}
                                       </span>
                                       {canManage && a.registration && (
                                         <div className="mt-0.5">
@@ -2956,11 +2959,11 @@ export default function AdminEventDetailPage() {
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
-                            {streamerMode ? redact(r.email, 'email', streamerMode) : (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : r.email ? (
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email!, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                 <Mail className="w-3 h-3" />{r.email}
                               </button>
-                            )}
+                            ) : contactLabel(r) ?? '—'}
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
@@ -3046,11 +3049,11 @@ export default function AdminEventDetailPage() {
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
-                            {streamerMode ? redact(r.email, 'email', streamerMode) : (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : r.email ? (
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email!, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                 <Mail className="w-3 h-3" />{r.email}
                               </button>
-                            )}
+                            ) : contactLabel(r) ?? '—'}
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
@@ -3270,11 +3273,11 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 pr-4">
-                                            {streamerMode ? redact(v.email, 'email', streamerMode) : (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : v.email ? (
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email!, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                                 <Mail className="w-3 h-3" />{v.email}
                                               </button>
-                                            )}
+                                            ) : contactLabel(v) ?? '—'}
                                           </td>
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
@@ -3348,11 +3351,11 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 pr-4">
-                                            {streamerMode ? redact(v.email, 'email', streamerMode) : (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : v.email ? (
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email!, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                                                 <Mail className="w-3 h-3" />{v.email}
                                               </button>
-                                            )}
+                                            ) : contactLabel(v) ?? '—'}
                                           </td>
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">

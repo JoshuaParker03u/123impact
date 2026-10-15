@@ -166,14 +166,15 @@ export async function POST(req: NextRequest) {
     const pronouns = fields.find((f) => f.custom_id === 'pronouns')?.value?.trim() || null;
     const interactionToken = interaction.token;
     const discordUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null;
+    const discordUsername = interaction.member?.user?.username ?? interaction.user?.username ?? null;
 
     after(async () => {
       try {
         const result = decoded.kind === 'signup_modal_shift'
-          ? await submitShiftSignup(decoded.id, name!, pronouns, discordUserId)
+          ? await submitShiftSignup(decoded.id, name!, pronouns, discordUserId, discordUsername)
           : decoded.kind === 'signup_modal_panel'
-          ? await submitPanelSignup(decoded.id, name!, pronouns, discordUserId)
-          : await submitRsvpSignup(decoded.id, name!, pronouns, discordUserId);
+          ? await submitPanelSignup(decoded.id, name!, pronouns, discordUserId, discordUsername)
+          : await submitRsvpSignup(decoded.id, name!, pronouns, discordUserId, discordUsername);
         await editOriginalResponse(interactionToken, { content: result, components: [] });
       } catch (e) {
         console.error('Discord signup follow-up error:', e);
@@ -218,9 +219,9 @@ async function withQualificationFormLink(message: string, target: { shiftId?: st
   return formUrl ? `${message}\n\nPlease also complete our Volunteer/Moderator Qualification Form: ${formUrl}` : message;
 }
 
-async function submitShiftSignup(shiftId: string, name: string, pronouns: string | null, discordUserId: string | null): Promise<string> {
+async function submitShiftSignup(shiftId: string, name: string, pronouns: string | null, discordUserId: string | null, discordUsername: string | null): Promise<string> {
   const res = await internalApiFetch('/api/volunteer-registrations/batch', {
-    name, pronouns, attendee_type: 'volunteer', shift_ids: [shiftId], discord_user_id: discordUserId,
+    name, pronouns, attendee_type: 'volunteer', shift_ids: [shiftId], discord_user_id: discordUserId, discord_username: discordUsername,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
@@ -238,9 +239,9 @@ async function submitShiftSignup(shiftId: string, name: string, pronouns: string
   return result;
 }
 
-async function submitPanelSignup(panelId: string, name: string, pronouns: string | null, discordUserId: string | null): Promise<string> {
+async function submitPanelSignup(panelId: string, name: string, pronouns: string | null, discordUserId: string | null, discordUsername: string | null): Promise<string> {
   const res = await internalApiFetch('/api/panel-registrations', {
-    name, pronouns, panel_id: panelId, discord_user_id: discordUserId,
+    name, pronouns, panel_id: panelId, discord_user_id: discordUserId, discord_username: discordUsername,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
@@ -257,10 +258,10 @@ async function submitPanelSignup(panelId: string, name: string, pronouns: string
   return result;
 }
 
-async function submitRsvpSignup(encodedId: string, name: string, pronouns: string | null, discordUserId: string | null): Promise<string> {
+async function submitRsvpSignup(encodedId: string, name: string, pronouns: string | null, discordUserId: string | null, discordUsername: string | null): Promise<string> {
   const [eventId, attendeeType] = encodedId.split(':');
   const res = await internalApiFetch('/api/volunteer-registrations', {
-    name, pronouns, event_id: eventId, attendee_type: attendeeType, discord_user_id: discordUserId,
+    name, pronouns, event_id: eventId, attendee_type: attendeeType, discord_user_id: discordUserId, discord_username: discordUsername,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;

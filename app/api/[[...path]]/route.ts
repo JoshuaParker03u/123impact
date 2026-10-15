@@ -482,7 +482,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // Inserts into volunteer_registrations and queues automated emails.
     if (seg.length === 1 && seg[0] === 'volunteer-registrations') {
       const body = await request.json();
-      const { shift_id, event_id, name, email, phone, pronouns, attendee_type, discord_user_id } = body;
+      const { shift_id, event_id, name, email, phone, pronouns, attendee_type, discord_user_id, discord_username } = body;
       const normalizedEmailTop = email ? String(email).trim().toLowerCase() : null;
 
       if (!name || (!normalizedEmailTop && !discord_user_id)) return fail('name and either email or a Discord account are required');
@@ -560,7 +560,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             if (!existing.discord_user_id) {
               const { data: linked } = await supabase
                 .from('volunteer_registrations')
-                .update({ discord_user_id })
+                .update({ discord_user_id, discord_username: discord_username ?? null })
                 .eq('id', existing.id)
                 .select()
                 .single();
@@ -572,7 +572,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
         const { data: registration, error: regError } = await supabase
           .from('volunteer_registrations')
-          .insert({ event_id, name, email: normalizedEmail, phone: phone ?? null, pronouns: pronouns ?? null, attendee_type: resolvedType, discord_user_id: discord_user_id ?? null })
+          .insert({ event_id, name, email: normalizedEmail, phone: phone ?? null, pronouns: pronouns ?? null, attendee_type: resolvedType, discord_user_id: discord_user_id ?? null, discord_username: discord_username ?? null })
           .select()
           .single();
 

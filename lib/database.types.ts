@@ -1286,6 +1286,7 @@ export type Database = {
         Row: {
           attendee_type: string
           discord_user_id: string | null
+          discord_username: string | null
           email: string | null
           event_id: string | null
           id: string
@@ -1305,6 +1306,7 @@ export type Database = {
         Insert: {
           attendee_type?: string
           discord_user_id?: string | null
+          discord_username?: string | null
           email?: string | null
           event_id?: string | null
           id?: string
@@ -1324,6 +1326,7 @@ export type Database = {
         Update: {
           attendee_type?: string
           discord_user_id?: string | null
+          discord_username?: string | null
           email?: string | null
           event_id?: string | null
           id?: string

@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { panel_id, name, email, phone, pronouns, discord_user_id, attendee_type } = body;
+  const { panel_id, name, email, phone, pronouns, discord_user_id, discord_username, attendee_type } = body;
   const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
   if (!panel_id || !name || (!normalizedEmail && !discord_user_id)) {
     return NextResponse.json({ error: 'panel_id, name, and either email or a Discord account are required' }, { status: 400 });
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       if (!existingForThisPanel.discord_user_id) {
         await supabase
           .from('volunteer_registrations')
-          .update({ discord_user_id })
+          .update({ discord_user_id, discord_username: discord_username ?? null })
           .eq('id', existingForThisPanel.id);
       }
       return NextResponse.json({ alreadyRegistered: true, panelName: panel.name }, { status: 200 });
@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
       attendee_type: normalizedAttendeeType,
       is_waitlisted: isWaitlisted,
       discord_user_id: discord_user_id ?? null,
+      discord_username: discord_username ?? null,
     })
     .select()
     .single();
