@@ -61,10 +61,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { panel_id, name, email, phone, discord_user_id } = body;
+  const { panel_id, name, email, phone, discord_user_id, attendee_type } = body;
   if (!panel_id || !name || !email) {
     return NextResponse.json({ error: 'panel_id, name, and email are required' }, { status: 400 });
   }
+  // Only 'volunteer' is accepted as an override -- anything else (including
+  // omitted) safely falls back to the long-standing 'attendee' behavior
+  // rather than trusting an arbitrary value from the request body.
+  const normalizedAttendeeType = attendee_type === 'volunteer' ? 'volunteer' : 'attendee';
 
   const normalizedEmail = email.trim().toLowerCase();
   const supabase = buildServiceClient();
@@ -152,7 +156,7 @@ export async function POST(req: NextRequest) {
       name,
       email:         normalizedEmail,
       phone:         phone ?? null,
-      attendee_type: 'attendee',
+      attendee_type: normalizedAttendeeType,
       is_waitlisted: isWaitlisted,
       discord_user_id: discord_user_id ?? null,
     })

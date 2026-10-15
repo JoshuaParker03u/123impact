@@ -1633,7 +1633,7 @@ function OrganizationsPageContent() {
   const [logoChange, setLogoChange]   = useState({ type: 'none' });
 
   const [form, setForm] = useState({
-    name: '', description: '', contact_email: '', contact_phone: '', website: '', status: 'active', timezone: '',
+    name: '', description: '', contact_email: '', contact_phone: '', website: '', status: 'active', timezone: '', volunteer_qualification_form_url: '',
   });
   const [timezones, setTimezones] = useState([]);
 
@@ -1673,6 +1673,7 @@ function OrganizationsPageContent() {
           website:       orgResult.data.website       ?? '',
           status:        orgResult.data.status        ?? 'active',
           timezone:      orgResult.data.timezone      ?? '',
+          volunteer_qualification_form_url: orgResult.data.volunteer_qualification_form_url ?? '',
         });
       }).catch((err) => setError(err.message)).finally(() => setFetching(false));
 
@@ -1693,6 +1694,7 @@ function OrganizationsPageContent() {
       fd.append('website', form.website.trim());
       fd.append('status', form.status);
       fd.append('timezone', form.timezone);
+      fd.append('volunteer_qualification_form_url', form.volunteer_qualification_form_url.trim());
       if (logoChange.type === 'file')  fd.append('logo_file', logoChange.file);
       else if (logoChange.type === 'url')   fd.append('logo_url', logoChange.url);
       else if (logoChange.type === 'clear') fd.append('clear_logo', 'true');
@@ -1855,6 +1857,16 @@ function OrganizationsPageContent() {
                         <option key={tz} value={tz}>{tz}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Volunteer/Moderator Qualification Form <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                      Link to an external form (e.g. a Google Form) used to screen a person&apos;s fitness to
+                      volunteer or moderate. Shown to volunteers on the public signup page and in the Discord
+                      bot&apos;s /signup flow.
+                    </p>
+                    <input type="url" value={form.volunteer_qualification_form_url} onChange={(e) => setForm((f) => ({ ...f, volunteer_qualification_form_url: e.target.value }))} disabled={submitting || !canManageSettings} placeholder="https://forms.gle/..."
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-50" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</label>

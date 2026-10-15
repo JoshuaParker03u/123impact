@@ -46,7 +46,7 @@ type Event = {
   image_url: string | null
   status: string
   event_day_hours?: DayHours[]
-  organizations?: { id: string; name: string; logo_url: string | null } | null
+  organizations?: { id: string; name: string; logo_url: string | null; volunteer_qualification_form_url?: string | null } | null
   is_shiftless?: boolean
   shiftless_capacity?: number | null
   shiftless_filled?: number
@@ -227,7 +227,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
           setShifts(shiftsData)
         }
 
-        if (role === 'attendee' && eventData.panels_enabled) {
+        if (role === 'volunteer' && eventData.panels_enabled) {
           // GET /api/events/:id/panels — public, not catch-all-routed so it
           // doesn't use apiFetch's {data} envelope convention
           const panelsRes = await fetch(`/api/events/${eventData.id}/panels`)
@@ -345,12 +345,13 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
     })
   }
 
-  // Only Volunteer signups (on events that aren't shiftless) pick a shift —
-  // Attendee/Speaker are always RSVP-style.
-  const requiresShift = role === 'volunteer' && !event?.is_shiftless
-  // When an event has panels, an Attendee RSVPs to one specific panel
-  // instead of the whole event.
-  const requiresPanel = role === 'attendee' && panels.length > 0
+  // Volunteer signups pick a panel instead of a shift when the event has
+  // panels (mutually exclusive, same relationship Attendee/panels used to
+  // have) -- Attendee/Speaker are always RSVP-style.
+  const requiresShift = role === 'volunteer' && !event?.is_shiftless && panels.length === 0
+  // When an event has panels, a Volunteer picks which one they want to
+  // help with/speak at, instead of a shift.
+  const requiresPanel = role === 'volunteer' && panels.length > 0
 
   // ── Validation ───────────────────────────────────────────────────────────
 
@@ -407,7 +408,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`)
         setSubmittedShifts([])
-      } else if (role === 'attendee' && selectedPanelId) {
+      } else if (role === 'volunteer' && selectedPanelId) {
         const res = await fetch('/api/panel-registrations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -416,6 +417,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
             name:     formData.name,
             email:    formData.email.toLowerCase(),
             phone:    formData.phone.trim() || null,
+            attendee_type: 'volunteer',
           }),
         })
         const data = await res.json()
@@ -698,6 +700,17 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
               </div>
               <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
 
+              {role === 'volunteer' && event.organizations?.volunteer_qualification_form_url && (
+                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-900 dark:text-blue-200">
+                    Please also complete our{' '}
+                    <a href={event.organizations.volunteer_qualification_form_url} target="_blank" rel="noopener noreferrer" className="font-medium underline">
+                      Volunteer/Moderator Qualification Form ↗
+                    </a>
+                  </p>
+                </div>
+              )}
+
               {(event.organizations || coSponsors.length > 0) && (
                 <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 space-y-3">
                   {event.organizations && (
@@ -741,8 +754,8 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
             </div>
           </Card>
 
-          {/* Panel/Shift selection — only for Volunteer signups on non-shiftless events, or Attendee signups on events with panels */}
-          {role === 'attendee' && panels.length > 0 ? (
+          {/* Panel/Shift selection — a Volunteer picks a panel when the event has one, otherwise a shift (unless shiftless). Attendee is always a plain RSVP. */}
+          {role === 'volunteer' && panels.length > 0 ? (
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Choose a Panel</h2>
               {errors.panel && <p className="text-red-600 text-sm mb-2">{errors.panel}</p>}

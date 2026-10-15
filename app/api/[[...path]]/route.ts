@@ -281,7 +281,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           attendee_enabled, attendee_capacity, speaker_enabled, panels_enabled,
           created_at, updated_at,
           event_day_hours (event_date, start_time, end_time),
-          organizations (id, name, logo_url)
+          organizations (id, name, logo_url, volunteer_qualification_form_url)
         `)
         .eq('event_id', seg[2])
         .neq('status', 'deleted')
