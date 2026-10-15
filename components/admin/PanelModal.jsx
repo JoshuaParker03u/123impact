@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import FloatingWindow from '@/components/FloatingWindow';
 import ShiftDatePicker from './ShiftDatePicker';
 import TimezoneShiftNotice from './TimezoneShiftNotice';
+import HelpButton from './HelpButton';
 import { convertWallClock } from '@/lib/timezone-convert';
 
 export default function PanelModal({ panel, event, onClose, onSave, organizationTimezone = null, personalTimezone = null }) {
@@ -206,7 +207,23 @@ export default function PanelModal({ panel, event, onClose, onSave, organization
             </label>
 
             <div className="space-y-2 border-t pt-4">
-              <p className="text-sm font-medium">Discord Showtime Ping (optional)</p>
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                Discord Showtime Ping (optional)
+                <HelpButton title="Setting up a Discord webhook">
+                  <ol className="list-decimal list-inside space-y-1.5">
+                    <li>In Discord, open the server and channel you want the ping posted to.</li>
+                    <li>Right-click the channel (or click its gear icon) and choose <strong>Edit Channel</strong>.</li>
+                    <li>Go to <strong>Integrations → Webhooks</strong>, then click <strong>New Webhook</strong>.</li>
+                    <li>Optionally give it a name (e.g. &quot;Showtime Bot&quot;), then click <strong>Copy Webhook URL</strong>.</li>
+                    <li>Paste that URL into the field below.</li>
+                  </ol>
+                  <p>
+                    That URL is what determines the channel — there&apos;s nothing else to configure on the Discord
+                    side. Once it&apos;s set, the ping posts automatically the chosen number of minutes before
+                    showtime; no further action is needed.
+                  </p>
+                </HelpButton>
+              </p>
               <p className="text-xs text-gray-500">
                 Leave blank to use the event&apos;s Discord showtime settings. Set a webhook here only if this
                 panel should ping a different channel.
