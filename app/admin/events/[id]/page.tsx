@@ -1519,6 +1519,23 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     loadDetail(panelId);
   }
 
+  // Shifts have always had this ("Promote"); panels never did -- a direct,
+  // uncapped write past capacity, same as the shift-side one, so an admin
+  // can approve exactly the people they select off the waitlist. Whoever
+  // is still waitlisted afterward can be messaged via the existing "this
+  // panel, waitlisted only" filter in the messaging tool.
+  async function approvePanelRegistration(panelId: string, registrationId: string) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_waitlisted: false }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to approve'); return; }
+    // is_waitlisted affects the panel's own filled/waitlisted counts
+    // (computed server-side), not just this registration's own row.
+    await Promise.all([loadDetail(panelId), load()]);
+  }
+
   async function unassign(panelId: string, assignmentId: string) {
     await fetch(`/api/panel-assignments/${assignmentId}`, { method: 'DELETE' });
     loadDetail(panelId);
@@ -1638,9 +1655,19 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                     {redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span>
                                     {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
                                   </span>
-                                  {canManage && (
-                                    <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    {canManage && r.is_waitlisted && (
+                                      <button
+                                        onClick={() => approvePanelRegistration(panel.id, r.id)}
+                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                      >
+                                        Approve
+                                      </button>
+                                    )}
+                                    {canManage && (
+                                      <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                    )}
+                                  </div>
                                 </div>
                               ))}
                             </div>

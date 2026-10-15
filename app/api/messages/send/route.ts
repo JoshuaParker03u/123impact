@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { sendBulkEmail, filterOptedOut } from '@/lib/email';
 import { wrapEmailHtml } from '@/lib/email-templates';
 import { sendBulkDiscordDMs } from '@/lib/discord/dm-batch';
+import { dedupeRecipients, extractSendableEmails } from '@/lib/messages/dedupe-recipients';
 
 export async function POST(request: Request) {
   const cookieStore = await cookies();
@@ -150,7 +151,7 @@ export async function POST(request: Request) {
   const branding = { name: org?.name, logoUrl: (org as any)?.logo_url };
 
   try {
-    let recipients: { name: string; email: string; discord_user_id?: string | null }[] = [];
+    let recipients: { name: string; email: string | null; discord_user_id?: string | null }[] = [];
 
     if (recipientType === 'event' && eventId) {
       // event_id is set on every registration (shift-based or shiftless), so
@@ -203,17 +204,14 @@ export async function POST(request: Request) {
       recipients = [{ name: volunteerName || '', email: volunteerEmail }];
     }
 
-    // Deduplicate by email
-    const uniqueRecipients = recipients.filter((r, i, self) =>
-      i === self.findIndex(x => x.email === r.email)
-    );
+    const uniqueRecipients = dedupeRecipients(recipients);
 
     const recipientCount = uniqueRecipients.length;
     if (recipientCount === 0) {
       return NextResponse.json({ error: 'No recipients found' }, { status: 400 });
     }
 
-    const emails = uniqueRecipients.map(r => r.email);
+    const emails = extractSendableEmails(uniqueRecipients);
     const dmCount = uniqueRecipients.filter((r) => r.discord_user_id).length;
 
     // The messages.recipient_type CHECK constraint allows
