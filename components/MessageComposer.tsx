@@ -13,12 +13,14 @@ interface MessageComposerProps {
   onClose: () => void;
   eventId?: string;
   shiftId?: string;
-  volunteerEmail?: string;
+  volunteerEmail?: string | null;
   volunteerName?: string;
-  // The specific registration being messaged — required for a Discord DM to
-  // go out on an individual send, since email alone isn't a unique key (one
-  // person can have several registrations) and can't be traced back to a
-  // discord_user_id reliably.
+  // The specific registration being messaged — this, not volunteerEmail, is
+  // what puts the composer into single-volunteer mode: email isn't a unique
+  // key (one person can have several registrations) and isn't even present
+  // for a Discord-only signup, while a registration id always resolves to
+  // exactly the row being messaged and lets the server send a Discord DM
+  // when there's no email to fall back on.
   volunteerRegistrationId?: string;
 }
 
@@ -43,12 +45,12 @@ export default function MessageComposer({
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [recipientType, setRecipientType] = useState<RecipientType>(
-    volunteerEmail ? 'volunteer' : shiftId ? 'shift' : 'event'
+    volunteerRegistrationId ? 'volunteer' : shiftId ? 'shift' : 'event'
   );
   const [selectedEvent, setSelectedEvent] = useState(eventId || '');
   const [selectedShift, setSelectedShift] = useState(shiftId || '');
   const [selectedPanel, setSelectedPanel] = useState('');
-  const [recipientCount, setRecipientCount] = useState(volunteerEmail ? 1 : 0);
+  const [recipientCount, setRecipientCount] = useState(volunteerRegistrationId ? 1 : 0);
   const [dmCount, setDmCount] = useState(0);
   const [waitlistFilter, setWaitlistFilter] = useState<'all' | 'confirmed' | 'waitlisted'>('all');
   const [roleFilter, setRoleFilter] = useState<Set<'volunteer' | 'attendee' | 'speaker'>>(
@@ -92,7 +94,7 @@ export default function MessageComposer({
       setScheduledFor('');
       setFormError(null);
       setSendResult(null);
-      if (volunteerEmail) {
+      if (volunteerRegistrationId) {
         setRecipientType('volunteer');
         setRecipientCount(1);
         return;
@@ -109,7 +111,7 @@ export default function MessageComposer({
         setSelectedShift(shiftId);
       }
     }
-  }, [isOpen, eventId, shiftId, volunteerEmail]);
+  }, [isOpen, eventId, shiftId, volunteerRegistrationId]);
 
   useEffect(() => {
     if (selectedEvent) {
@@ -279,7 +281,7 @@ export default function MessageComposer({
                 whenever opened with a preset event/shift (the mode is
                 already implied by how the composer was opened, so there's
                 nothing to choose). */}
-            {!volunteerEmail && !sendToLocked && (
+            {!volunteerRegistrationId && !sendToLocked && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Send to</label>
                 <select
@@ -302,7 +304,7 @@ export default function MessageComposer({
                 </div>
                 <div className="min-w-0">
                   {volunteerName && <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{volunteerName}</p>}
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{REDACTED_EMAIL}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{volunteerEmail ? REDACTED_EMAIL : 'Discord DM only'}</p>
                 </div>
               </div>
             )}

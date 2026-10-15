@@ -2485,7 +2485,7 @@ export default function AdminEventDetailPage() {
   const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [showMessageComposer, setShowMessageComposer] = useState(false);
   const [messageShiftId, setMessageShiftId] = useState<string | undefined>(undefined);
-  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string; id: string } | null>(null);
+  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string | null; id: string } | null>(null);
 
   async function handleDeleteShift(shiftId: string, filled: number) {
     const msg = filled > 0
@@ -2959,11 +2959,11 @@ export default function AdminEventDetailPage() {
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
-                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : r.email ? (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email!, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                <Mail className="w-3 h-3" />{r.email}
+                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : (
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                <Mail className="w-3 h-3" />{contactLabel(r) ?? '—'}
                               </button>
-                            ) : contactLabel(r) ?? '—'}
+                            )}
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
@@ -3049,11 +3049,11 @@ export default function AdminEventDetailPage() {
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
-                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : r.email ? (
-                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email!, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                <Mail className="w-3 h-3" />{r.email}
+                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : (
+                              <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                <Mail className="w-3 h-3" />{contactLabel(r) ?? '—'}
                               </button>
-                            ) : contactLabel(r) ?? '—'}
+                            )}
                           </td>
                           <td className="py-2 pr-4">{r.phone ? redact(r.phone, 'phone', streamerMode) : '—'}</td>
                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">{new Date(r.registered_at).toLocaleDateString()}</td>
@@ -3273,11 +3273,11 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 pr-4">
-                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : v.email ? (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email!, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                                <Mail className="w-3 h-3" />{v.email}
+                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : (
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                                <Mail className="w-3 h-3" />{contactLabel(v) ?? '—'}
                                               </button>
-                                            ) : contactLabel(v) ?? '—'}
+                                            )}
                                           </td>
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
@@ -3351,11 +3351,11 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 pr-4">
-                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : v.email ? (
-                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email!, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                                <Mail className="w-3 h-3" />{v.email}
+                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : (
+                                              <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                                <Mail className="w-3 h-3" />{contactLabel(v) ?? '—'}
                                               </button>
-                                            ) : contactLabel(v) ?? '—'}
+                                            )}
                                           </td>
                                           <td className="py-2 pr-4">{v.phone ? redact(v.phone, 'phone', streamerMode) : '—'}</td>
                                           <td className="py-2 pr-4 text-gray-400 dark:text-gray-500">
