@@ -1633,8 +1633,21 @@ function OrganizationsPageContent() {
   const [logoChange, setLogoChange]   = useState({ type: 'none' });
 
   const [form, setForm] = useState({
-    name: '', description: '', contact_email: '', contact_phone: '', website: '', status: 'active',
+    name: '', description: '', contact_email: '', contact_phone: '', website: '', status: 'active', timezone: '',
   });
+  const [timezones, setTimezones] = useState([]);
+
+  useEffect(() => {
+    try {
+      setTimezones(Intl.supportedValuesOf('timeZone'));
+    } catch {
+      setTimezones(['UTC', 'America/New_York', 'America/Chicago', 'America/Denver',
+        'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu',
+        'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Moscow',
+        'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo',
+        'Australia/Sydney', 'Pacific/Auckland']);
+    }
+  }, []);
 
   useEffect(() => {
     const t = searchParams.get('tab');
@@ -1659,6 +1672,7 @@ function OrganizationsPageContent() {
           contact_phone: orgResult.data.contact_phone ?? '',
           website:       orgResult.data.website       ?? '',
           status:        orgResult.data.status        ?? 'active',
+          timezone:      orgResult.data.timezone      ?? '',
         });
       }).catch((err) => setError(err.message)).finally(() => setFetching(false));
 
@@ -1678,6 +1692,7 @@ function OrganizationsPageContent() {
       fd.append('contact_phone', form.contact_phone.trim());
       fd.append('website', form.website.trim());
       fd.append('status', form.status);
+      fd.append('timezone', form.timezone);
       if (logoChange.type === 'file')  fd.append('logo_file', logoChange.file);
       else if (logoChange.type === 'url')   fd.append('logo_url', logoChange.url);
       else if (logoChange.type === 'clear') fd.append('clear_logo', 'true');
@@ -1826,6 +1841,20 @@ function OrganizationsPageContent() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Website <span className="text-gray-400 font-normal">(optional)</span></label>
                     <input type="url" value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} disabled={submitting || !canManageSettings} placeholder="https://yourorg.com"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-50" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Timezone</label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                      Used to interpret this organization&apos;s event times (the public events feed and Discord
+                      showtime pings both rely on this). Leave unset and times are treated as UTC.
+                    </p>
+                    <select value={form.timezone} onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))} disabled={submitting || !canManageSettings}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                      <option value="">UTC (default)</option>
+                      {timezones.map((tz) => (
+                        <option key={tz} value={tz}>{tz}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</label>
