@@ -17,7 +17,7 @@ export interface EffectiveReminder {
 // name is the event's title or the panel's name -- whichever this reminder
 // belongs to.
 export function defaultShowtimeMessage(leadMinutes: number, name: string): string {
-  if (leadMinutes === 0) return `${name} is now beginning!`;
+  if (leadMinutes === 0) return `@here ${name} is now beginning!`;
   return `@here ${name} starts in ${leadMinutes} minute${leadMinutes === 1 ? '' : 's'}!`;
 }
 

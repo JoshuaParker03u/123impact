@@ -157,7 +157,7 @@ describe('GET /api/cron/discord-showtime-pings', () => {
       const body = await res.json();
       expect(body.sent).toBe(1);
       const [, init] = fetchMock.mock.calls[0];
-      expect(JSON.parse(init!.body as string)).toEqual({ content: 'Game Night is now beginning!' });
+      expect(JSON.parse(init!.body as string)).toEqual({ content: '@here Game Night is now beginning!' });
     });
   });
 

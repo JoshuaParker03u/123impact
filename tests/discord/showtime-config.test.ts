@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { resolveReminders, defaultShowtimeMessage } from '@/lib/discord/showtime-config';
 
 describe('defaultShowtimeMessage', () => {
-  it('uses a distinct "now beginning" message at 0 minutes, with no @here', () => {
-    expect(defaultShowtimeMessage(0, 'Game Night')).toBe('Game Night is now beginning!');
+  it('uses a distinct "now beginning" message at 0 minutes', () => {
+    expect(defaultShowtimeMessage(0, 'Game Night')).toBe('@here Game Night is now beginning!');
   });
 
   it('pluralizes correctly at 1 minute vs more, with @here and the name', () => {
@@ -22,7 +22,7 @@ describe('resolveReminders', () => {
     expect(result).toEqual([
       { leadMinutes: 60, content: '@here Game Night starts in 60 minutes!' },
       { leadMinutes: 30, content: 'Halfway there!' },
-      { leadMinutes: 0, content: 'Game Night is now beginning!' },
+      { leadMinutes: 0, content: '@here Game Night is now beginning!' },
     ]);
   });
 
