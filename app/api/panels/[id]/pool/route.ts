@@ -68,7 +68,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const { data: candidates, error } = await service
     .from('volunteer_registrations')
-    .select('id, name, email, speaker_topic')
+    .select('id, name, email, speaker_topic, panel_id')
     .eq('event_id', panel.event_id)
     .eq('attendee_type', REQUIRED_ATTENDEE_TYPE[role]);
 
@@ -81,7 +81,16 @@ export async function GET(req: NextRequest, { params }: Params) {
     .eq('role', role);
 
   const assignedIds = new Set((assigned ?? []).map((a) => a.registration_id));
-  const available = (candidates ?? []).filter((c) => !assignedIds.has(c.id));
+  // Someone already registered directly on THIS panel (panel_id anchor) is
+  // already in the panel's own attendee/speaker/staff list by virtue of that
+  // registration -- a secondary assignment would just attach their same row
+  // to the same panel a second time, showing them twice. Assignment is for
+  // attaching someone registered elsewhere (a different panel, a shift,
+  // shiftless, or event-level) who should additionally help with this one.
+  const available = (candidates ?? [])
+    .filter((c) => !assignedIds.has(c.id))
+    .filter((c) => c.panel_id !== panelId)
+    .map(({ id, name, email, speaker_topic }) => ({ id, name, email, speaker_topic }));
 
   return NextResponse.json(available);
 }

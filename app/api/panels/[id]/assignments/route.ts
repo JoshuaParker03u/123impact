@@ -116,12 +116,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   // from the same volunteer pool as "Assign Staff" — see REQUIRED_ATTENDEE_TYPE).
   const { data: registration } = await service
     .from('volunteer_registrations')
-    .select('id, event_id, attendee_type')
+    .select('id, event_id, panel_id, attendee_type')
     .eq('id', registration_id)
     .single();
 
   if (!registration || registration.event_id !== panel.event_id) {
     return NextResponse.json({ error: 'Registration not found for this event' }, { status: 404 });
+  }
+  // Someone already registered directly on THIS panel is already in its own
+  // attendee/speaker/staff list via that registration — assigning them again
+  // would just attach that same row to the same panel a second time (see
+  // the matching filter in app/api/panels/[id]/pool/route.ts, which keeps
+  // this from being offered as a choice in the first place).
+  if (registration.panel_id === panelId) {
+    return NextResponse.json({ error: 'This person is already registered on this panel' }, { status: 400 });
   }
   const requiredType = REQUIRED_ATTENDEE_TYPE[role];
   if (registration.attendee_type !== requiredType) {
