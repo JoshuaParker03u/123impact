@@ -30,6 +30,20 @@ function formatEventTime(time) {
   return time;
 }
 
+// Mirrors app/admin/events/[id]/page.tsx's formatScheduleSummary -- a
+// multi-day event's per-day custom hours (event_day_hours) take precedence
+// over the plain events.time column, which is often left blank once day
+// hours are set (same precedence EventModal's own day-hours editor uses).
+// Without this, this list row showed a bare, time-less timezone label for
+// any event relying on day hours instead of the top-level time field.
+function formatScheduleSummary(event) {
+  const h = event.event_day_hours ?? [];
+  if (!h.length) return formatEventTime(event.time);
+  if (h.length === 1) return `${formatEventTime(h[0].start_time)} – ${formatEventTime(h[0].end_time)}`;
+  const allSame = h.every(r => r.start_time === h[0].start_time && r.end_time === h[0].end_time);
+  return allSame ? `${formatEventTime(h[0].start_time)} – ${formatEventTime(h[0].end_time)} daily` : 'Varied hours';
+}
+
 export default function AdminEventsPage() {
   const { currentOrganization, user, loading: orgLoading, isAdmin } = useOrganization();
   const personalTimezone = user?.user_metadata?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -444,10 +458,12 @@ export default function AdminEventsPage() {
                               ? `${event.date} – ${event.end_date}`
                               : event.date}
                           </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {formatEventTime(event.time)} ({timezoneAbbreviation(currentOrganization?.timezone)})
-                          </span>
+                          {formatScheduleSummary(event) && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-4 h-4" />
+                              {formatScheduleSummary(event)} ({timezoneAbbreviation(currentOrganization?.timezone)})
+                            </span>
+                          )}
                           <span className="flex items-center gap-1">
                             <MapPin className="w-4 h-4" />
                             {event.location}

@@ -2724,9 +2724,11 @@ export default function AdminEventDetailPage() {
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />{formatDateRange(event.date, event.end_date)}
                 </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />{formatScheduleSummary(event)} ({timezoneAbbreviation(orgTimezone)})
-                </span>
+                {formatScheduleSummary(event) && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4" />{formatScheduleSummary(event)} ({timezoneAbbreviation(orgTimezone)})
+                  </span>
+                )}
                 <span className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />{event.location}
                 </span>
