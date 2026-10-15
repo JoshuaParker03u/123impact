@@ -56,12 +56,18 @@ export async function signInAs(email: string, password: string): Promise<{ acces
 }
 
 export interface TestEventOverrides {
+  title?: string;
   is_shiftless?: boolean;
   shiftless_capacity?: number | null;
   attendee_enabled?: boolean;
   attendee_capacity?: number | null;
   speaker_enabled?: boolean;
   panels_enabled?: boolean;
+  date?: string;
+  time?: string;
+  end_date?: string | null;
+  discord_showtime_webhook_url?: string | null;
+  online_url?: string | null;
 }
 
 export async function createTestEvent(orgId: string, overrides: TestEventOverrides = {}): Promise<{ eventId: string }> {
@@ -115,9 +121,18 @@ export async function createTestShift(
   return { shiftId: data.id };
 }
 
+export interface TestPanelOverrides {
+  capacity?: number | null;
+  allow_waitlist?: boolean;
+  start_time?: string;
+  end_time?: string;
+  panel_date?: string | null;
+  discord_showtime_webhook_url?: string | null;
+}
+
 export async function createTestPanel(
   eventId: string,
-  overrides: { capacity?: number | null; allow_waitlist?: boolean } = {}
+  overrides: TestPanelOverrides = {}
 ): Promise<{ panelId: string }> {
   const service = getServiceClient();
   const { data, error } = await service
@@ -129,11 +144,37 @@ export async function createTestPanel(
       end_time: '14:00',
       capacity: overrides.capacity === undefined ? 3 : overrides.capacity,
       allow_waitlist: overrides.allow_waitlist ?? false,
+      ...overrides,
     })
     .select('id')
     .single();
   if (error) throw error;
   return { panelId: data.id };
+}
+
+export interface TestShowtimeReminderInput {
+  eventId?: string;
+  panelId?: string;
+  leadMinutes: number;
+  message?: string | null;
+  sentAt?: string | null;
+}
+
+export async function createShowtimeReminder(input: TestShowtimeReminderInput): Promise<{ reminderId: string }> {
+  const service = getServiceClient();
+  const { data, error } = await service
+    .from('discord_showtime_reminders')
+    .insert({
+      event_id: input.eventId ?? null,
+      panel_id: input.panelId ?? null,
+      lead_minutes: input.leadMinutes,
+      message: input.message ?? null,
+      sent_at: input.sentAt ?? null,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return { reminderId: data.id };
 }
 
 export interface TestRegistrationInput {

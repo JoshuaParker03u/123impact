@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
+import { timezoneAbbreviation } from '@/lib/timezone-convert';
 import type { PanelAssignmentRole } from '@/lib/panels/assignment-roles';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
@@ -100,6 +101,15 @@ interface Event {
   is_private_on_platform?: boolean;
   series_id?: string | null;
   created_by_display?: string | null;
+  discord_showtime_webhook_url?: string | null;
+  discord_showtime_reminders?: ShowtimeReminder[];
+}
+
+interface ShowtimeReminder {
+  id: string;
+  lead_minutes: number;
+  message: string | null;
+  sent_at: string | null;
 }
 
 interface OrgMember {
@@ -194,7 +204,7 @@ function RoleSelect({ value, onChange, disabled }: { value: AttendeeTypeValue; o
 
 // Picking a shift for an unanchored registration moving to Volunteer on a
 // non-shiftless event — see setEventLevelRole/assignPickedShift.
-function ShiftPickerModal({ shifts, onClose, onPick, submitting }: { shifts: Shift[]; onClose: () => void; onPick: (shiftId: string) => void; submitting: boolean }) {
+function ShiftPickerModal({ shifts, onClose, onPick, submitting, orgTimezone }: { shifts: Shift[]; onClose: () => void; onPick: (shiftId: string) => void; submitting: boolean; orgTimezone: string | null }) {
   return (
     <FloatingWindow title="Assign a Shift" onClose={onClose} maxWidthClassName="max-w-md">
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -217,7 +227,7 @@ function ShiftPickerModal({ shifts, onClose, onPick, submitting }: { shifts: Shi
               >
                 <div className="font-medium text-gray-900 dark:text-gray-100">{s.name}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {s.start_time}–{s.end_time} ·{' '}
+                  {s.start_time}–{s.end_time} ({timezoneAbbreviation(orgTimezone)}) ·{' '}
                   {isFull
                     ? (s.allow_waitlist ? 'Full — will waitlist' : 'Full')
                     : `${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`}
@@ -1236,6 +1246,8 @@ interface Panel {
   waitlisted: number;
   available: number | null;
   is_full: boolean;
+  discord_showtime_webhook_url?: string | null;
+  discord_showtime_reminders?: ShowtimeReminder[];
 }
 
 interface PanelRegistration {
@@ -1366,7 +1378,7 @@ function AssignPersonControl({ panelId, role, onAssigned }: { panelId: string; r
   );
 }
 
-function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName, onCountChange }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean; discordChannelName: string | null; onCountChange?: (count: number) => void }) {
+function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName, onCountChange, orgTimezone, personalTimezone }: { eventId: string; event: Event; canManage: boolean; discordReady: boolean; discordChannelName: string | null; onCountChange?: (count: number) => void; orgTimezone: string | null; personalTimezone: string }) {
   const { streamerMode } = useStreamerMode();
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1564,7 +1576,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                         )}
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                        {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)}
+                        {panel.panel_date ? `${panel.panel_date} · ` : ''}{formatEventTime(panel.start_time)}–{formatEventTime(panel.end_time)} ({timezoneAbbreviation(orgTimezone)})
                         {panel.location ? ` · ${panel.location}` : ''} · {panel.capacity == null ? `${panel.filled} registered (unlimited)` : `${panel.filled}/${panel.capacity} registered`}
                         {panel.waitlisted > 0 ? ` (${panel.waitlisted} waitlisted)` : ''}
                       </p>
@@ -1755,6 +1767,8 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
         <PanelModal
           panel={editingPanel}
           event={event}
+          organizationTimezone={orgTimezone as any}
+          personalTimezone={personalTimezone as any}
           onClose={() => setShowPanelModal(false)}
           onSave={() => { setShowPanelModal(false); load(); }}
         />
@@ -2134,6 +2148,7 @@ export default function AdminEventDetailPage() {
   const [assigningShift, setAssigningShift] = useState(false);
   const [userRole, setUserRole]   = useState<string | null>(null);
   const [orgPlan, setOrgPlan]     = useState<string>('free');
+  const [orgTimezone, setOrgTimezone] = useState<string | null>(null);
   const [customDomain, setCustomDomain] = useState<string | null>(null);
   const [discordAnnouncementChannelId, setDiscordAnnouncementChannelId] = useState<string | null>(null);
   const [discordAnnouncementChannelName, setDiscordAnnouncementChannelName] = useState<string | null>(null);
@@ -2149,7 +2164,8 @@ export default function AdminEventDetailPage() {
   const [removingAttendee, setRemovingAttendee] = useState(false);
   const [checkInModal, setCheckInModal] = useState<{ registrationId: string; name: string } | null>(null);
 
-  const { currentOrganization } = useOrganization() as any;
+  const { currentOrganization, user } = useOrganization() as any;
+  const personalTimezone = user?.user_metadata?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   useEffect(() => { loadEvent(); }, []);
 
@@ -2166,13 +2182,14 @@ export default function AdminEventDetailPage() {
 
     setUserRole(role);
 
-    // Fetch org plan and custom domain
+    // Fetch org plan, timezone, and custom domain
     const { data: orgData } = await supabase
       .from('organizations')
-      .select('plan')
+      .select('plan, timezone')
       .eq('id', data.organization_id)
       .maybeSingle();
     setOrgPlan((orgData as any)?.plan ?? 'free');
+    setOrgTimezone((orgData as any)?.timezone ?? null);
 
     const domainRes = await fetch(`/api/organizations/${data.organization_id}/custom-domain`);
     if (domainRes.ok) {
@@ -2708,7 +2725,7 @@ export default function AdminEventDetailPage() {
                   <Calendar className="w-4 h-4" />{formatDateRange(event.date, event.end_date)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />{formatScheduleSummary(event)}
+                  <Clock className="w-4 h-4" />{formatScheduleSummary(event)} ({timezoneAbbreviation(orgTimezone)})
                 </span>
                 <span className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />{event.location}
@@ -2883,7 +2900,7 @@ export default function AdminEventDetailPage() {
         ) : activeTab === 'eventbrite' ? (
           <EventbriteAttendeesTab eventId={event.id} />
         ) : activeTab === 'panels' && event.panels_enabled ? (
-          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} onCountChange={setPanelsCount} />
+          <PanelsTab eventId={event.id} event={event} canManage={canManage} discordReady={!!discordAnnouncementChannelId} discordChannelName={discordAnnouncementChannelName} onCountChange={setPanelsCount} orgTimezone={orgTimezone} personalTimezone={personalTimezone} />
         ) : activeTab === 'attendees' && event.attendee_enabled ? (
           <>
             {loadingAttendeeRegs ? (
@@ -3126,6 +3143,7 @@ export default function AdminEventDetailPage() {
                               {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               {' – '}
                               {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {' ('}{timezoneAbbreviation(orgTimezone)}{')'}
                               {overnight && <span className="ml-1 text-xs text-amber-600 dark:text-amber-400 font-medium">+1</span>}
                             </p>
                             {shift.description && (
@@ -3387,6 +3405,8 @@ export default function AdminEventDetailPage() {
           shift={editingShift}
           event={event}
           supabase={supabase}
+          organizationTimezone={orgTimezone as any}
+          personalTimezone={personalTimezone as any}
           onClose={() => { setShowShiftModal(false); setEditingShift(null); }}
           onSave={() => { setShowShiftModal(false); setEditingShift(null); loadEvent(); }}
         />
@@ -3396,6 +3416,8 @@ export default function AdminEventDetailPage() {
           event={event}
           organizationId={event.organization_id}
           organizationLogoUrl={currentOrganization?.logo_url}
+          organizationTimezone={orgTimezone as any}
+          personalTimezone={personalTimezone as any}
           supabase={supabase}
           isPaid={orgPlan !== 'free'}
           onClose={() => setShowEventModal(false)}
@@ -3456,6 +3478,7 @@ export default function AdminEventDetailPage() {
           submitting={assigningShift}
           onClose={() => setShiftPickerFor(null)}
           onPick={assignPickedShift}
+          orgTimezone={orgTimezone}
         />
       )}
 

@@ -50,6 +50,7 @@ export async function GET(
       attendee_enabled, attendee_capacity, speaker_enabled, panels_enabled,
       platform_source, external_id, last_synced_at, sync_status, is_private_on_platform,
       primary_owner_id,
+      discord_showtime_webhook_url, discord_showtime_reminders(id, lead_minutes, message, sent_at),
       shifts (id, shift_id, name, description, start_time, end_time, capacity, shift_date, allow_waitlist),
       event_day_hours (id, event_date, start_time, end_time)
     `)
