@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateApiKey } from '@/lib/api-keys';
-import { buildOrgExport, parseFormatParam, parseIncludeParam } from '@/lib/api-v1/build-org-export';
+import { buildOrgExport } from '@/lib/api-v1/build-org-export';
+import { resolveExportRequest } from '@/lib/api-v1/resolve-export-request';
 
 // GET /api/v1/organizations/me
 // Admin-level, read-only export of essentially everything the authenticated
@@ -8,7 +9,8 @@ import { buildOrgExport, parseFormatParam, parseIncludeParam } from '@/lib/api-v
 // session. No write support yet.
 //
 // Query params:
-//   format=full|safe|sparse|public (default full)
+//   format=full|safe|sparse|public (default full) -- an unrecognized value
+//     is a 400, never a silent fallback to full.
 //     full   - every field below, unredacted, including registrant PII.
 //     safe   - same resources/nesting as full, PII stripped from every
 //              person-like record (email, phone, discord_user_id, discord_username).
@@ -20,6 +22,11 @@ import { buildOrgExport, parseFormatParam, parseIncludeParam } from '@/lib/api-v
 //     comma-separated allowlist of top-level resource keys to return.
 //     Anything not listed is omitted from the response entirely.
 //
+// A key can optionally be scoped to specific formats/resources at
+// generation time (see app/api/organizations/[id]/api-keys/route.ts) --
+// requesting a format or resource outside that scope is a 403. See
+// resolveExportRequest for the exact rules.
+//
 // Hard exclusions regardless of format/include: organizations.stripe_*,
 // platform_connections.access_token/refresh_token/token_expires_at,
 // event_admin_assignments.token, event_speaker_invites.token,
@@ -28,9 +35,16 @@ export async function GET(req: NextRequest) {
   const auth = await authenticateApiKey(req);
   if ('error' in auth) return auth.error;
 
-  const format = parseFormatParam(req.nextUrl.searchParams.get('format'));
-  const include = parseIncludeParam(req.nextUrl.searchParams.get('include'));
+  const resolved = resolveExportRequest({
+    formatParam: req.nextUrl.searchParams.get('format'),
+    includeParam: req.nextUrl.searchParams.get('include'),
+    allowedFormats: auth.allowedFormats,
+    allowedResources: auth.allowedResources,
+  });
+  if ('error' in resolved) {
+    return NextResponse.json({ error: resolved.error.message }, { status: resolved.error.status });
+  }
 
-  const data = await buildOrgExport(auth.organizationId, { format, include });
+  const data = await buildOrgExport(auth.organizationId, resolved);
   return NextResponse.json(data);
 }

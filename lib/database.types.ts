@@ -815,6 +815,9 @@ export type Database = {
           created_at: string
           last_used_at: string | null
           revoked_at: string | null
+          allowed_formats: string[] | null
+          allowed_resources: string[] | null
+          expires_at: string | null
         }
         Insert: {
           id?: string
@@ -826,6 +829,9 @@ export type Database = {
           created_at?: string
           last_used_at?: string | null
           revoked_at?: string | null
+          allowed_formats?: string[] | null
+          allowed_resources?: string[] | null
+          expires_at?: string | null
         }
         Update: {
           id?: string
@@ -837,6 +843,9 @@ export type Database = {
           created_at?: string
           last_used_at?: string | null
           revoked_at?: string | null
+          allowed_formats?: string[] | null
+          allowed_resources?: string[] | null
+          expires_at?: string | null
         }
         Relationships: []
       }

@@ -366,6 +366,30 @@ function CopyRow({ label, value, href }) {
 // URLs are built on public_id (a one-way hash of the org's real id, see
 // lib/org-public-id.ts), not the raw id itself -- fetched from its own
 // endpoint since it's generated lazily on first request.
+// Labels only -- the actual allowlists enforced server-side live in
+// lib/api-v1/build-org-export.ts (EXPORT_RESOURCE_KEYS) and
+// lib/api-v1/resolve-export-request.ts (EXPORT_FORMATS).
+const API_FORMAT_LABELS = {
+  full: 'Full (includes registrant PII)',
+  safe: 'Safe (PII redacted)',
+  sparse: 'Sparse (summary only)',
+  public: 'Public (same as the public feed)',
+};
+const API_RESOURCE_LABELS = {
+  organization: 'Organization profile',
+  events: 'Events',
+  registrations: 'Registrations',
+  admins: 'Admins',
+  speaker_invites: 'Speaker invites',
+  custom_domains: 'Custom domains',
+  platform_connections: 'Platform connections',
+};
+// Module scope, not component render -- computed once at load rather than
+// read impurely on every render. A day stale after a long-open tab doesn't
+// matter: it's just a UX hint on the date picker, not the real check (the
+// server validates expires_at against the actual current time on submit).
+const API_KEY_MIN_EXPIRY_DATE = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
 function ApiTab({ orgId }) {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const [publicId, setPublicId] = useState(null);
@@ -373,10 +397,22 @@ function ApiTab({ orgId }) {
   const [keys, setKeys] = useState([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [newKeyName, setNewKeyName] = useState('');
+  const [showRestrictions, setShowRestrictions] = useState(false);
+  const [allowedFormats, setAllowedFormats] = useState(() => new Set(Object.keys(API_FORMAT_LABELS)));
+  const [allowedResources, setAllowedResources] = useState(() => new Set(Object.keys(API_RESOURCE_LABELS)));
+  const [newKeyExpiry, setNewKeyExpiry] = useState('');
   const [generating, setGenerating] = useState(false);
   const [revealedKey, setRevealedKey] = useState(null);
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [revoking, setRevoking] = useState(false);
+
+  function toggleInSet(setFn, set, key) {
+    setFn((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -399,16 +435,30 @@ function ApiTab({ orgId }) {
     e.preventDefault();
     if (!newKeyName.trim()) return;
     setGenerating(true);
+    // Every box checked means unrestricted -- send null, not an explicit
+    // full list, so "didn't bother restricting anything" and "restricted"
+    // keys are distinguishable server-side (see validateKeyRestrictions).
+    const formatsPayload = allowedFormats.size < Object.keys(API_FORMAT_LABELS).length ? [...allowedFormats] : null;
+    const resourcesPayload = allowedResources.size < Object.keys(API_RESOURCE_LABELS).length ? [...allowedResources] : null;
     const res = await fetch(`/api/organizations/${orgId}/api-keys`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newKeyName.trim() }),
+      body: JSON.stringify({
+        name: newKeyName.trim(),
+        allowed_formats: formatsPayload,
+        allowed_resources: resourcesPayload,
+        expires_at: newKeyExpiry ? new Date(newKeyExpiry).toISOString() : null,
+      }),
     });
     setGenerating(false);
     if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to generate key'); return; }
     const data = await res.json();
     setRevealedKey({ name: data.name, key: data.key });
     setNewKeyName('');
+    setAllowedFormats(new Set(Object.keys(API_FORMAT_LABELS)));
+    setAllowedResources(new Set(Object.keys(API_RESOURCE_LABELS)));
+    setNewKeyExpiry('');
+    setShowRestrictions(false);
     loadKeys();
   }
 
@@ -455,20 +505,68 @@ function ApiTab({ orgId }) {
           </p>
         </div>
 
-        <form onSubmit={generateKey} className="flex items-end gap-2">
-          <div className="flex-1">
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Key name</label>
-            <input
-              type="text"
-              value={newKeyName}
-              onChange={(e) => setNewKeyName(e.target.value)}
-              placeholder="e.g. Zapier integration"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-            />
+        <form onSubmit={generateKey} className="space-y-3">
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Key name</label>
+              <input
+                type="text"
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                placeholder="e.g. Zapier integration"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <Button type="submit" disabled={generating || !newKeyName.trim()} className="gap-2">
+              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Generate key
+            </Button>
           </div>
-          <Button type="submit" disabled={generating || !newKeyName.trim()} className="gap-2">
-            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Generate key
-          </Button>
+
+          <button
+            type="button"
+            onClick={() => setShowRestrictions((v) => !v)}
+            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            {showRestrictions ? 'Hide restrictions' : 'Restrict this key (optional)'}
+          </button>
+
+          {showRestrictions && (
+            <div className="border dark:border-gray-700 rounded-lg p-4 space-y-4">
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Allowed formats</p>
+                <div className="flex flex-col gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                  {Object.entries(API_FORMAT_LABELS).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2">
+                      <input type="checkbox" checked={allowedFormats.has(key)} onChange={() => toggleInSet(setAllowedFormats, allowedFormats, key)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Allowed resources</p>
+                <div className="flex flex-col gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                  {Object.entries(API_RESOURCE_LABELS).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2">
+                      <input type="checkbox" checked={allowedResources.has(key)} onChange={() => toggleInSet(setAllowedResources, allowedResources, key)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Expires (optional)</label>
+                <input
+                  type="date"
+                  value={newKeyExpiry}
+                  min={API_KEY_MIN_EXPIRY_DATE}
+                  onChange={(e) => setNewKeyExpiry(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+                <p className="text-xs text-gray-400 mt-1">Leave blank for a key that never expires.</p>
+              </div>
+            </div>
+          )}
         </form>
 
         {loadingKeys ? (
@@ -477,24 +575,36 @@ function ApiTab({ orgId }) {
           <p className="text-sm text-gray-400">No API keys yet.</p>
         ) : (
           <div className="space-y-2">
-            {keys.map((k) => (
-              <div key={k.id} className="flex items-center justify-between border dark:border-gray-700 rounded-lg px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{k.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{k.key_prefix}&hellip;</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
-                    Created {new Date(k.created_at).toLocaleDateString()}
-                    {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
-                    {k.revoked_at && ' · Revoked'}
-                  </p>
+            {keys.map((k) => {
+              const isExpired = k.expires_at && new Date(k.expires_at) <= new Date();
+              return (
+                <div key={k.id} className="flex items-center justify-between border dark:border-gray-700 rounded-lg px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{k.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{k.key_prefix}&hellip;</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      Created {new Date(k.created_at).toLocaleDateString()}
+                      {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
+                      {k.revoked_at && ' · Revoked'}
+                      {!k.revoked_at && k.expires_at && (isExpired ? ' · Expired' : ` · Expires ${new Date(k.expires_at).toLocaleDateString()}`)}
+                    </p>
+                    {(k.allowed_formats || k.allowed_resources) && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        Restricted:
+                        {k.allowed_formats && ` ${k.allowed_formats.join(', ')}`}
+                        {k.allowed_formats && k.allowed_resources && ' ·'}
+                        {k.allowed_resources && ` ${k.allowed_resources.join(', ')}`}
+                      </p>
+                    )}
+                  </div>
+                  {!k.revoked_at && (
+                    <button onClick={() => setRevokeTarget(k)} title="Revoke" className="shrink-0 p-1.5 text-red-500 hover:text-red-700">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                {!k.revoked_at && (
-                  <button onClick={() => setRevokeTarget(k)} title="Revoke" className="shrink-0 p-1.5 text-red-500 hover:text-red-700">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
