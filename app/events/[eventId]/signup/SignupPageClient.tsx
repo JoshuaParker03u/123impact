@@ -705,7 +705,7 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
                   <p className="text-sm text-blue-900 dark:text-blue-200">
                     Please also complete our{' '}
                     <a href={event.organizations.volunteer_qualification_form_url} target="_blank" rel="noopener noreferrer" className="font-medium underline">
-                      Volunteer/Moderator Qualification Form ↗
+                      Volunteer/Moderator Questionnaire ↗
                     </a>
                   </p>
                 </div>

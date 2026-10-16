@@ -41,7 +41,7 @@ function selectMenuRow(customId: string, placeholder: string, options: { label: 
 // someone could actually see it. withQualificationFormLink (below) covers
 // the post-signup DM separately, with its own confirmation-flavored wording.
 function withQualificationFormNote(content: string, formUrl: string | null): string {
-  return formUrl ? `${content}\n\n📋 Please also complete our Volunteer/Moderator Qualification Form: ${formUrl}` : content;
+  return formUrl ? `${content}\n\n📋 Please also complete our Volunteer/Moderator Questionnaire: ${formUrl}` : content;
 }
 
 // No email field -- Discord already knows who's signing up (discordUserId,
@@ -228,7 +228,7 @@ async function internalApiFetch(path: string, body: unknown) {
 // qualification-form link (if the org has one set) appended.
 async function withQualificationFormLink(message: string, target: { shiftId?: string; panelId?: string; eventId?: string }): Promise<string> {
   const formUrl = await getQualificationFormUrl(target).catch(() => null);
-  return formUrl ? `${message}\n\nPlease also complete our Volunteer/Moderator Qualification Form: ${formUrl}` : message;
+  return formUrl ? `${message}\n\nPlease also complete our Volunteer/Moderator Questionnaire: ${formUrl}` : message;
 }
 
 async function submitShiftSignup(shiftId: string, name: string, pronouns: string | null, discordUserId: string | null, discordUsername: string | null): Promise<string> {

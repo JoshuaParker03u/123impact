@@ -1859,7 +1859,7 @@ function OrganizationsPageContent() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Volunteer/Moderator Qualification Form <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Volunteer/Moderator Questionnaire <span className="text-gray-400 font-normal">(optional)</span></label>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
                       Link to an external form (e.g. a Google Form) used to screen a person&apos;s fitness to
                       volunteer or moderate. Shown to volunteers on the public signup page and in the Discord
