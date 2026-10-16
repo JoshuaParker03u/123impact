@@ -41,16 +41,6 @@ export const EXPORT_RESOURCE_KEYS = [
 ] as const;
 export type ExportResourceKey = typeof EXPORT_RESOURCE_KEYS[number];
 
-export function parseIncludeParam(raw: string | null): ExportResourceKey[] {
-  if (!raw) return [...EXPORT_RESOURCE_KEYS];
-  const requested = raw.split(',').map((s) => s.trim()).filter(Boolean);
-  return EXPORT_RESOURCE_KEYS.filter((key) => requested.includes(key));
-}
-
-export function parseFormatParam(raw: string | null): ExportFormat {
-  return raw === 'safe' || raw === 'sparse' || raw === 'public' ? raw : 'full';
-}
-
 const PII_FIELDS = ['email', 'phone', 'discord_user_id', 'discord_username'] as const;
 
 function stripPII(row: Record<string, unknown>): Record<string, unknown> {

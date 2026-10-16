@@ -38,7 +38,12 @@ describe('authenticateApiKey', () => {
     await Promise.all(orgIds.map((id) => cleanupOrg(id, userIds)));
   });
 
-  async function seedKey(orgId: string, overrides: { revoked?: boolean } = {}) {
+  async function seedKey(orgId: string, overrides: {
+    revoked?: boolean;
+    expiresAt?: string | null;
+    allowedFormats?: string[] | null;
+    allowedResources?: string[] | null;
+  } = {}) {
     const { fullKey, prefix, hash } = generateApiKey();
     const { data: user } = await getServiceClient().auth.admin.createUser({
       email: `vitest-api-key-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
@@ -53,6 +58,9 @@ describe('authenticateApiKey', () => {
       key_hash: hash,
       created_by: user!.user!.id,
       revoked_at: overrides.revoked ? new Date().toISOString() : null,
+      expires_at: overrides.expiresAt ?? null,
+      allowed_formats: overrides.allowedFormats ?? null,
+      allowed_resources: overrides.allowedResources ?? null,
     });
     return fullKey;
   }
@@ -92,5 +100,54 @@ describe('authenticateApiKey', () => {
     const result = await authenticateApiKey(requestWithAuth(`Bearer ${fullKey}`));
     expect('error' in result).toBe(true);
     if ('error' in result) expect(result.error.status).toBe(401);
+  });
+
+  it('rejects an expired key, distinctly from a merely invalid/revoked one', async () => {
+    const { orgId } = await createTestOrg();
+    orgIds.push(orgId);
+    const fullKey = await seedKey(orgId, { expiresAt: new Date(Date.now() - 86400000).toISOString() });
+
+    const result = await authenticateApiKey(requestWithAuth(`Bearer ${fullKey}`));
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error.status).toBe(401);
+      const body = await result.error.clone().json();
+      expect(body.error).toMatch(/expired/i);
+    }
+  });
+
+  it('accepts a key with a future expiry', async () => {
+    const { orgId } = await createTestOrg();
+    orgIds.push(orgId);
+    const fullKey = await seedKey(orgId, { expiresAt: new Date(Date.now() + 86400000).toISOString() });
+
+    const result = await authenticateApiKey(requestWithAuth(`Bearer ${fullKey}`));
+    expect('organizationId' in result).toBe(true);
+  });
+
+  it('surfaces a restricted key\'s allowedFormats/allowedResources', async () => {
+    const { orgId } = await createTestOrg();
+    orgIds.push(orgId);
+    const fullKey = await seedKey(orgId, { allowedFormats: ['safe'], allowedResources: ['events'] });
+
+    const result = await authenticateApiKey(requestWithAuth(`Bearer ${fullKey}`));
+    expect('organizationId' in result).toBe(true);
+    if ('organizationId' in result) {
+      expect(result.allowedFormats).toEqual(['safe']);
+      expect(result.allowedResources).toEqual(['events']);
+    }
+  });
+
+  it('surfaces null allowedFormats/allowedResources for an unrestricted key', async () => {
+    const { orgId } = await createTestOrg();
+    orgIds.push(orgId);
+    const fullKey = await seedKey(orgId);
+
+    const result = await authenticateApiKey(requestWithAuth(`Bearer ${fullKey}`));
+    expect('organizationId' in result).toBe(true);
+    if ('organizationId' in result) {
+      expect(result.allowedFormats).toBeNull();
+      expect(result.allowedResources).toBeNull();
+    }
   });
 });

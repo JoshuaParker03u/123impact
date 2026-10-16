@@ -35,7 +35,9 @@ export function generateApiKey(): { fullKey: string; prefix: string; hash: strin
   };
 }
 
-export type ApiKeyAuthResult = { organizationId: string } | { error: NextResponse };
+export type ApiKeyAuthResult =
+  | { organizationId: string; allowedFormats: string[] | null; allowedResources: string[] | null }
+  | { error: NextResponse };
 
 // Verifies an Authorization: Bearer <key> header against
 // organization_api_keys, same union-result convention as the existing
@@ -48,15 +50,22 @@ export async function authenticateApiKey(req: NextRequest): Promise<ApiKeyAuthRe
   }
 
   const service = buildServiceClient();
+  // Expiry is checked in JS below (not filtered in the query) so an expired
+  // key gets its own distinct message instead of being indistinguishable
+  // from one that was never valid or was explicitly revoked.
   const { data } = await service
     .from('organization_api_keys')
-    .select('id, organization_id')
+    .select('id, organization_id, allowed_formats, allowed_resources, expires_at')
     .eq('key_hash', hashKey(match[1]))
     .is('revoked_at', null)
     .maybeSingle();
 
   if (!data) {
     return { error: NextResponse.json({ error: 'Invalid or revoked API key' }, { status: 401 }) };
+  }
+
+  if (data.expires_at && new Date(data.expires_at) <= new Date()) {
+    return { error: NextResponse.json({ error: 'API key has expired' }, { status: 401 }) };
   }
 
   // Best-effort usage tracking -- never blocks or fails the request over it.
@@ -68,5 +77,9 @@ export async function authenticateApiKey(req: NextRequest): Promise<ApiKeyAuthRe
     if (error) console.error('api key last_used_at update failed:', error);
   })();
 
-  return { organizationId: data.organization_id };
+  return {
+    organizationId: data.organization_id,
+    allowedFormats: data.allowed_formats,
+    allowedResources: data.allowed_resources,
+  };
 }

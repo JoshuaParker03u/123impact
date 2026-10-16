@@ -4,7 +4,7 @@
 // same feed builder the no-auth public feed itself uses (never a
 // second, drifting implementation of the same shape).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { buildOrgExport, parseFormatParam, parseIncludeParam, EXPORT_RESOURCE_KEYS } from '@/lib/api-v1/build-org-export';
+import { buildOrgExport } from '@/lib/api-v1/build-org-export';
 import { buildOrgFeedData } from '@/lib/public-feed/build-feed-data';
 import { buildEventsJson } from '@/lib/public-feed/to-json';
 import {
@@ -12,23 +12,10 @@ import {
   cleanupEvent, cleanupOrg,
 } from '../helpers/fixtures';
 
-describe('parseFormatParam / parseIncludeParam', () => {
-  it('defaults format to full for anything unrecognized', () => {
-    expect(parseFormatParam(null)).toBe('full');
-    expect(parseFormatParam('bogus')).toBe('full');
-    expect(parseFormatParam('safe')).toBe('safe');
-    expect(parseFormatParam('sparse')).toBe('sparse');
-    expect(parseFormatParam('public')).toBe('public');
-  });
-
-  it('defaults include to every resource key when omitted', () => {
-    expect(parseIncludeParam(null)).toEqual([...EXPORT_RESOURCE_KEYS]);
-  });
-
-  it('filters include to only recognized keys, ignoring unknown ones', () => {
-    expect(parseIncludeParam('events,bogus,registrations')).toEqual(['events', 'registrations']);
-  });
-});
+// Request-side parsing/validation (format=, include=, and key-scoping
+// enforcement) now lives in lib/api-v1/resolve-export-request.ts, covered
+// by tests/api-v1/resolve-export-request.test.ts. This file covers only
+// buildOrgExport's own data-shaping once format/include are already resolved.
 
 describe('buildOrgExport', () => {
   let orgId: string;
