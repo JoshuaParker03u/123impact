@@ -56,17 +56,23 @@ async function sendPanelConfirmation(
 }
 
 // POST /api/panel-registrations — public, single-panel RSVP.
-// Body: { panel_id, name, email, phone?, discord_user_id? }
+// Body: { panel_id, name, email?, phone?, pronouns?, discord_user_id? }
+// email is required UNLESS discord_user_id is present (the Discord bot's
+// /signup flow captures a Discord identity instead of an email).
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { panel_id, name, email, phone, discord_user_id } = body;
-  if (!panel_id || !name || !email) {
-    return NextResponse.json({ error: 'panel_id, name, and email are required' }, { status: 400 });
+  const { panel_id, name, email, phone, pronouns, discord_user_id, discord_username, attendee_type } = body;
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
+  if (!panel_id || !name || (!normalizedEmail && !discord_user_id)) {
+    return NextResponse.json({ error: 'panel_id, name, and either email or a Discord account are required' }, { status: 400 });
   }
+  // Only 'volunteer' is accepted as an override -- anything else (including
+  // omitted) safely falls back to the long-standing 'attendee' behavior
+  // rather than trusting an arbitrary value from the request body.
+  const normalizedAttendeeType = attendee_type === 'volunteer' ? 'volunteer' : 'attendee';
 
-  const normalizedEmail = email.trim().toLowerCase();
   const supabase = buildServiceClient();
 
   const { data: panel } = await supabase
@@ -85,13 +91,17 @@ export async function POST(req: NextRequest) {
 
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
-  // Conflict check against this email's other panel RSVPs at the same event
-  const { data: otherPanelRegs } = await supabase
+  // Conflict check against this person's other panel RSVPs at the same
+  // event -- keyed by email when given, otherwise by Discord identity (bot
+  // signups with no email).
+  const identityQuery = supabase
     .from('volunteer_registrations')
     .select('id, panel_id, discord_user_id, panels(name, start_time, end_time, panel_date)')
     .eq('event_id', panel.event_id)
-    .eq('email', normalizedEmail)
     .not('panel_id', 'is', null);
+  const { data: otherPanelRegs } = await (normalizedEmail
+    ? identityQuery.eq('email', normalizedEmail)
+    : identityQuery.eq('discord_user_id', discord_user_id));
 
   // Check for an existing registration for THIS panel before the capacity
   // check below — otherwise a duplicate submission for an already-full
@@ -113,7 +123,7 @@ export async function POST(req: NextRequest) {
       if (!existingForThisPanel.discord_user_id) {
         await supabase
           .from('volunteer_registrations')
-          .update({ discord_user_id })
+          .update({ discord_user_id, discord_username: discord_username ?? null })
           .eq('id', existingForThisPanel.id);
       }
       return NextResponse.json({ alreadyRegistered: true, panelName: panel.name }, { status: 200 });
@@ -152,9 +162,11 @@ export async function POST(req: NextRequest) {
       name,
       email:         normalizedEmail,
       phone:         phone ?? null,
-      attendee_type: 'attendee',
+      pronouns:      pronouns ?? null,
+      attendee_type: normalizedAttendeeType,
       is_waitlisted: isWaitlisted,
       discord_user_id: discord_user_id ?? null,
+      discord_username: discord_username ?? null,
     })
     .select()
     .single();
@@ -166,8 +178,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: regError.message }, { status: 500 });
   }
 
-  sendPanelConfirmation(supabase, name, normalizedEmail, panel, event as any)
-    .catch((e) => console.error('sendPanelConfirmation error:', e));
+  // No email to confirm for a Discord-only signup -- the bot sends its own
+  // DM confirmation instead (app/api/discord/interactions/route.ts).
+  if (normalizedEmail) {
+    sendPanelConfirmation(supabase, name, normalizedEmail, panel, event as any)
+      .catch((e) => console.error('sendPanelConfirmation error:', e));
+  }
   scheduleAutomatedEmails(supabase, registration.id, name, normalizedEmail, panel.event_id, null, panel_id)
     .catch((e) => console.error('scheduleAutomatedEmails error:', e));
 

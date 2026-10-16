@@ -16,7 +16,7 @@ import {
   Upload, Link as LinkIcon, X, Loader2, Check, AlertTriangle,
   UserPlus, Users, Mail, RefreshCw, Trash2, Crown, Shield, User,
   Send, ChevronDown, ChevronUp, Plug, CheckCircle2, XCircle, ExternalLink,
-  Globe, Copy, Zap, CreditCard,
+  Globe, Copy, Zap, CreditCard, Plus,
 } from 'lucide-react';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
@@ -361,28 +361,165 @@ function CopyRow({ label, value, href }) {
 }
 
 // Read-only reference for building external integrations against this org's
-// public events feed (app/api/public/organizations/[orgId]/events.json|ics) —
-// the org id these URLs are templated on isn't itself sensitive (it's
-// already passed around in plain URLs/headers elsewhere, e.g. the
-// Discord/Eventbrite connect routes above).
+// public events feed (app/api/public/organizations/[publicId]/events.json|ics)
+// and managing Bearer API keys for future authenticated endpoints. The feed
+// URLs are built on public_id (a one-way hash of the org's real id, see
+// lib/org-public-id.ts), not the raw id itself -- fetched from its own
+// endpoint since it's generated lazily on first request.
 function ApiTab({ orgId }) {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const jsonUrl = `${origin}/api/public/organizations/${orgId}/events.json`;
-  const icsUrl  = `${origin}/api/public/organizations/${orgId}/events.ics`;
+  const [publicId, setPublicId] = useState(null);
+  const [loadingPublicId, setLoadingPublicId] = useState(true);
+  const [keys, setKeys] = useState([]);
+  const [loadingKeys, setLoadingKeys] = useState(true);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [revealedKey, setRevealedKey] = useState(null);
+  const [revokeTarget, setRevokeTarget] = useState(null);
+  const [revoking, setRevoking] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/organizations/${orgId}/public-id`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (!cancelled) setPublicId(data?.public_id ?? null); })
+      .finally(() => { if (!cancelled) setLoadingPublicId(false); });
+    return () => { cancelled = true; };
+  }, [orgId]);
+
+  async function loadKeys() {
+    setLoadingKeys(true);
+    const res = await fetch(`/api/organizations/${orgId}/api-keys`);
+    if (res.ok) setKeys(await res.json());
+    setLoadingKeys(false);
+  }
+  useEffect(() => { loadKeys(); }, [orgId]);
+
+  async function generateKey(e) {
+    e.preventDefault();
+    if (!newKeyName.trim()) return;
+    setGenerating(true);
+    const res = await fetch(`/api/organizations/${orgId}/api-keys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newKeyName.trim() }),
+    });
+    setGenerating(false);
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to generate key'); return; }
+    const data = await res.json();
+    setRevealedKey({ name: data.name, key: data.key });
+    setNewKeyName('');
+    loadKeys();
+  }
+
+  async function revokeKey() {
+    if (!revokeTarget) return;
+    setRevoking(true);
+    const res = await fetch(`/api/organizations/${orgId}/api-keys/${revokeTarget.id}`, { method: 'DELETE' });
+    setRevoking(false);
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to revoke key'); return; }
+    setRevokeTarget(null);
+    loadKeys();
+  }
+
+  const jsonUrl = publicId ? `${origin}/api/public/organizations/${publicId}/events.json` : null;
+  const icsUrl  = publicId ? `${origin}/api/public/organizations/${publicId}/events.ics` : null;
 
   return (
-    <Card className="p-6 space-y-5">
-      <div>
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Public events feed</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          A read-only, no-login feed of this org&apos;s events, sessions, and speakers who&apos;ve
-          consented to be listed — for an external site or calendar app to pull from directly.
-        </p>
-      </div>
-      <CopyRow label="Organization ID" value={orgId} />
-      <CopyRow label="JSON feed" value={jsonUrl} href={jsonUrl} />
-      <CopyRow label="iCal feed (subscribe in a calendar app)" value={icsUrl} href={icsUrl} />
-    </Card>
+    <div className="space-y-6">
+      <Card className="p-6 space-y-5">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Public events feed</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            A read-only, no-login feed of this org&apos;s events, sessions, and speakers who&apos;ve
+            consented to be listed — for an external site or calendar app to pull from directly.
+          </p>
+        </div>
+        {loadingPublicId ? (
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading feed links...</div>
+        ) : (
+          <>
+            <CopyRow label="Organization ID" value={publicId} />
+            <CopyRow label="JSON feed" value={jsonUrl} href={jsonUrl} />
+            <CopyRow label="iCal feed (subscribe in a calendar app)" value={icsUrl} href={icsUrl} />
+          </>
+        )}
+      </Card>
+
+      <Card className="p-6 space-y-5">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">API keys</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Bearer tokens for integrations that authenticate as this organization. Not used by any
+            feature yet — ready for whenever one needs it.
+          </p>
+        </div>
+
+        <form onSubmit={generateKey} className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Key name</label>
+            <input
+              type="text"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              placeholder="e.g. Zapier integration"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            />
+          </div>
+          <Button type="submit" disabled={generating || !newKeyName.trim()} className="gap-2">
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Generate key
+          </Button>
+        </form>
+
+        {loadingKeys ? (
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading keys...</div>
+        ) : keys.length === 0 ? (
+          <p className="text-sm text-gray-400">No API keys yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {keys.map((k) => (
+              <div key={k.id} className="flex items-center justify-between border dark:border-gray-700 rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{k.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{k.key_prefix}&hellip;</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    Created {new Date(k.created_at).toLocaleDateString()}
+                    {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
+                    {k.revoked_at && ' · Revoked'}
+                  </p>
+                </div>
+                {!k.revoked_at && (
+                  <button onClick={() => setRevokeTarget(k)} title="Revoke" className="shrink-0 p-1.5 text-red-500 hover:text-red-700">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {revealedKey && (
+        <FloatingWindow title="API key generated" onClose={() => setRevealedKey(null)} maxWidthClassName="max-w-lg">
+          <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">
+            Copy this now — you won&apos;t be able to see it again.
+          </p>
+          <CopyRow label={revealedKey.name} value={revealedKey.key} />
+          <Button onClick={() => setRevealedKey(null)} className="w-full mt-4">Done</Button>
+        </FloatingWindow>
+      )}
+
+      {revokeTarget && (
+        <ConfirmDeleteModal
+          title="Revoke API Key"
+          message={<>Revoke <span className="font-medium text-gray-900 dark:text-gray-100">{revokeTarget.name}</span>? Anything using this key will stop working immediately.</>}
+          confirmLabel="Revoke"
+          loading={revoking}
+          onCancel={() => setRevokeTarget(null)}
+          onConfirm={revokeKey}
+        />
+      )}
+    </div>
   );
 }
 
@@ -1633,7 +1770,7 @@ function OrganizationsPageContent() {
   const [logoChange, setLogoChange]   = useState({ type: 'none' });
 
   const [form, setForm] = useState({
-    name: '', description: '', contact_email: '', contact_phone: '', website: '', status: 'active', timezone: '',
+    name: '', description: '', contact_email: '', contact_phone: '', website: '', status: 'active', timezone: '', volunteer_qualification_form_url: '',
   });
   const [timezones, setTimezones] = useState([]);
 
@@ -1673,6 +1810,7 @@ function OrganizationsPageContent() {
           website:       orgResult.data.website       ?? '',
           status:        orgResult.data.status        ?? 'active',
           timezone:      orgResult.data.timezone      ?? '',
+          volunteer_qualification_form_url: orgResult.data.volunteer_qualification_form_url ?? '',
         });
       }).catch((err) => setError(err.message)).finally(() => setFetching(false));
 
@@ -1693,6 +1831,7 @@ function OrganizationsPageContent() {
       fd.append('website', form.website.trim());
       fd.append('status', form.status);
       fd.append('timezone', form.timezone);
+      fd.append('volunteer_qualification_form_url', form.volunteer_qualification_form_url.trim());
       if (logoChange.type === 'file')  fd.append('logo_file', logoChange.file);
       else if (logoChange.type === 'url')   fd.append('logo_url', logoChange.url);
       else if (logoChange.type === 'clear') fd.append('clear_logo', 'true');
@@ -1855,6 +1994,16 @@ function OrganizationsPageContent() {
                         <option key={tz} value={tz}>{tz}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Volunteer/Moderator Questionnaire <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                      Link to an external form (e.g. a Google Form) used to screen a person&apos;s fitness to
+                      volunteer or moderate. Shown to volunteers on the public signup page and in the Discord
+                      bot&apos;s /signup flow.
+                    </p>
+                    <input type="url" value={form.volunteer_qualification_form_url} onChange={(e) => setForm((f) => ({ ...f, volunteer_qualification_form_url: e.target.value }))} disabled={submitting || !canManageSettings} placeholder="https://forms.gle/..."
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-50" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</label>

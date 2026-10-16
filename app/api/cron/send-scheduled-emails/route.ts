@@ -29,9 +29,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ processed: 0 });
     }
 
-    // Respect opt-outs that may have happened after the message was scheduled
+    // Respect opt-outs that may have happened after the message was scheduled.
+    // Rows with no real email (Discord-only signups -- see the
+    // Discord bot /signup rework) are excluded here rather than passed to
+    // filterOptedOut, which assumes every entry is a non-null string and
+    // would throw on the first null, aborting delivery for the entire batch
+    // -- not just the row with no email.
     const allowed = new Set(
-      await filterOptedOut(supabase, emails.map(e => e.volunteer_email))
+      await filterOptedOut(supabase, emails.filter(e => e.volunteer_email).map(e => e.volunteer_email))
     );
 
     // Resolve which Discord account (if any) to DM for each row. Rows from
@@ -63,50 +68,57 @@ export async function GET(request: Request) {
     for (const email of emails) {
       if (email.message_id) affectedMessageIds.add(email.message_id);
 
-      if (!allowed.has(email.volunteer_email)) {
+      if (!email.volunteer_email) {
+        // No real email for this row (Discord-only signup) -- nothing to
+        // send or to have opted out of. The DM leg below still runs.
+        await supabase
+          .from('scheduled_emails')
+          .update({ status: 'cancelled', error_message: 'No email address on file (Discord-only signup)' })
+          .eq('id', email.id);
+        skippedCount++;
+      } else if (!allowed.has(email.volunteer_email)) {
         // Recipient opted out since scheduling — cancel, don't send
         await supabase
           .from('scheduled_emails')
           .update({ status: 'cancelled', error_message: 'Recipient opted out' })
           .eq('id', email.id);
         skippedCount++;
-        continue;
-      }
+      } else {
+        try {
+          const htmlContent = wrapEmailHtml(email.body.replace(/\n/g, '<br>'), orgBrandingMap.get(email.organization_id));
 
-      try {
-        const htmlContent = wrapEmailHtml(email.body.replace(/\n/g, '<br>'), orgBrandingMap.get(email.organization_id));
+          const result = await sendEmail({
+            to: email.volunteer_email,
+            subject: email.subject,
+            html: htmlContent,
+          });
 
-        const result = await sendEmail({
-          to: email.volunteer_email,
-          subject: email.subject,
-          html: htmlContent,
-        });
-
-        if (result.success) {
-          await supabase
-            .from('scheduled_emails')
-            .update({ status: 'sent', sent_at: new Date().toISOString() })
-            .eq('id', email.id);
-          successCount++;
-        } else {
+          if (result.success) {
+            await supabase
+              .from('scheduled_emails')
+              .update({ status: 'sent', sent_at: new Date().toISOString() })
+              .eq('id', email.id);
+            successCount++;
+          } else {
+            await supabase
+              .from('scheduled_emails')
+              .update({
+                status: 'failed',
+                error_message: result.error
+              })
+              .eq('id', email.id);
+            failCount++;
+          }
+        } catch (error: any) {
           await supabase
             .from('scheduled_emails')
             .update({
               status: 'failed',
-              error_message: result.error
+              error_message: error.message
             })
             .eq('id', email.id);
           failCount++;
         }
-      } catch (error: any) {
-        await supabase
-          .from('scheduled_emails')
-          .update({
-            status: 'failed',
-            error_message: error.message
-          })
-          .eq('id', email.id);
-        failCount++;
       }
 
       // DM delivery is independent of the email outcome above — a DM can

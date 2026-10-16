@@ -281,7 +281,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           attendee_enabled, attendee_capacity, speaker_enabled, panels_enabled,
           created_at, updated_at,
           event_day_hours (event_date, start_time, end_time),
-          organizations (id, name, logo_url)
+          organizations (id, name, logo_url, volunteer_qualification_form_url)
         `)
         .eq('event_id', seg[2])
         .neq('status', 'deleted')
@@ -482,9 +482,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // Inserts into volunteer_registrations and queues automated emails.
     if (seg.length === 1 && seg[0] === 'volunteer-registrations') {
       const body = await request.json();
-      const { shift_id, event_id, name, email, phone, attendee_type, discord_user_id } = body;
+      const { shift_id, event_id, name, email, phone, pronouns, attendee_type, discord_user_id, discord_username } = body;
+      const normalizedEmailTop = email ? String(email).trim().toLowerCase() : null;
 
-      if (!name || !email) return fail('name and email are required');
+      if (!name || (!normalizedEmailTop && !discord_user_id)) return fail('name and either email or a Discord account are required');
       if (!shift_id && !event_id) return fail('shift_id or event_id is required');
 
       const validTypes = ['volunteer', 'attendee', 'speaker'];
@@ -508,7 +509,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
         if (resolvedType === 'attendee') {
           if (!ev.attendee_enabled) return fail('Event does not allow attendee registration', 400);
-          if (ev.attendee_capacity) {
+          // != null, not truthy -- a capacity of 0 is a real, intentional
+          // "always full" setting (e.g. to force every signup through a
+          // waitlist-style review elsewhere), not "no capacity set".
+          if (ev.attendee_capacity != null) {
             const { count } = await supabase
               .from('volunteer_registrations')
               .select('*', { count: 'exact', head: true })
@@ -518,7 +522,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           }
         } else {
           if (!ev.is_shiftless) return fail('Event does not allow shiftless registration', 400);
-          if (ev.shiftless_capacity) {
+          if (ev.shiftless_capacity != null) {
             const { count } = await supabase
               .from('volunteer_registrations')
               .select('*', { count: 'exact', head: true })
@@ -529,7 +533,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           }
         }
 
-        const normalizedEmail = email.trim().toLowerCase();
+        const normalizedEmail = normalizedEmailTop;
 
         // A Discord signup for an email that already has a registration here
         // (e.g. from before that account ever used the bot) would otherwise
@@ -537,14 +541,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         // attach this Discord account to the existing registration so the
         // bot can start DMing them — no new confirmation email/reminder
         // scheduling, since they already have one from the original signup.
-        if (discord_user_id) {
+        // (No email to match against for a Discord-only signup -- the
+        // Discord-scoped unique index further down still catches a genuine
+        // repeat signup, just without this friendlier merge message.)
+        if (discord_user_id && normalizedEmail) {
           const { data: candidates } = await supabase
             .from('volunteer_registrations')
             .select('*')
             .eq('event_id', event_id)
             .eq('attendee_type', resolvedType)
             .is('shift_id', null);
-          const existing = (candidates ?? []).find((r: any) => r.email.trim().toLowerCase() === normalizedEmail);
+          const existing = (candidates ?? []).find((r: any) => r.email && r.email.trim().toLowerCase() === normalizedEmail);
 
           if (existing) {
             if (existing.discord_user_id && existing.discord_user_id !== discord_user_id) {
@@ -553,7 +560,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             if (!existing.discord_user_id) {
               const { data: linked } = await supabase
                 .from('volunteer_registrations')
-                .update({ discord_user_id })
+                .update({ discord_user_id, discord_username: discord_username ?? null })
                 .eq('id', existing.id)
                 .select()
                 .single();
@@ -565,7 +572,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
         const { data: registration, error: regError } = await supabase
           .from('volunteer_registrations')
-          .insert({ event_id, name, email: normalizedEmail, phone: phone ?? null, attendee_type: resolvedType, discord_user_id: discord_user_id ?? null })
+          .insert({ event_id, name, email: normalizedEmail, phone: phone ?? null, pronouns: pronouns ?? null, attendee_type: resolvedType, discord_user_id: discord_user_id ?? null, discord_username: discord_username ?? null })
           .select()
           .single();
 
@@ -574,8 +581,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           throw regError;
         }
 
-        sendShiftlessConfirmation(supabase, name, normalizedEmail, event_id)
-          .catch((e) => console.error('sendShiftlessConfirmation error:', e));
+        // No email to confirm for a Discord-only signup -- the bot sends
+        // its own DM confirmation instead (app/api/discord/interactions/route.ts).
+        if (normalizedEmail) {
+          sendShiftlessConfirmation(supabase, name, normalizedEmail, event_id)
+            .catch((e) => console.error('sendShiftlessConfirmation error:', e));
+        }
         scheduleAutomatedEmails(supabase, registration.id, name, normalizedEmail, event_id, null)
           .catch((e) => console.error('scheduleAutomatedEmails error:', e));
 

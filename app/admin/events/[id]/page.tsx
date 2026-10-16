@@ -27,6 +27,7 @@ import EventModal from '@/components/admin/EventModal';
 import SetRecurringModal from '@/components/admin/SetRecurringModal';
 import MessageComposer from '@/components/MessageComposer';
 import ShiftDatePicker from '@/components/admin/ShiftDatePicker';
+import { contactLabel } from '@/lib/volunteer-registrations/contact-label';
 import {
   Calendar, MapPin, Clock, Users, ChevronDown, ChevronUp,
   Mail, FileText, ArrowLeft, Loader2, ShieldCheck, Plus,
@@ -42,7 +43,8 @@ import {
 interface Volunteer {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
+  discord_username: string | null;
   phone: string | null;
   registered_at: string;
   is_waitlisted?: boolean;
@@ -872,10 +874,19 @@ function speakerStatusBadge(status: SpeakerInvite['status']) {
   );
 }
 
-function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug: string }) {
+function SpeakerInvitesTab({ eventId, eventSlug, event, orgTimezone }: { eventId: string; eventSlug: string; event: Event; orgTimezone: string | null }) {
   const { streamerMode } = useStreamerMode();
   const [invites, setInvites]   = useState<SpeakerInvite[]>([]);
   const [loading, setLoading]   = useState(true);
+  // Speakers promoted directly from a shift/event role (via the RoleSelect
+  // dropdown elsewhere) never go through an invite, so they have no row in
+  // `invites` above -- they're a genuinely different, unanchored
+  // volunteer_registrations query. Kept separate rather than merged into
+  // the list above since they have no invite token/status/topic to show.
+  const [roleSpeakers, setRoleSpeakers] = useState<Volunteer[]>([]);
+  const [loadingRoleSpeakers, setLoadingRoleSpeakers] = useState(true);
+  const [shiftPickerFor, setShiftPickerFor] = useState<string | null>(null);
+  const [assigningShift, setAssigningShift] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [prefillEmail, setPrefillEmail] = useState<string | undefined>(undefined);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -898,7 +909,46 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [eventId]);
+  async function loadRoleSpeakers() {
+    setLoadingRoleSpeakers(true);
+    const res = await fetch(`/api/events/${eventId}/shiftless-registrations?type=speaker`);
+    if (res.ok) setRoleSpeakers(await res.json());
+    setLoadingRoleSpeakers(false);
+  }
+
+  useEffect(() => { load(); loadRoleSpeakers(); }, [eventId]);
+
+  // Moving one of these back to Volunteer on a real-shifts event needs a
+  // specific shift -- pop the picker instead of PATCHing straight to a
+  // guaranteed "Event does not allow shiftless registration" error, same as
+  // setEventLevelRole does for the Attendees/Registrations tables.
+  async function setRoleSpeakerRole(registrationId: string, attendee_type: AttendeeTypeValue) {
+    if (attendee_type === 'volunteer' && !event.is_shiftless) {
+      setShiftPickerFor(registrationId);
+      return;
+    }
+    await patchRoleSpeakerRole(registrationId, attendee_type);
+  }
+
+  async function patchRoleSpeakerRole(registrationId: string, attendee_type: AttendeeTypeValue, shiftId?: string): Promise<boolean> {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(shiftId ? { attendee_type, shift_id: shiftId } : { attendee_type }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return false; }
+    loadRoleSpeakers();
+    return true;
+  }
+
+  async function assignPickedShiftForRoleSpeaker(shiftId: string) {
+    if (!shiftPickerFor) return;
+    setAssigningShift(true);
+    const ok = await patchRoleSpeakerRole(shiftPickerFor, 'volunteer', shiftId);
+    setAssigningShift(false);
+    if (!ok) return;
+    setShiftPickerFor(null);
+  }
 
   async function invite(email: string, topic: string, sessionTime: string): Promise<string | null> {
     const res = await fetch(`/api/events/${eventId}/speaker-invites`, {
@@ -1222,6 +1272,41 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
           )}
         </>
       )}
+
+      {!loadingRoleSpeakers && roleSpeakers.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            Promoted from a role change ({roleSpeakers.length})
+          </h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+            Became a speaker via the role dropdown elsewhere on this event (a shift, for example), not an invite.
+          </p>
+          <div className="space-y-2">
+            {roleSpeakers.map((r) => (
+              <Card key={r.id} className="px-5 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}
+                    </p>
+                  </div>
+                  <RoleSelect value="speaker" onChange={(v) => setRoleSpeakerRole(r.id, v)} />
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {shiftPickerFor && (
+        <ShiftPickerModal
+          shifts={event.shifts}
+          submitting={assigningShift}
+          onClose={() => setShiftPickerFor(null)}
+          onPick={assignPickedShiftForRoleSpeaker}
+          orgTimezone={orgTimezone}
+        />
+      )}
     </>
   );
 }
@@ -1253,7 +1338,8 @@ interface Panel {
 interface PanelRegistration {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
+  discord_username: string | null;
   phone: string | null;
   registered_at: string;
   is_waitlisted: boolean;
@@ -1264,7 +1350,7 @@ interface PanelRegistration {
 interface PanelAssignmentRow {
   id: string;
   role: 'speaker' | 'volunteer' | 'moderator';
-  registration: { id: string; name: string; email: string; speaker_topic: string | null; public_consent: boolean } | null;
+  registration: { id: string; name: string; email: string | null; discord_username: string | null; speaker_topic: string | null; public_consent: boolean } | null;
 }
 
 interface PoolCandidate {
@@ -1389,6 +1475,8 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
   const [confirmingDiscordId, setConfirmingDiscordId] = useState<string | null>(null);
   const [postingDiscordId, setPostingDiscordId] = useState<string | null>(null);
   const [discordResult, setDiscordResult] = useState<'success' | string | null>(null);
+  const [removeRegistrationTarget, setRemoveRegistrationTarget] = useState<{ panelId: string; registrationId: string; name: string } | null>(null);
+  const [removingRegistration, setRemovingRegistration] = useState(false);
   // Panels default to expanded (collapsible, not collapsed-by-default) —
   // a Set rather than a single id so any number can be open at once. Each
   // panel's detail data is keyed by panel id for the same reason: with
@@ -1519,9 +1607,43 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
     loadDetail(panelId);
   }
 
+  // Shifts have always had this ("Promote"); panels never did -- a direct,
+  // uncapped write past capacity, same as the shift-side one, so an admin
+  // can approve exactly the people they select off the waitlist. Whoever
+  // is still waitlisted afterward can be messaged via the existing "this
+  // panel, waitlisted only" filter in the messaging tool.
+  async function approvePanelRegistration(panelId: string, registrationId: string) {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_waitlisted: false }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to approve'); return; }
+    // is_waitlisted affects the panel's own filled/waitlisted counts
+    // (computed server-side), not just this registration's own row.
+    await Promise.all([loadDetail(panelId), load()]);
+  }
+
   async function unassign(panelId: string, assignmentId: string) {
     await fetch(`/api/panel-assignments/${assignmentId}`, { method: 'DELETE' });
     loadDetail(panelId);
+  }
+
+  // Drops someone from the panel entirely (deletes the registration itself,
+  // not just a secondary panel_assignment) — they'd need to sign up again
+  // to rejoin, so this goes through a confirmation, same as removing a
+  // shift/event registration elsewhere on this page.
+  async function removePanelRegistration() {
+    if (!removeRegistrationTarget) return;
+    const { panelId, registrationId } = removeRegistrationTarget;
+    setRemovingRegistration(true);
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, { method: 'DELETE' });
+    setRemovingRegistration(false);
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to remove'); return; }
+    setRemoveRegistrationTarget(null);
+    // Removing a registration affects the panel's own filled/waitlisted
+    // counts (computed server-side), not just this detail list.
+    await Promise.all([loadDetail(panelId), load()]);
   }
 
   async function postPanelToDiscord(panelId: string) {
@@ -1635,12 +1757,30 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                               {attendees.map((r) => (
                                 <div key={r.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
-                                    {redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span>
+                                    {redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}
                                     {r.is_waitlisted && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Waitlisted</span>}
                                   </span>
-                                  {canManage && (
-                                    <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    {canManage && r.is_waitlisted && (
+                                      <button
+                                        onClick={() => approvePanelRegistration(panel.id, r.id)}
+                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                      >
+                                        Approve
+                                      </button>
+                                    )}
+                                    {canManage && (
+                                      <RoleSelect value="attendee" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                    )}
+                                    {canManage && (
+                                      <button
+                                        onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                                      >
+                                        Remove
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -1657,13 +1797,27 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                           ) : (
                             <div className="space-y-1">
                               {promotedSpeakers.map((r) => (
-                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
-                                  {canManage && (
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1">
+                                  <div>
                                     <div className="flex items-center gap-2">
-                                      <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(panel.id, r.id, v)} />
-                                      <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                      <span className="text-gray-700 dark:text-gray-300">{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
+                                      {canManage && (
+                                        <RoleSelect value="speaker" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                      )}
                                     </div>
+                                    {canManage && (
+                                      <div className="mt-0.5">
+                                        <ConsentToggle checked={!!r.public_consent} onChange={(v) => setPanelRegistrationConsent(panel.id, r.id, v)} />
+                                      </div>
+                                    )}
+                                  </div>
+                                  {canManage && (
+                                    <button
+                                      onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                      className="text-xs text-red-600 dark:text-red-400 hover:underline shrink-0 ml-3"
+                                    >
+                                      Remove
+                                    </button>
                                   )}
                                 </div>
                               ))}
@@ -1671,7 +1825,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                   <div>
                                     <span className="text-gray-700 dark:text-gray-300">
-                                      {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                      {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''}{a.registration && contactLabel(a.registration) && <span className="text-gray-400"> ({redact(contactLabel(a.registration), 'email', streamerMode)})</span>}
                                     </span>
                                     {canManage && a.registration && (
                                       <div className="mt-0.5">
@@ -1698,17 +1852,27 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                           ) : (
                             <div className="space-y-1">
                               {promotedVolunteers.map((r) => (
-                                <div key={r.id} className="flex items-center justify-between text-sm py-1 text-gray-700 dark:text-gray-300">
-                                  <span>{redact(r.name, 'name', streamerMode)} <span className="text-gray-400">({redact(r.email, 'email', streamerMode)})</span></span>
+                                <div key={r.id} className="flex items-center justify-between text-sm py-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-700 dark:text-gray-300">{redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}</span>
+                                    {canManage && (
+                                      <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                    )}
+                                  </div>
                                   {canManage && (
-                                    <RoleSelect value="volunteer" onChange={(type) => setPanelRegistrationRole(panel.id, r.id, type)} />
+                                    <button
+                                      onClick={() => setRemoveRegistrationTarget({ panelId: panel.id, registrationId: r.id, name: r.name })}
+                                      className="text-xs text-red-600 dark:text-red-400 hover:underline shrink-0 ml-3"
+                                    >
+                                      Remove
+                                    </button>
                                   )}
                                 </div>
                               ))}
                               {assignedStaff.map((a) => (
                                 <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                   <span className="text-gray-700 dark:text-gray-300">
-                                    {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                    {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''}{a.registration && contactLabel(a.registration) && <span className="text-gray-400"> ({redact(contactLabel(a.registration), 'email', streamerMode)})</span>}
                                   </span>
                                   {canManage && (
                                     <button onClick={() => unassign(panel.id, a.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
@@ -1736,7 +1900,7 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
                                   <div key={a.id} className="flex items-center justify-between text-sm py-1">
                                     <div>
                                       <span className="text-gray-700 dark:text-gray-300">
-                                        {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''} <span className="text-gray-400">({a.registration?.email ? redact(a.registration.email, 'email', streamerMode) : ''})</span>
+                                        {a.registration?.name ? redact(a.registration.name, 'name', streamerMode) : ''}{a.registration && contactLabel(a.registration) && <span className="text-gray-400"> ({redact(contactLabel(a.registration), 'email', streamerMode)})</span>}
                                       </span>
                                       {canManage && a.registration && (
                                         <div className="mt-0.5">
@@ -1781,6 +1945,17 @@ function PanelsTab({ eventId, event, canManage, discordReady, discordChannelName
           loading={deleting}
           onCancel={() => setDeletingPanel(null)}
           onConfirm={deletePanel}
+        />
+      )}
+
+      {removeRegistrationTarget && (
+        <ConfirmDeleteModal
+          title="Remove from Panel"
+          message={<>Remove <span className="font-medium text-gray-900 dark:text-gray-100">{removeRegistrationTarget.name}</span> from this panel? They will need to sign up again to rejoin.</>}
+          confirmLabel="Remove"
+          loading={removingRegistration}
+          onCancel={() => setRemoveRegistrationTarget(null)}
+          onConfirm={removePanelRegistration}
         />
       )}
 
@@ -2455,7 +2630,7 @@ export default function AdminEventDetailPage() {
   const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [showMessageComposer, setShowMessageComposer] = useState(false);
   const [messageShiftId, setMessageShiftId] = useState<string | undefined>(undefined);
-  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string; id: string } | null>(null);
+  const [messageVolunteer, setMessageVolunteer] = useState<{ name: string; email: string | null; id: string } | null>(null);
 
   async function handleDeleteShift(shiftId: string, filled: number) {
     const msg = filled > 0
@@ -2892,7 +3067,7 @@ export default function AdminEventDetailPage() {
             defaultExpiry={defaultExpiry()}
           />
         ) : activeTab === 'speakers' && canManageAdmins && event.speaker_enabled ? (
-          <SpeakerInvitesTab eventId={event.id} eventSlug={event.event_id} />
+          <SpeakerInvitesTab eventId={event.id} eventSlug={event.event_id} event={event} orgTimezone={orgTimezone} />
         ) : activeTab === 'analytics' ? (
           <AnalyticsTab eventId={event.id} />
         ) : activeTab === 'live' ? (
@@ -2929,9 +3104,9 @@ export default function AdminEventDetailPage() {
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
-                            {streamerMode ? redact(r.email, 'email', streamerMode) : (
+                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : (
                               <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                <Mail className="w-3 h-3" />{r.email}
+                                <Mail className="w-3 h-3" />{contactLabel(r) ?? '—'}
                               </button>
                             )}
                           </td>
@@ -3019,9 +3194,9 @@ export default function AdminEventDetailPage() {
                         <tr key={r.id} className="text-gray-700 dark:text-gray-300">
                           <td className="py-2 pr-4 font-medium">{redact(r.name, 'name', streamerMode)}</td>
                           <td className="py-2 pr-4">
-                            {streamerMode ? redact(r.email, 'email', streamerMode) : (
+                            {streamerMode ? redact(contactLabel(r), 'email', streamerMode) : (
                               <button onClick={() => setMessageVolunteer({ name: r.name, email: r.email, id: r.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                <Mail className="w-3 h-3" />{r.email}
+                                <Mail className="w-3 h-3" />{contactLabel(r) ?? '—'}
                               </button>
                             )}
                           </td>
@@ -3243,9 +3418,9 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 pr-4">
-                                            {streamerMode ? redact(v.email, 'email', streamerMode) : (
+                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : (
                                               <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                                <Mail className="w-3 h-3" />{v.email}
+                                                <Mail className="w-3 h-3" />{contactLabel(v) ?? '—'}
                                               </button>
                                             )}
                                           </td>
@@ -3321,9 +3496,9 @@ export default function AdminEventDetailPage() {
                                             )}
                                           </td>
                                           <td className="py-2 pr-4">
-                                            {streamerMode ? redact(v.email, 'email', streamerMode) : (
+                                            {streamerMode ? redact(contactLabel(v), 'email', streamerMode) : (
                                               <button onClick={() => setMessageVolunteer({ name: v.name, email: v.email, id: v.id })} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                                <Mail className="w-3 h-3" />{v.email}
+                                                <Mail className="w-3 h-3" />{contactLabel(v) ?? '—'}
                                               </button>
                                             )}
                                           </td>

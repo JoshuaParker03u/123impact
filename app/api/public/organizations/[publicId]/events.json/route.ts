@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildOrgFeedData } from '@/lib/public-feed/build-feed-data';
 import { buildEventsJson } from '@/lib/public-feed/to-json';
+import { resolveOrgIdFromPublicId } from '@/lib/org-public-id';
 
-type Params = { params: Promise<{ orgId: string }> };
+type Params = { params: Promise<{ publicId: string }> };
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,15 +15,20 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-// GET /api/public/organizations/[orgId]/events.json
+// GET /api/public/organizations/[publicId]/events.json
 // Public, no-auth, cross-origin feed of an org's events/sessions/people.
-// Any org with events already has a feed at this URL — no opt-in toggle
-// (org ids are already treated as non-sensitive elsewhere in this app, e.g.
-// the X-Organization-Id header on GET /api/events).
+// Any org with events already has a feed at this URL — no opt-in toggle.
+// Keyed on the org's public_id (a one-way hash of its real id, see
+// lib/org-public-id.ts), not the raw database id — this route never sees
+// or needs the real id beyond this one lookup.
 export async function GET(_req: NextRequest, { params }: Params) {
-  const { orgId } = await params;
-  const data = await buildOrgFeedData(orgId);
+  const { publicId } = await params;
+  const orgId = await resolveOrgIdFromPublicId(publicId);
+  if (!orgId) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404, headers: CORS_HEADERS });
+  }
 
+  const data = await buildOrgFeedData(orgId);
   if (!data) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404, headers: CORS_HEADERS });
   }

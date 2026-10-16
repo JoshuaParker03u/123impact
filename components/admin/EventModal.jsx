@@ -692,7 +692,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                   onChange={(e) => setFormData({ ...formData, shiftless_capacity: e.target.value })}
                   className={inputCls}
                   placeholder="Leave blank for unlimited"
-                  min={1}
+                  min={0}
                 />
               </div>
             )}
@@ -718,7 +718,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                   onChange={(e) => setFormData({ ...formData, attendee_capacity: e.target.value })}
                   className={inputCls}
                   placeholder="Leave blank for unlimited"
-                  min={1}
+                  min={0}
                 />
               </div>
             )}

@@ -15,7 +15,7 @@ export async function scheduleAutomatedEmails(
   supabase: SupabaseClient,
   registrationId: string,
   volunteerName: string,
-  volunteerEmail: string,
+  volunteerEmail: string | null,
   eventId: string,
   shiftId: string | null,
   panelId: string | null = null

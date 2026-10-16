@@ -99,10 +99,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
-  const { name, email, phone, attendee_type, shift_ids, discord_user_id } = body;
+  const { name, email, phone, pronouns, attendee_type, shift_ids, discord_user_id, discord_username } = body;
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
 
-  if (!name || !email) {
-    return NextResponse.json({ error: 'name and email are required' }, { status: 400 });
+  if (!name || (!normalizedEmail && !discord_user_id)) {
+    return NextResponse.json({ error: 'name and either email or a Discord account are required' }, { status: 400 });
   }
   if (!Array.isArray(shift_ids) || shift_ids.length === 0) {
     return NextResponse.json({ error: 'shift_ids must be a non-empty array' }, { status: 400 });
@@ -110,8 +111,6 @@ export async function POST(req: NextRequest) {
   if (shift_ids.length > 10) {
     return NextResponse.json({ error: 'Cannot register for more than 10 shifts at once' }, { status: 400 });
   }
-
-  const normalizedEmail = email.trim().toLowerCase();
   const resolvedType = ['volunteer', 'attendee', 'speaker'].includes(attendee_type)
     ? attendee_type
     : 'volunteer';
@@ -161,12 +160,16 @@ export async function POST(req: NextRequest) {
   }
 
   // Check for conflicts with shifts the volunteer is already registered for
-  const { data: existingRegs } = await supabase
+  // -- keyed by email when given, otherwise by Discord identity (bot
+  // signups with no email).
+  const existingRegsQuery = supabase
     .from('volunteer_registrations')
     .select('id, shift_id, discord_user_id, is_waitlisted, shifts(id, name, start_time, end_time, shift_date)')
     .eq('event_id', eventId)
-    .eq('email', normalizedEmail)
     .not('shift_id', 'is', null);
+  const { data: existingRegs } = await (normalizedEmail
+    ? existingRegsQuery.eq('email', normalizedEmail)
+    : existingRegsQuery.eq('discord_user_id', discord_user_id));
 
   for (const reg of existingRegs ?? []) {
     const existing = (reg as any).shifts;
@@ -198,7 +201,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'You are already registered for one or more of these shifts' }, { status: 409 });
         }
         if (!reg.discord_user_id) {
-          await supabase.from('volunteer_registrations').update({ discord_user_id }).eq('id', reg.id);
+          await supabase.from('volunteer_registrations').update({ discord_user_id, discord_username: discord_username ?? null }).eq('id', reg.id);
         }
         const shift = shifts.find((s: any) => s.id === shiftId) as any;
         linked.push({ shiftId, shiftName: shift.name, isWaitlisted: reg.is_waitlisted });
@@ -237,9 +240,11 @@ export async function POST(req: NextRequest) {
     name,
     email:         normalizedEmail,
     phone:         phone ?? null,
+    pronouns:      pronouns ?? null,
     attendee_type: resolvedType,
     is_waitlisted,
     discord_user_id: discord_user_id ?? null,
+    discord_username: discord_username ?? null,
   }));
 
   const { data: inserted, error: insertError } = await supabase
@@ -263,8 +268,10 @@ export async function POST(req: NextRequest) {
     is_waitlisted,
   }));
 
-  sendMultiShiftConfirmation(supabase, name, normalizedEmail, emailShifts, eventId)
-    .catch(e => console.error('sendMultiShiftConfirmation error:', e));
+  if (normalizedEmail) {
+    sendMultiShiftConfirmation(supabase, name, normalizedEmail, emailShifts, eventId)
+      .catch(e => console.error('sendMultiShiftConfirmation error:', e));
+  }
 
   for (const reg of inserted ?? []) {
     scheduleAutomatedEmails(supabase, reg.id, name, normalizedEmail, eventId, reg.shift_id)

@@ -14,6 +14,7 @@ import { Users, Calendar, Clock, Mail, Phone, Loader2, Search, X, CheckCircle2, 
 import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { redact } from '@/lib/redact';
 import { shiftDurationHours } from '@/lib/hours';
+import { contactLabel } from '@/lib/volunteer-registrations/contact-label';
 
 const AVATAR_COLORS = [
   'from-blue-500 to-blue-700',
@@ -298,6 +299,7 @@ function AdminVolunteersPage() {
           id,
           name,
           email,
+          discord_username,
           phone,
           registered_at,
           shift_id,
@@ -665,8 +667,8 @@ function AdminVolunteersPage() {
                               </div>
                               <div className="flex items-center gap-3 mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                                 {streamerMode
-                                  ? <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{redact(volunteer.email, 'email', streamerMode)}</span>
-                                  : <button onClick={() => setMessageVolunteer(volunteer)} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Mail className="w-3 h-3" />{volunteer.email}</button>}
+                                  ? <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{redact(contactLabel(volunteer), 'email', streamerMode)}</span>
+                                  : <button onClick={() => setMessageVolunteer(volunteer)} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Mail className="w-3 h-3" />{contactLabel(volunteer) ?? '—'}</button>}
                                 {volunteer.phone && (streamerMode
                                   ? <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{redact(volunteer.phone, 'phone', streamerMode)}</span>
                                   : <a href={`tel:${volunteer.phone}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Phone className="w-3 h-3" />{volunteer.phone}</a>)}
@@ -733,8 +735,8 @@ function AdminVolunteersPage() {
                         </div>
                         <div className="flex flex-col gap-0.5 mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                           {streamerMode
-                            ? <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 flex-shrink-0" />{redact(volunteer.email, 'email', streamerMode)}</span>
-                            : <button onClick={() => setMessageVolunteer(volunteer)} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate"><Mail className="w-3 h-3 flex-shrink-0" />{volunteer.email}</button>}
+                            ? <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 flex-shrink-0" />{redact(contactLabel(volunteer), 'email', streamerMode)}</span>
+                            : <button onClick={() => setMessageVolunteer(volunteer)} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate"><Mail className="w-3 h-3 flex-shrink-0" />{contactLabel(volunteer) ?? '—'}</button>}
                           {volunteer.phone && (streamerMode
                             ? <span className="flex items-center gap-1"><Phone className="w-3 h-3 flex-shrink-0" />{redact(volunteer.phone, 'phone', streamerMode)}</span>
                             : <a href={`tel:${volunteer.phone}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Phone className="w-3 h-3 flex-shrink-0" />{volunteer.phone}</a>)}

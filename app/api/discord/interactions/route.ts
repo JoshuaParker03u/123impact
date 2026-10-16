@@ -11,7 +11,10 @@ import {
   getOpenShiftsForEvent,
   getOpenPanelsForEvent,
   getEventById,
+  getQualificationFormUrl,
+  getQualificationFormUrlForOrg,
 } from '@/lib/discord/queries';
+import { resolveSignupRoute } from '@/lib/discord/resolve-signup-route';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +36,18 @@ function selectMenuRow(customId: string, placeholder: string, options: { label: 
   return [{ type: 1, components: [{ type: 3, custom_id: customId, placeholder, options }] }];
 }
 
+// Shown on the event/shift/panel picker messages, before the modal opens --
+// Discord modals can't contain a clickable link or any static text beyond
+// field labels, so this is the only place in the pre-signup flow where
+// someone could actually see it. withQualificationFormLink (below) covers
+// the post-signup DM separately, with its own confirmation-flavored wording.
+function withQualificationFormNote(content: string, formUrl: string | null): string {
+  return formUrl ? `${content}\n\n📋 Please also complete our Volunteer/Moderator Questionnaire: ${formUrl}` : content;
+}
+
+// No email field -- Discord already knows who's signing up (discordUserId,
+// threaded through separately from interaction.member/user.id), so the only
+// thing worth asking for here is how they want to be addressed.
 function signupModal(customId: string) {
   return NextResponse.json({
     type: InteractionResponseType.MODAL,
@@ -40,8 +55,8 @@ function signupModal(customId: string) {
       custom_id: customId,
       title: 'Sign Up',
       components: [
-        { type: 1, components: [{ type: 4, custom_id: 'name', label: 'Your name', style: 1, required: true }] },
-        { type: 1, components: [{ type: 4, custom_id: 'email', label: 'Your email', style: 1, required: true }] },
+        { type: 1, components: [{ type: 4, custom_id: 'name', label: 'Preferred Name', style: 1, required: true }] },
+        { type: 1, components: [{ type: 4, custom_id: 'pronouns', label: 'Pronouns (optional)', style: 1, required: false }] },
       ],
     },
   });
@@ -88,7 +103,8 @@ export async function POST(req: NextRequest) {
       description: e.date,
     }));
 
-    return ephemeral('Choose an event:', selectMenuRow('select_event', 'Choose an event', options));
+    const formUrl = await getQualificationFormUrlForOrg(connection.organization_id).catch(() => null);
+    return ephemeral(withQualificationFormNote('Choose an event:', formUrl), selectMenuRow('select_event', 'Choose an event', options));
   }
 
   if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
@@ -97,46 +113,58 @@ export async function POST(req: NextRequest) {
 
     if (customId === 'select_event') {
       const eventId = selectedValue;
-      const { shifts, hasAnyShifts } = await getOpenShiftsForEvent(eventId, interaction.member?.user?.id ?? interaction.user?.id ?? null);
-
-      if (shifts.length > 0) {
-        const options = shifts.map((s) => ({
-          label: `${s.name} (${s.start_time}-${s.end_time})`.slice(0, 100),
-          value: s.id,
-          description: s.is_full ? 'Waitlist' : `${s.available} spot${s.available === 1 ? '' : 's'} open`,
-        }));
-        return updateMessage('Choose a shift:', selectMenuRow('select_shift', 'Choose a shift', options));
-      }
-
-      if (hasAnyShifts) {
-        return updateMessage('No shifts are available to you for this event right now — you may have already signed up for all of them.', []);
-      }
+      const formUrl = await getQualificationFormUrl({ eventId }).catch(() => null);
+      const userId = interaction.member?.user?.id ?? interaction.user?.id ?? null;
 
       const event = await getEventById(eventId);
       if (!event) return ephemeral('That event could not be found.');
 
-      if (event.panels_enabled) {
-        const { panels, hasAnyPanels } = await getOpenPanelsForEvent(eventId, interaction.member?.user?.id ?? interaction.user?.id ?? null);
+      const panelsResult = event.panels_enabled
+        ? await getOpenPanelsForEvent(eventId, userId)
+        : { panels: [], hasAnyPanels: false };
 
-        if (panels.length > 0) {
-          const options = panels.map((p) => ({
+      // Only fetch shifts if panels didn't already resolve the route --
+      // panels take priority over shifts (see resolveSignupRoute).
+      const shiftsResult = panelsResult.panels.length > 0 || panelsResult.hasAnyPanels
+        ? { shifts: [], hasAnyShifts: false }
+        : await getOpenShiftsForEvent(eventId, userId);
+
+      const route = resolveSignupRoute({
+        panelsEnabled: event.panels_enabled,
+        openPanelCount: panelsResult.panels.length,
+        hasAnyPanels: panelsResult.hasAnyPanels,
+        openShiftCount: shiftsResult.shifts.length,
+        hasAnyShifts: shiftsResult.hasAnyShifts,
+        attendeeEnabled: event.attendee_enabled,
+        isShiftless: event.is_shiftless,
+      });
+
+      switch (route.kind) {
+        case 'panel_picker': {
+          const options = panelsResult.panels.map((p) => ({
             label: `${p.name} (${p.start_time}-${p.end_time})`.slice(0, 100),
             value: p.id,
             description: p.is_full ? 'Waitlist' : p.available == null ? 'Open' : `${p.available} spot${p.available === 1 ? '' : 's'} open`,
           }));
-          return updateMessage('Choose a panel:', selectMenuRow('select_panel', 'Choose a panel', options));
+          return updateMessage(withQualificationFormNote('Choose a panel:', formUrl), selectMenuRow('select_panel', 'Choose a panel', options));
         }
-
-        if (hasAnyPanels) {
+        case 'no_panels_available':
           return updateMessage('No panels are available to you for this event right now — you may have already signed up for all of them.', []);
+        case 'shift_picker': {
+          const options = shiftsResult.shifts.map((s) => ({
+            label: `${s.name} (${s.start_time}-${s.end_time})`.slice(0, 100),
+            value: s.id,
+            description: s.is_full ? 'Waitlist' : `${s.available} spot${s.available === 1 ? '' : 's'} open`,
+          }));
+          return updateMessage(withQualificationFormNote('Choose a shift:', formUrl), selectMenuRow('select_shift', 'Choose a shift', options));
         }
+        case 'no_shifts_available':
+          return updateMessage('No shifts are available to you for this event right now — you may have already signed up for all of them.', []);
+        case 'closed':
+          return updateMessage('This event isn\'t currently open for signups.', []);
+        case 'rsvp':
+          return signupModal(encodeCustomId('signup_modal_rsvp', `${eventId}:${route.attendeeType}`));
       }
-
-      if (!event.attendee_enabled && !event.is_shiftless) {
-        return updateMessage('This event isn\'t currently open for signups.', []);
-      }
-      const attendeeType = event.attendee_enabled ? 'attendee' : 'volunteer';
-      return signupModal(encodeCustomId('signup_modal_rsvp', `${eventId}:${attendeeType}`));
     }
 
     if (customId === 'select_shift') {
@@ -159,17 +187,18 @@ export async function POST(req: NextRequest) {
     const rows: { components: { custom_id: string; value: string }[] }[] = interaction.data.components ?? [];
     const fields = rows.flatMap((row) => row.components);
     const name = fields.find((f) => f.custom_id === 'name')?.value?.trim();
-    const email = fields.find((f) => f.custom_id === 'email')?.value?.trim();
+    const pronouns = fields.find((f) => f.custom_id === 'pronouns')?.value?.trim() || null;
     const interactionToken = interaction.token;
     const discordUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null;
+    const discordUsername = interaction.member?.user?.username ?? interaction.user?.username ?? null;
 
     after(async () => {
       try {
         const result = decoded.kind === 'signup_modal_shift'
-          ? await submitShiftSignup(decoded.id, name!, email!, discordUserId)
+          ? await submitShiftSignup(decoded.id, name!, pronouns, discordUserId, discordUsername)
           : decoded.kind === 'signup_modal_panel'
-          ? await submitPanelSignup(decoded.id, name!, email!, discordUserId)
-          : await submitRsvpSignup(decoded.id, name!, email!, discordUserId);
+          ? await submitPanelSignup(decoded.id, name!, pronouns, discordUserId, discordUsername)
+          : await submitRsvpSignup(decoded.id, name!, pronouns, discordUserId, discordUsername);
         await editOriginalResponse(interactionToken, { content: result, components: [] });
       } catch (e) {
         console.error('Discord signup follow-up error:', e);
@@ -206,18 +235,27 @@ async function internalApiFetch(path: string, body: unknown) {
   });
 }
 
-async function submitShiftSignup(shiftId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
+// Every bot signup's confirmation is this same DM -- there's no email to
+// "check" anymore, so the DM is the whole confirmation, with the
+// qualification-form link (if the org has one set) appended.
+async function withQualificationFormLink(message: string, target: { shiftId?: string; panelId?: string; eventId?: string }): Promise<string> {
+  const formUrl = await getQualificationFormUrl(target).catch(() => null);
+  return formUrl ? `${message}\n\nPlease also complete our Volunteer/Moderator Questionnaire: ${formUrl}` : message;
+}
+
+async function submitShiftSignup(shiftId: string, name: string, pronouns: string | null, discordUserId: string | null, discordUsername: string | null): Promise<string> {
   const res = await internalApiFetch('/api/volunteer-registrations/batch', {
-    name, email, attendee_type: 'volunteer', shift_ids: [shiftId], discord_user_id: discordUserId,
+    name, pronouns, attendee_type: 'volunteer', shift_ids: [shiftId], discord_user_id: discordUserId, discord_username: discordUsername,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
   const reg = data.registrations?.[0];
-  const result = data.alreadyRegistered
+  let result = data.alreadyRegistered
     ? `You were already registered for "${reg?.shiftName}" — linked this Discord account to it.`
     : reg?.isWaitlisted
-    ? `You're on the waitlist for "${reg.shiftName}". Check your email for details.`
-    : `You're signed up for "${reg?.shiftName}"! Check your email for confirmation.`;
+    ? `You're on the waitlist for "${reg.shiftName}".`
+    : `You're signed up for "${reg?.shiftName}"!`;
+  result = await withQualificationFormLink(result, { shiftId });
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
@@ -225,17 +263,18 @@ async function submitShiftSignup(shiftId: string, name: string, email: string, d
   return result;
 }
 
-async function submitPanelSignup(panelId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
+async function submitPanelSignup(panelId: string, name: string, pronouns: string | null, discordUserId: string | null, discordUsername: string | null): Promise<string> {
   const res = await internalApiFetch('/api/panel-registrations', {
-    name, email, panel_id: panelId, discord_user_id: discordUserId,
+    name, pronouns, panel_id: panelId, discord_user_id: discordUserId, discord_username: discordUsername,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
-  const result = data.alreadyRegistered
+  let result = data.alreadyRegistered
     ? `You were already registered for "${data.panelName}" — linked this Discord account to it.`
     : data.isWaitlisted
-    ? `You're on the waitlist for "${data.panelName}". Check your email for details.`
-    : `You're signed up for "${data.panelName}"! Check your email for confirmation.`;
+    ? `You're on the waitlist for "${data.panelName}".`
+    : `You're signed up for "${data.panelName}"!`;
+  result = await withQualificationFormLink(result, { panelId });
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));
@@ -243,16 +282,17 @@ async function submitPanelSignup(panelId: string, name: string, email: string, d
   return result;
 }
 
-async function submitRsvpSignup(encodedId: string, name: string, email: string, discordUserId: string | null): Promise<string> {
+async function submitRsvpSignup(encodedId: string, name: string, pronouns: string | null, discordUserId: string | null, discordUsername: string | null): Promise<string> {
   const [eventId, attendeeType] = encodedId.split(':');
   const res = await internalApiFetch('/api/volunteer-registrations', {
-    name, email, event_id: eventId, attendee_type: attendeeType, discord_user_id: discordUserId,
+    name, pronouns, event_id: eventId, attendee_type: attendeeType, discord_user_id: discordUserId, discord_username: discordUsername,
   });
   const data = await res.json();
   if (!res.ok) return `Signup failed: ${typeof data.error === 'string' ? data.error : 'unknown error'}`;
-  const result = data.alreadyRegistered
+  let result = data.alreadyRegistered
     ? `You were already registered for this event — linked this Discord account to it.`
-    : `You're signed up! Check your email for confirmation.`;
+    : `You're signed up!`;
+  result = await withQualificationFormLink(result, { eventId });
 
   if (discordUserId) {
     await sendDirectMessage(discordUserId, result).catch((e) => console.error('signup DM error:', e));

@@ -61,7 +61,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const service = buildServiceClient();
     const { data: org, error } = await service
       .from('organizations')
-      .select('id, name, description, contact_email, contact_phone, website, logo_url, status, timezone')
+      .select('id, name, description, contact_email, contact_phone, website, logo_url, status, timezone, volunteer_qualification_form_url')
       .eq('id', id)
       .single();
 
@@ -108,6 +108,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const website      = formData.get('website')       as string | null;
     const status       = formData.get('status')        as string | null;
     const timezone     = formData.get('timezone')      as string | null;
+    const volunteerQualificationFormUrl = formData.get('volunteer_qualification_form_url') as string | null;
     const logoUrlInput = formData.get('logo_url')      as string | null;
     const logoFile     = formData.get('logo_file')     as File   | null;
     const clearLogo    = formData.get('clear_logo')    as string | null;
@@ -163,6 +164,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (website      !== null) updates.website       = website.trim()      || null;
     if (status       !== null) updates.status        = status;
     if (timezone     !== null) updates.timezone      = timezone.trim() || null;
+    if (volunteerQualificationFormUrl !== null) updates.volunteer_qualification_form_url = volunteerQualificationFormUrl.trim() || null;
     if (logoUrlUpdate !== undefined) updates.logo_url = logoUrlUpdate;
 
     if (Object.keys(updates).length === 0) {
@@ -173,7 +175,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       .from('organizations')
       .update(updates)
       .eq('id', id)
-      .select('id, name, description, contact_email, contact_phone, website, logo_url, status, timezone')
+      .select('id, name, description, contact_email, contact_phone, website, logo_url, status, timezone, volunteer_qualification_form_url')
       .single();
 
     if (updateError) throw updateError;
