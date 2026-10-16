@@ -435,11 +435,11 @@ function ApiTab({ orgId }) {
             consented to be listed — for an external site or calendar app to pull from directly.
           </p>
         </div>
-        <CopyRow label="Organization ID (internal)" value={orgId} />
         {loadingPublicId ? (
           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading feed links...</div>
         ) : (
           <>
+            <CopyRow label="Organization ID" value={publicId} />
             <CopyRow label="JSON feed" value={jsonUrl} href={jsonUrl} />
             <CopyRow label="iCal feed (subscribe in a calendar app)" value={icsUrl} href={icsUrl} />
           </>
