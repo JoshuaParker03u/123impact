@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { excludeInvitedSpeakers } from '@/lib/events/role-speakers';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -71,20 +72,38 @@ export async function GET(req: NextRequest, { params }: Params) {
     .is('panel_id', null)
     .order('registered_at', { ascending: true });
 
-  // type=attendee -> the Attendees tab; otherwise this is the plain
-  // shiftless-volunteer "Registrations" table, which should only ever show
-  // volunteer rows (a stray attendee/speaker row here would otherwise be
-  // mixed in unfiltered, which is more visible now that this table has a
-  // Role column).
+  // type=attendee -> the Attendees tab; type=speaker -> the "promoted from a
+  // role change" section of the Speaker Invites tab (see below); otherwise
+  // this is the plain shiftless-volunteer "Registrations" table, which
+  // should only ever show volunteer rows (a stray attendee/speaker row here
+  // would otherwise be mixed in unfiltered, which is more visible now that
+  // this table has a Role column).
   query = type === 'attendee'
     ? query.eq('attendee_type', 'attendee')
+    : type === 'speaker'
+    ? query.eq('attendee_type', 'speaker')
     : query.eq('attendee_type', 'volunteer');
 
   const { data, error } = await query;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const registrationIds = (data ?? []).map((r) => r.id);
+  // A speaker here can land unanchored two ways: accepting an invite token
+  // (already tracked and displayed via event_speaker_invites, by the Speaker
+  // Invites tab's main list) or being promoted directly from a shift/event
+  // role via setEventLevelRole, which has no invite record at all. Only the
+  // second kind belongs in the type=speaker result -- otherwise an invited
+  // speaker would show up twice, once in each list.
+  let filtered = data ?? [];
+  if (type === 'speaker' && filtered.length > 0) {
+    const { data: invited } = await service
+      .from('event_speaker_invites')
+      .select('registration_id')
+      .in('registration_id', filtered.map((r) => r.id));
+    filtered = excludeInvitedSpeakers(filtered, (invited ?? []).map((i) => i.registration_id));
+  }
+
+  const registrationIds = filtered.map((r) => r.id);
   const { data: checkIns } = registrationIds.length
     ? await service
         .from('check_ins')
@@ -93,7 +112,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     : { data: [] };
 
   const checkInMap = new Map((checkIns ?? []).map((c) => [c.registration_id, c]));
-  const withCheckIn = (data ?? []).map((r) => ({
+  const withCheckIn = filtered.map((r) => ({
     ...r,
     checked_in_at: checkInMap.get(r.id)?.checked_in_at ?? null,
     is_override: checkInMap.get(r.id)?.is_override ?? false,

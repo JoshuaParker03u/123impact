@@ -874,10 +874,19 @@ function speakerStatusBadge(status: SpeakerInvite['status']) {
   );
 }
 
-function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug: string }) {
+function SpeakerInvitesTab({ eventId, eventSlug, event, orgTimezone }: { eventId: string; eventSlug: string; event: Event; orgTimezone: string | null }) {
   const { streamerMode } = useStreamerMode();
   const [invites, setInvites]   = useState<SpeakerInvite[]>([]);
   const [loading, setLoading]   = useState(true);
+  // Speakers promoted directly from a shift/event role (via the RoleSelect
+  // dropdown elsewhere) never go through an invite, so they have no row in
+  // `invites` above -- they're a genuinely different, unanchored
+  // volunteer_registrations query. Kept separate rather than merged into
+  // the list above since they have no invite token/status/topic to show.
+  const [roleSpeakers, setRoleSpeakers] = useState<Volunteer[]>([]);
+  const [loadingRoleSpeakers, setLoadingRoleSpeakers] = useState(true);
+  const [shiftPickerFor, setShiftPickerFor] = useState<string | null>(null);
+  const [assigningShift, setAssigningShift] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [prefillEmail, setPrefillEmail] = useState<string | undefined>(undefined);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -900,7 +909,46 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [eventId]);
+  async function loadRoleSpeakers() {
+    setLoadingRoleSpeakers(true);
+    const res = await fetch(`/api/events/${eventId}/shiftless-registrations?type=speaker`);
+    if (res.ok) setRoleSpeakers(await res.json());
+    setLoadingRoleSpeakers(false);
+  }
+
+  useEffect(() => { load(); loadRoleSpeakers(); }, [eventId]);
+
+  // Moving one of these back to Volunteer on a real-shifts event needs a
+  // specific shift -- pop the picker instead of PATCHing straight to a
+  // guaranteed "Event does not allow shiftless registration" error, same as
+  // setEventLevelRole does for the Attendees/Registrations tables.
+  async function setRoleSpeakerRole(registrationId: string, attendee_type: AttendeeTypeValue) {
+    if (attendee_type === 'volunteer' && !event.is_shiftless) {
+      setShiftPickerFor(registrationId);
+      return;
+    }
+    await patchRoleSpeakerRole(registrationId, attendee_type);
+  }
+
+  async function patchRoleSpeakerRole(registrationId: string, attendee_type: AttendeeTypeValue, shiftId?: string): Promise<boolean> {
+    const res = await fetch(`/api/volunteer-registrations/${registrationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(shiftId ? { attendee_type, shift_id: shiftId } : { attendee_type }),
+    });
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Failed to change role'); return false; }
+    loadRoleSpeakers();
+    return true;
+  }
+
+  async function assignPickedShiftForRoleSpeaker(shiftId: string) {
+    if (!shiftPickerFor) return;
+    setAssigningShift(true);
+    const ok = await patchRoleSpeakerRole(shiftPickerFor, 'volunteer', shiftId);
+    setAssigningShift(false);
+    if (!ok) return;
+    setShiftPickerFor(null);
+  }
 
   async function invite(email: string, topic: string, sessionTime: string): Promise<string | null> {
     const res = await fetch(`/api/events/${eventId}/speaker-invites`, {
@@ -1223,6 +1271,41 @@ function SpeakerInvitesTab({ eventId, eventSlug }: { eventId: string; eventSlug:
             </details>
           )}
         </>
+      )}
+
+      {!loadingRoleSpeakers && roleSpeakers.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            Promoted from a role change ({roleSpeakers.length})
+          </h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+            Became a speaker via the role dropdown elsewhere on this event (a shift, for example), not an invite.
+          </p>
+          <div className="space-y-2">
+            {roleSpeakers.map((r) => (
+              <Card key={r.id} className="px-5 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {redact(r.name, 'name', streamerMode)}{contactLabel(r) && <span className="text-gray-400"> ({redact(contactLabel(r), 'email', streamerMode)})</span>}
+                    </p>
+                  </div>
+                  <RoleSelect value="speaker" onChange={(v) => setRoleSpeakerRole(r.id, v)} />
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {shiftPickerFor && (
+        <ShiftPickerModal
+          shifts={event.shifts}
+          submitting={assigningShift}
+          onClose={() => setShiftPickerFor(null)}
+          onPick={assignPickedShiftForRoleSpeaker}
+          orgTimezone={orgTimezone}
+        />
       )}
     </>
   );
@@ -2984,7 +3067,7 @@ export default function AdminEventDetailPage() {
             defaultExpiry={defaultExpiry()}
           />
         ) : activeTab === 'speakers' && canManageAdmins && event.speaker_enabled ? (
-          <SpeakerInvitesTab eventId={event.id} eventSlug={event.event_id} />
+          <SpeakerInvitesTab eventId={event.id} eventSlug={event.event_id} event={event} orgTimezone={orgTimezone} />
         ) : activeTab === 'analytics' ? (
           <AnalyticsTab eventId={event.id} />
         ) : activeTab === 'live' ? (
