@@ -23,6 +23,7 @@ const REQUIRED = [
 
   // Security
   'CRON_SECRET',
+  'ORG_PUBLIC_ID_SECRET',
 ] as const;
 
 const OPTIONAL = [

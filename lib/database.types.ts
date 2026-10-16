@@ -741,6 +741,7 @@ export type Database = {
           logo_url: string | null
           name: string
           plan: string
+          public_id: string | null
           state: string | null
           status: string | null
           stripe_customer_id: string | null
@@ -765,6 +766,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           plan?: string
+          public_id?: string | null
           state?: string | null
           status?: string | null
           stripe_customer_id?: string | null
@@ -789,6 +791,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           plan?: string
+          public_id?: string | null
           state?: string | null
           status?: string | null
           stripe_customer_id?: string | null
@@ -798,6 +801,42 @@ export type Database = {
           updated_at?: string | null
           website?: string | null
           zip_code?: string | null
+        }
+        Relationships: []
+      }
+      organization_api_keys: {
+        Row: {
+          id: string
+          organization_id: string
+          name: string
+          key_prefix: string
+          key_hash: string
+          created_by: string
+          created_at: string
+          last_used_at: string | null
+          revoked_at: string | null
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          name: string
+          key_prefix: string
+          key_hash: string
+          created_by: string
+          created_at?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          name?: string
+          key_prefix?: string
+          key_hash?: string
+          created_by?: string
+          created_at?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
         }
         Relationships: []
       }
