@@ -14,6 +14,7 @@ import {
   getQualificationFormUrl,
   getQualificationFormUrlForOrg,
 } from '@/lib/discord/queries';
+import { resolveSignupRoute } from '@/lib/discord/resolve-signup-route';
 
 export const runtime = 'nodejs';
 
@@ -113,46 +114,57 @@ export async function POST(req: NextRequest) {
     if (customId === 'select_event') {
       const eventId = selectedValue;
       const formUrl = await getQualificationFormUrl({ eventId }).catch(() => null);
-      const { shifts, hasAnyShifts } = await getOpenShiftsForEvent(eventId, interaction.member?.user?.id ?? interaction.user?.id ?? null);
-
-      if (shifts.length > 0) {
-        const options = shifts.map((s) => ({
-          label: `${s.name} (${s.start_time}-${s.end_time})`.slice(0, 100),
-          value: s.id,
-          description: s.is_full ? 'Waitlist' : `${s.available} spot${s.available === 1 ? '' : 's'} open`,
-        }));
-        return updateMessage(withQualificationFormNote('Choose a shift:', formUrl), selectMenuRow('select_shift', 'Choose a shift', options));
-      }
-
-      if (hasAnyShifts) {
-        return updateMessage('No shifts are available to you for this event right now — you may have already signed up for all of them.', []);
-      }
+      const userId = interaction.member?.user?.id ?? interaction.user?.id ?? null;
 
       const event = await getEventById(eventId);
       if (!event) return ephemeral('That event could not be found.');
 
-      if (event.panels_enabled) {
-        const { panels, hasAnyPanels } = await getOpenPanelsForEvent(eventId, interaction.member?.user?.id ?? interaction.user?.id ?? null);
+      const panelsResult = event.panels_enabled
+        ? await getOpenPanelsForEvent(eventId, userId)
+        : { panels: [], hasAnyPanels: false };
 
-        if (panels.length > 0) {
-          const options = panels.map((p) => ({
+      // Only fetch shifts if panels didn't already resolve the route --
+      // panels take priority over shifts (see resolveSignupRoute).
+      const shiftsResult = panelsResult.panels.length > 0 || panelsResult.hasAnyPanels
+        ? { shifts: [], hasAnyShifts: false }
+        : await getOpenShiftsForEvent(eventId, userId);
+
+      const route = resolveSignupRoute({
+        panelsEnabled: event.panels_enabled,
+        openPanelCount: panelsResult.panels.length,
+        hasAnyPanels: panelsResult.hasAnyPanels,
+        openShiftCount: shiftsResult.shifts.length,
+        hasAnyShifts: shiftsResult.hasAnyShifts,
+        attendeeEnabled: event.attendee_enabled,
+        isShiftless: event.is_shiftless,
+      });
+
+      switch (route.kind) {
+        case 'panel_picker': {
+          const options = panelsResult.panels.map((p) => ({
             label: `${p.name} (${p.start_time}-${p.end_time})`.slice(0, 100),
             value: p.id,
             description: p.is_full ? 'Waitlist' : p.available == null ? 'Open' : `${p.available} spot${p.available === 1 ? '' : 's'} open`,
           }));
           return updateMessage(withQualificationFormNote('Choose a panel:', formUrl), selectMenuRow('select_panel', 'Choose a panel', options));
         }
-
-        if (hasAnyPanels) {
+        case 'no_panels_available':
           return updateMessage('No panels are available to you for this event right now — you may have already signed up for all of them.', []);
+        case 'shift_picker': {
+          const options = shiftsResult.shifts.map((s) => ({
+            label: `${s.name} (${s.start_time}-${s.end_time})`.slice(0, 100),
+            value: s.id,
+            description: s.is_full ? 'Waitlist' : `${s.available} spot${s.available === 1 ? '' : 's'} open`,
+          }));
+          return updateMessage(withQualificationFormNote('Choose a shift:', formUrl), selectMenuRow('select_shift', 'Choose a shift', options));
         }
+        case 'no_shifts_available':
+          return updateMessage('No shifts are available to you for this event right now — you may have already signed up for all of them.', []);
+        case 'closed':
+          return updateMessage('This event isn\'t currently open for signups.', []);
+        case 'rsvp':
+          return signupModal(encodeCustomId('signup_modal_rsvp', `${eventId}:${route.attendeeType}`));
       }
-
-      if (!event.attendee_enabled && !event.is_shiftless) {
-        return updateMessage('This event isn\'t currently open for signups.', []);
-      }
-      const attendeeType = event.attendee_enabled ? 'attendee' : 'volunteer';
-      return signupModal(encodeCustomId('signup_modal_rsvp', `${eventId}:${attendeeType}`));
     }
 
     if (customId === 'select_shift') {
