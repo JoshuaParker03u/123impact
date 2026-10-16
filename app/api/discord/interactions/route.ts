@@ -12,6 +12,7 @@ import {
   getOpenPanelsForEvent,
   getEventById,
   getQualificationFormUrl,
+  getQualificationFormUrlForOrg,
 } from '@/lib/discord/queries';
 
 export const runtime = 'nodejs';
@@ -32,6 +33,15 @@ function updateMessage(content: string, components: unknown[]) {
 
 function selectMenuRow(customId: string, placeholder: string, options: { label: string; value: string; description?: string }[]) {
   return [{ type: 1, components: [{ type: 3, custom_id: customId, placeholder, options }] }];
+}
+
+// Shown on the event/shift/panel picker messages, before the modal opens --
+// Discord modals can't contain a clickable link or any static text beyond
+// field labels, so this is the only place in the pre-signup flow where
+// someone could actually see it. withQualificationFormLink (below) covers
+// the post-signup DM separately, with its own confirmation-flavored wording.
+function withQualificationFormNote(content: string, formUrl: string | null): string {
+  return formUrl ? `${content}\n\n📋 Please also complete our Volunteer/Moderator Qualification Form: ${formUrl}` : content;
 }
 
 // No email field -- Discord already knows who's signing up (discordUserId,
@@ -92,7 +102,8 @@ export async function POST(req: NextRequest) {
       description: e.date,
     }));
 
-    return ephemeral('Choose an event:', selectMenuRow('select_event', 'Choose an event', options));
+    const formUrl = await getQualificationFormUrlForOrg(connection.organization_id).catch(() => null);
+    return ephemeral(withQualificationFormNote('Choose an event:', formUrl), selectMenuRow('select_event', 'Choose an event', options));
   }
 
   if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
@@ -101,6 +112,7 @@ export async function POST(req: NextRequest) {
 
     if (customId === 'select_event') {
       const eventId = selectedValue;
+      const formUrl = await getQualificationFormUrl({ eventId }).catch(() => null);
       const { shifts, hasAnyShifts } = await getOpenShiftsForEvent(eventId, interaction.member?.user?.id ?? interaction.user?.id ?? null);
 
       if (shifts.length > 0) {
@@ -109,7 +121,7 @@ export async function POST(req: NextRequest) {
           value: s.id,
           description: s.is_full ? 'Waitlist' : `${s.available} spot${s.available === 1 ? '' : 's'} open`,
         }));
-        return updateMessage('Choose a shift:', selectMenuRow('select_shift', 'Choose a shift', options));
+        return updateMessage(withQualificationFormNote('Choose a shift:', formUrl), selectMenuRow('select_shift', 'Choose a shift', options));
       }
 
       if (hasAnyShifts) {
@@ -128,7 +140,7 @@ export async function POST(req: NextRequest) {
             value: p.id,
             description: p.is_full ? 'Waitlist' : p.available == null ? 'Open' : `${p.available} spot${p.available === 1 ? '' : 's'} open`,
           }));
-          return updateMessage('Choose a panel:', selectMenuRow('select_panel', 'Choose a panel', options));
+          return updateMessage(withQualificationFormNote('Choose a panel:', formUrl), selectMenuRow('select_panel', 'Choose a panel', options));
         }
 
         if (hasAnyPanels) {

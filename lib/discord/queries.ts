@@ -250,6 +250,15 @@ export async function getOpenPanelsForEvent(eventId: string, discordUserId?: str
   return { panels: filtered, hasAnyPanels: true };
 }
 
+export async function getQualificationFormUrlForOrg(organizationId: string): Promise<string | null> {
+  const { data: org } = await buildServiceClient()
+    .from('organizations')
+    .select('volunteer_qualification_form_url')
+    .eq('id', organizationId)
+    .maybeSingle();
+  return org?.volunteer_qualification_form_url ?? null;
+}
+
 // Resolves the volunteer/moderator qualification form URL (set on the
 // organization, surfaced in both the web signup page and here) for a bot
 // signup -- the submit functions in the interactions route only have a
@@ -274,10 +283,5 @@ export async function getQualificationFormUrl(
   }
   if (!organizationId) return null;
 
-  const { data: org } = await supabase
-    .from('organizations')
-    .select('volunteer_qualification_form_url')
-    .eq('id', organizationId)
-    .maybeSingle();
-  return org?.volunteer_qualification_form_url ?? null;
+  return getQualificationFormUrlForOrg(organizationId);
 }
