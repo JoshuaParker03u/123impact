@@ -13,6 +13,9 @@
 //     links that grant access if known -- same class of secret as an API
 //     key, not public-feed-eligible data)
 //   - org_custom_domains.verification_token
+//   - events.discord_showtime_webhook_url, panels.discord_showtime_webhook_url
+//     (posting into that Discord channel requires nothing but this URL --
+//     same bearer-capability-secret class as the rest of this list)
 import { createClient } from '@supabase/supabase-js';
 import { buildOrgFeedData } from '@/lib/public-feed/build-feed-data';
 import { buildEventsJson } from '@/lib/public-feed/to-json';
@@ -73,11 +76,25 @@ function shapeRegistration(row: Record<string, unknown>, format: ExportFormat): 
   return format === 'safe' ? stripPII(row) : row;
 }
 
-function shapeEvent(row: Record<string, unknown>, format: ExportFormat): Record<string, unknown> {
-  if (format === 'sparse') {
-    return sparseFields(row, ['id', 'event_id', 'title', 'date', 'end_date', 'status']);
+function stripHardExcludedEventFields(row: Record<string, unknown>): Record<string, unknown> {
+  const copy = { ...row };
+  delete copy.discord_showtime_webhook_url;
+  if (Array.isArray(copy.panels)) {
+    copy.panels = copy.panels.map((p: Record<string, unknown>) => {
+      const panelCopy = { ...p };
+      delete panelCopy.discord_showtime_webhook_url;
+      return panelCopy;
+    });
   }
-  return row;
+  return copy;
+}
+
+function shapeEvent(row: Record<string, unknown>, format: ExportFormat): Record<string, unknown> {
+  const cleaned = stripHardExcludedEventFields(row);
+  if (format === 'sparse') {
+    return sparseFields(cleaned, ['id', 'event_id', 'title', 'date', 'end_date', 'status']);
+  }
+  return cleaned;
 }
 
 async function fetchOrgEventIds(service: ReturnType<typeof buildServiceClient>, organizationId: string): Promise<string[]> {

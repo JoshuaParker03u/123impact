@@ -8,7 +8,7 @@ import { buildOrgExport, parseFormatParam, parseIncludeParam, EXPORT_RESOURCE_KE
 import { buildOrgFeedData } from '@/lib/public-feed/build-feed-data';
 import { buildEventsJson } from '@/lib/public-feed/to-json';
 import {
-  createTestOrg, createTestEvent, createTestShift, createTestRegistration,
+  createTestOrg, createTestEvent, createTestShift, createTestPanel, createTestRegistration,
   cleanupEvent, cleanupOrg,
 } from '../helpers/fixtures';
 
@@ -70,6 +70,21 @@ describe('buildOrgExport', () => {
     expect(events[0].id).toBe(eventId);
     expect(events[0].shifts).toBeUndefined();
     expect(events[0].location).toBeUndefined();
+  });
+
+  it('never includes a Discord showtime webhook URL, even in format=full -- it\'s a bearer-capability secret, not data', async () => {
+    const { eventId: webhookEventId } = await createTestEvent(orgId, { discord_showtime_webhook_url: 'https://discord.com/api/webhooks/secret-event' });
+    await createTestPanel(webhookEventId, { discord_showtime_webhook_url: 'https://discord.com/api/webhooks/secret-panel' });
+
+    const result = await buildOrgExport(orgId, { format: 'full', include: ['events'] });
+    const events = result.events as Record<string, unknown>[];
+    const webhookEvent = events.find((e) => e.id === webhookEventId)!;
+
+    expect(webhookEvent.discord_showtime_webhook_url).toBeUndefined();
+    const panels = webhookEvent.panels as Record<string, unknown>[];
+    expect(panels[0].discord_showtime_webhook_url).toBeUndefined();
+
+    await cleanupEvent(webhookEventId);
   });
 
   it('include= omits every key not asked for', async () => {
