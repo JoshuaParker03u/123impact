@@ -10,6 +10,7 @@ import HelpButton from './HelpButton';
 import ShowtimeReminderList from './ShowtimeReminderList';
 import { convertWallClock, buildDayHoursRows } from '@/lib/timezone-convert';
 import { saveShowtimeReminders, findDuplicateLeadMinutes } from '@/lib/discord/save-showtime-reminders';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
 import { Upload, Link as LinkIcon, Copy, Check } from 'lucide-react';
 
 function generateSlug(title, suffix) {
@@ -173,6 +174,7 @@ function EventImageUploader({ value, onChange, organizationId, orgLogoUrl, disab
 }
 
 export default function EventModal({ event, organizationId, organizationLogoUrl = null, organizationTimezone = null, personalTimezone = null, onClose, onSave, supabase, isPaid = false }) {
+  const { streamerMode } = useStreamerMode();
   const [slugSuffix] = useState(() => randomSuffix());
   const [slugEdited, setSlugEdited] = useState(false);
   const [slugCopied, setSlugCopied] = useState(false);
@@ -657,8 +659,12 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                 paste the URL below — that&apos;s how the channel is chosen. Panels are independent: a panel only
                 pings if it sets its own webhook, and won&apos;t use this one.
               </p>
+              {/* password, not url, while streaming -- a webhook URL is a bearer
+                  secret (anyone holding it can post into the channel), same
+                  class of value as the API keys in org settings, so it gets
+                  masked on-screen the same way a password field would. */}
               <input
-                type="url"
+                type={streamerMode ? 'password' : 'url'}
                 value={formData.discord_showtime_webhook_url}
                 onChange={(e) => setFormData({ ...formData, discord_showtime_webhook_url: e.target.value })}
                 className={inputCls}

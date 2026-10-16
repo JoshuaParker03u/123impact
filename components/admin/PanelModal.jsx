@@ -9,8 +9,10 @@ import HelpButton from './HelpButton';
 import ShowtimeReminderList from './ShowtimeReminderList';
 import { convertWallClock } from '@/lib/timezone-convert';
 import { findDuplicateLeadMinutes } from '@/lib/discord/save-showtime-reminders';
+import { useStreamerMode } from '@/contexts/StreamerModeContext';
 
 export default function PanelModal({ panel, event, onClose, onSave, organizationTimezone = null, personalTimezone = null }) {
+  const { streamerMode } = useStreamerMode();
   // Existing start/end times are stored as org-timezone wall-clock values --
   // convert them to the viewing admin's own personal timezone for display,
   // so re-saving an untouched field converts back to the exact original.
@@ -244,7 +246,11 @@ export default function PanelModal({ panel, event, onClose, onSave, organization
                 Independent from the event&apos;s own Discord showtime settings — set a webhook here only if this
                 panel should ping its own channel. A panel with no webhook of its own gets no reminders.
               </p>
-              <input type="url" value={formData.discord_showtime_webhook_url}
+              {/* password, not url, while streaming -- a webhook URL is a bearer
+                  secret (anyone holding it can post into the channel), same
+                  class of value as the API keys in org settings, so it gets
+                  masked on-screen the same way a password field would. */}
+              <input type={streamerMode ? 'password' : 'url'} value={formData.discord_showtime_webhook_url}
                 onChange={(e) => setFormData({ ...formData, discord_showtime_webhook_url: e.target.value })}
                 className="w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
                 placeholder="https://discord.com/api/webhooks/..." />
