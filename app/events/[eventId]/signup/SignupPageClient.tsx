@@ -46,7 +46,8 @@ type Event = {
   image_url: string | null
   status: string
   event_day_hours?: DayHours[]
-  organizations?: { id: string; name: string; logo_url: string | null; volunteer_qualification_form_url?: string | null } | null
+  organizations?: { id: string; name: string; logo_url: string | null } | null
+  volunteer_qualification_form_url?: string | null
   is_shiftless?: boolean
   shiftless_capacity?: number | null
   shiftless_filled?: number
@@ -700,11 +701,11 @@ export default function SignupPageClient({ params, initialBranding, role }: { pa
               </div>
               <p className="text-gray-700 dark:text-gray-300">{event.description}</p>
 
-              {role === 'volunteer' && event.organizations?.volunteer_qualification_form_url && (
+              {role === 'volunteer' && event.volunteer_qualification_form_url && (
                 <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <p className="text-sm text-blue-900 dark:text-blue-200">
                     Please also complete our{' '}
-                    <a href={event.organizations.volunteer_qualification_form_url} target="_blank" rel="noopener noreferrer" className="font-medium underline">
+                    <a href={event.volunteer_qualification_form_url} target="_blank" rel="noopener noreferrer" className="font-medium underline">
                       Volunteer/Moderator Questionnaire ↗
                     </a>
                   </p>

@@ -191,6 +191,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
     event_format:        event?.event_format        || 'in_person',
     online_url:          event?.online_url          || '',
     recording_url:       event?.recording_url       || '',
+    volunteer_qualification_form_url: event?.volunteer_qualification_form_url || '',
     is_shiftless:        event?.is_shiftless        ?? false,
     shiftless_capacity:  event?.shiftless_capacity  ?? '',
     attendee_enabled:    event?.attendee_enabled    ?? false,
@@ -318,11 +319,14 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
       const showtimePayload = {
         discord_showtime_webhook_url: formData.discord_showtime_webhook_url.trim() || null,
       };
+      const questionnairePayload = {
+        volunteer_qualification_form_url: formData.volunteer_qualification_form_url.trim() || null,
+      };
       const imageUrl = formData.image_url || organizationLogoUrl || '';
       if (event) {
         const { error } = await supabase
           .from('events')
-          .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload, ...rolePayload, ...showtimePayload })
+          .update({ ...formData, image_url: imageUrl, end_date: formData.end_date || null, ...shiftlessPayload, ...rolePayload, ...showtimePayload, ...questionnairePayload })
           .eq('id', event.id);
         if (error) throw error;
         await saveDayHours(event.id, dayHoursResult.rows);
@@ -370,6 +374,7 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
             ...shiftlessPayload,
             ...rolePayload,
             ...showtimePayload,
+            ...questionnairePayload,
           })
           .select('id')
           .single();
@@ -671,6 +676,22 @@ export default function EventModal({ event, organizationId, organizationLogoUrl 
                 placeholder="https://discord.com/api/webhooks/..."
               />
               <ShowtimeReminderList reminders={showtimeReminders} onChange={setShowtimeReminders} name={formData.title} />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Volunteer/Moderator Questionnaire <span className="text-gray-400 font-normal">(optional)</span></label>
+              <p className="text-xs text-gray-400 mb-1.5">
+                Link to an external form (e.g. a Google Form) used to screen a person&apos;s fitness to
+                volunteer or moderate for this event. Shown to volunteers on the public signup page and in the
+                Discord bot&apos;s /signup flow.
+              </p>
+              <input
+                type="url"
+                value={formData.volunteer_qualification_form_url}
+                onChange={(e) => setFormData({ ...formData, volunteer_qualification_form_url: e.target.value })}
+                className={inputCls}
+                placeholder="https://forms.gle/..."
+              />
             </div>
 
             <div>

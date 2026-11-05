@@ -12,7 +12,6 @@ import {
   getOpenPanelsForEvent,
   getEventById,
   getQualificationFormUrl,
-  getQualificationFormUrlForOrg,
 } from '@/lib/discord/queries';
 import { resolveSignupRoute } from '@/lib/discord/resolve-signup-route';
 
@@ -103,8 +102,7 @@ export async function POST(req: NextRequest) {
       description: e.date,
     }));
 
-    const formUrl = await getQualificationFormUrlForOrg(connection.organization_id).catch(() => null);
-    return ephemeral(withQualificationFormNote('Choose an event:', formUrl), selectMenuRow('select_event', 'Choose an event', options));
+    return ephemeral('Choose an event:', selectMenuRow('select_event', 'Choose an event', options));
   }
 
   if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
